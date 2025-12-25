@@ -1,5 +1,6 @@
 ﻿"""
-源飯糰菜單工具 - 查詢、報價、配方、口語解析、加料加價
+源飯糰工具 - 查詢、報價、配方、口語解析、加料加價
+（維持 menu_tool 介面供 llm_service 使用）
 """
 
 import json
@@ -7,18 +8,17 @@ import re
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 
+from src.config.config_loader import load_json_config
 
-MENU_TOOL_VERSION = "2025-12-24-addon-v1"
+MENU_TOOL_VERSION = "2025-12-25-config-v3"
 
 MENU_FILE = Path(__file__).parent / "menu" / "menu_all.json"
 RECIPES_FILE = Path(__file__).parent / "menu" / "riceball_recipes.json"
-
 
 # 飯糰價格規則
 SPECIAL_FLAVORS_ONLY_LARGE = {"源味傳統", "素料", "甜飯糰", "半甜鹹"}  # 只有加大，沒有重量
 
 HEAVY_RICEBALL_PRICES = {
-    # 非特殊口味做重量 -> 直接用重量飯糰價格（固定）
     "醬燒里肌": 80,
     "黑椒里肌": 80,
     "蜜汁燒肉": 80,
@@ -67,19 +67,6 @@ RICE_KEYWORDS = {
 # 數量（簡化版）
 QUANTITY_MAP = {"一": 1, "兩": 2, "三": 3}
 
-# 加料加價表
-ADDON_PRICE_TABLE = {
-    "蛋": 10,
-    "起司": 10,
-    "油條": 5,
-    "肉類": 35,
-    "火腿": 15,
-    "培根": 25,
-    "泡菜": 35,
-    "鹹蛋": 35,
-    "鮪魚": 35,
-}
-
 # 配料同義詞（normalize）
 INGREDIENT_SYNONYMS = {
     "蛋": "蛋",
@@ -87,6 +74,7 @@ INGREDIENT_SYNONYMS = {
     "起司片": "起司",
     "起司": "起司",
     "油條": "油條",
+    # 注意：這裡的單字 "肉" 會造成子字串誤判，所以 only-mode 解析時會排除 len<2 的 synonym
     "肉": "肉類",
     "肉類": "肉類",
     "火腿": "火腿",
@@ -104,6 +92,9 @@ SPECIAL_ONLY_PATTERNS = [
     "只要飯",
 ]
 
+# 口語同義
+ORAL_RICEBALL_KEYWORDS = ["飯糰", "飯團"]
+
 
 def _dedupe_keep_order(xs: List[str]) -> List[str]:
     return list(dict.fromkeys(xs or []))
@@ -113,6 +104,8 @@ class MenuTool:
     def __init__(self):
         self.menu_data = self._load_menu()
         self.recipes_data = self._load_recipes()
+        cfg = load_json_config("addon_prices.json")
+        self.ADDON_PRICE_TABLE = cfg.get("riceball_addons", {})
 
     def _load_menu(self) -> Dict[str, Any]:
         try:
@@ -282,8 +275,8 @@ class MenuTool:
         for raw in add_ingredients:
             key = INGREDIENT_SYNONYMS.get(raw, raw)
             normalized_add.append(key)
-            if key in ADDON_PRICE_TABLE:
-                addon_total += ADDON_PRICE_TABLE[key]
+            if key in self.ADDON_PRICE_TABLE:
+                addon_total += int(self.ADDON_PRICE_TABLE[key])
             else:
                 unknown_add.append(key)
 
@@ -360,6 +353,11 @@ class MenuTool:
                     flavor = k
                     break
 
+        # 口語預設：只說「飯糰/飯團」= 源味傳統
+        # 但如果句子有口味，上面已經抓到 flavor，就不會覆蓋
+        if flavor is None and any(k in t for k in ORAL_RICEBALL_KEYWORDS):
+            flavor = "源味傳統"
+
         add_ingredients: List[str] = []
         remove_ingredients: List[str] = []
         only_ingredients: List[str] = []
@@ -384,11 +382,16 @@ class MenuTool:
                 only_part = m_only.group(1)
 
                 candidates = set()
+
+                # recipes 配料
                 for recipe in self.recipes_data.values():
                     for ing in recipe.get("ingredients", []):
                         candidates.add(ing)
+
+                # synonyms：只收長度>=2，避免單字子字串污染（例：肉鬆 => 肉類）
                 for syn in INGREDIENT_SYNONYMS.keys():
-                    candidates.add(syn)
+                    if len(syn) >= 2:
+                        candidates.add(syn)
 
                 for c in sorted(candidates, key=len, reverse=True):
                     if c and c in only_part:
@@ -439,17 +442,14 @@ class MenuTool:
 
 menu_tool = MenuTool()
 
-
 if __name__ == "__main__":
     print("MENU_TOOL_VERSION =", MENU_TOOL_VERSION)
     print("=== 測試：parse_riceball_utterance + quote_riceball_customization_price ===")
 
     tests = [
-        "我要一個源味傳統",
-        "我要源味加大加蛋紫米",
-        "兩個半甜鹹大顆",
-        "醬燒里肌重量加蛋白米",
-        "源味傳統加起司加油條紫米",
+        "我要一個飯糰",
+        "我要一個飯團",
+        "我要一個飯糰醬燒里肌紫米",
         "源味傳統只要肉鬆",
         "只要飯跟蛋",
         "只要飯",
@@ -459,7 +459,6 @@ if __name__ == "__main__":
         print("\n句子:", s)
         frame = menu_tool.parse_riceball_utterance(s)
         print("frame:", frame)
-
         if frame.get("flavor"):
             addon = menu_tool.quote_riceball_customization_price(
                 flavor=frame["flavor"],
@@ -469,6 +468,3 @@ if __name__ == "__main__":
                 only_mode=(frame.get("ingredients_mode") == "only"),
             )
             print("addon_quote:", addon)
-
-
-

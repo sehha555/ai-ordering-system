@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "currency": "TWD",
+  "egg_pancake": {
+    "起司": 10,
+    "高麗菜": 15,
+    "火腿": 15,
+    "培根": 25,
+    "薯餅": 20,
+    "肉片": 35
+  },
+  "hidden_single_meat_unit_price": 35
+}
