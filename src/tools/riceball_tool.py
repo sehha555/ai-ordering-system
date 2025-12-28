@@ -10,7 +10,7 @@ from pathlib import Path
 
 from src.config.config_loader import load_json_config
 
-MENU_TOOL_VERSION = "2025-12-25-config-v3"
+MENU_TOOL_VERSION = "2025-12-27-config-v6"
 
 MENU_FILE = Path(__file__).parent / "menu" / "menu_all.json"
 RECIPES_FILE = Path(__file__).parent / "menu" / "riceball_recipes.json"
@@ -40,21 +40,41 @@ HEAVY_RICEBALL_PRICES = {
     "甜心芋泥": 80,
 }
 
-# 口味別名（只保留少量必要映射）
+# 口味別名（只保留必要映射）
 # 重要：不要放 "甜" -> "甜飯糰"，避免 "半甜鹹" 被 "甜" 提前吃掉
-FLAVOR_ALIASES = {
+FLAVOR_ALIASES: Dict[str, str] = {
+    # 源味傳統相關
     "源味傳統": "源味傳統",
     "源味飯糰": "源味傳統",
     "傳統源味": "源味傳統",
     "源味": "源味傳統",
+    "傳統飯糰": "源味傳統",
+    "傳統": "源味傳統",
+    # 甜/半甜
     "甜飯糰": "甜飯糰",
     "半甜鹹": "半甜鹹",
-    "半甜": "半甜鹹",
-    "鹹蛋飯糰": "懷古鹹蛋",
+    # 注意：依你需求移除 `"半甜": "半甜鹹"`
+    # 你指定的 alias（短詞 → 完整口味）
+    "芋泥": "甜心芋泥",
+    "沙茶": "沙茶豬肉",
+    "咖哩": "咖哩嫩雞",
+    "泡菜": "韓式泡菜",
+    "滷蛋": "QQ滷蛋",
+    "豆芽": "蔥蛋豆芽",
     "鹹蛋": "懷古鹹蛋",
+    "鹹蛋飯糰": "懷古鹹蛋",
+    "雞排": "嫩汁雞排",
+    "火腿": "風味火腿",
+    "培根": "香燻培根",
+    "蜜汁": "蜜汁燒肉",
+    "黑椒": "黑椒里肌",
+    # 實務常用簡稱（避免「蒜香」被當成源味傳統）
+    "蒜香": "蒜香雞肉",
+    "和風": "和風雞肉",
+    "椒鹽": "椒鹽雞絲",
 }
 
-# 米飯種類
+# 米飯種類（全句解析只放「明確詞」；口語短詞請放 DM pending rice）
 RICE_KEYWORDS = {
     "混合米": "混米",
     "混米": "混米",
@@ -64,8 +84,8 @@ RICE_KEYWORDS = {
     "白米": "白米",
 }
 
-# 數量（簡化版）
-QUANTITY_MAP = {"一": 1, "兩": 2, "三": 3}
+# 數量（支援到 99：阿拉伯數字 + 中文數字）
+QUANTITY_MAP = {"零": 0, "一": 1, "二": 2, "兩": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
 
 # 配料同義詞（normalize）
 INGREDIENT_SYNONYMS = {
@@ -90,9 +110,9 @@ SPECIAL_ONLY_PATTERNS = [
     "只要飯和蛋",
     "只要飯蛋",
     "只要飯",
+    # 你可以在這裡繼續補口語變體
 ]
 
-# 口語同義
 ORAL_RICEBALL_KEYWORDS = ["飯糰", "飯團"]
 
 
@@ -100,10 +120,44 @@ def _dedupe_keep_order(xs: List[str]) -> List[str]:
     return list(dict.fromkeys(xs or []))
 
 
+def _chinese_number_to_int(token: str) -> Optional[int]:
+    """
+    支援 0~99 的中文數字（含：十、十五、二十、二十五、兩…）
+    """
+    t = (token or "").strip()
+    if not t:
+        return None
+
+    # 常見：單字
+    if t in QUANTITY_MAP and t != "十":
+        return QUANTITY_MAP[t]
+
+    # 十 / 十五 / 二十 / 二十五
+    if "十" in t:
+        if t == "十":
+            return 10
+
+        parts = t.split("十")
+        left = parts[0].strip()
+        right = parts[1].strip() if len(parts) > 1 else ""
+
+        tens = 1 if left == "" else QUANTITY_MAP.get(left)
+        if tens is None:
+            return None
+        ones = 0 if right == "" else QUANTITY_MAP.get(right)
+        if ones is None:
+            return None
+        return tens * 10 + ones
+
+    # 其他（例如「二三」這種不規範，直接不認）
+    return None
+
+
 class MenuTool:
     def __init__(self):
         self.menu_data = self._load_menu()
         self.recipes_data = self._load_recipes()
+
         cfg = load_json_config("addon_prices.json")
         self.ADDON_PRICE_TABLE = cfg.get("riceball_addons", {})
 
@@ -111,9 +165,9 @@ class MenuTool:
         try:
             with open(MENU_FILE, "r", encoding="utf-8-sig") as f:
                 data = json.load(f)
-                if isinstance(data, list):
-                    return {"items": data}
-                return data
+            if isinstance(data, list):
+                return {"items": data}
+            return data
         except FileNotFoundError:
             return {"items": []}
 
@@ -205,6 +259,7 @@ class MenuTool:
     ) -> Dict[str, Any]:
         items = self.menu_data.get("items", [])
         base_item = None
+
         for item in items:
             if item.get("category") == "飯糰" and flavor in item.get("name", ""):
                 base_item = item
@@ -219,6 +274,7 @@ class MenuTool:
         is_large = bool(large)
         is_heavy = bool(heavy)
 
+        # 特殊口味不允許重量，若使用者說重量則轉成加大
         if flavor in SPECIAL_FLAVORS_ONLY_LARGE and is_heavy:
             is_large = True
             is_heavy = False
@@ -268,8 +324,8 @@ class MenuTool:
         default_recipe = self.get_riceball_recipe(flavor)
         default_ings = default_recipe.get("ingredients", []) if default_recipe.get("available") else []
 
-        normalized_add = []
-        unknown_add = []
+        normalized_add: List[str] = []
+        unknown_add: List[str] = []
         addon_total = 0
 
         for raw in add_ingredients:
@@ -325,9 +381,15 @@ class MenuTool:
         t = (text or "").strip()
 
         quantity = 1
-        m_num = re.search(r"([一兩三])\s*(顆|個)", t)
+        # 支援：5個 / 25個 / 五個 / 二十五個
+        m_num = re.search(r"(\d{1,2}|[零一二兩三四五六七八九十]{1,3})\s*(顆|個)", t)
         if m_num:
-            quantity = QUANTITY_MAP.get(m_num.group(1), 1)
+            token = m_num.group(1)
+            if token.isdigit():
+                quantity = int(token)
+            else:
+                v = _chinese_number_to_int(token)
+                quantity = v if isinstance(v, int) and v > 0 else 1
 
         large = ("加大" in t) or ("大顆" in t)
         heavy = ("重量" in t)
@@ -340,12 +402,14 @@ class MenuTool:
                 break
 
         flavor = None
+
         # alias：長字優先
         for alias in sorted(FLAVOR_ALIASES.keys(), key=len, reverse=True):
             if alias and alias in t:
                 flavor = FLAVOR_ALIASES[alias]
                 break
 
+        # 若 alias 沒抓到，再嘗試直接命中 recipes key
         if flavor is None and self.recipes_data:
             keys = sorted(self.recipes_data.keys(), key=len, reverse=True)
             for k in keys:
@@ -353,18 +417,17 @@ class MenuTool:
                     flavor = k
                     break
 
-        # 口語預設：只說「飯糰/飯團」= 源味傳統
-        # 但如果句子有口味，上面已經抓到 flavor，就不會覆蓋
-        if flavor is None and any(k in t for k in ORAL_RICEBALL_KEYWORDS):
-            flavor = "源味傳統"
+        # 注意：這裡刻意不做「飯糰/飯團 => 源味傳統」預設口味
+        # 目的：讓「我要一個飯糰」先問口味，再問米種。
 
         add_ingredients: List[str] = []
         remove_ingredients: List[str] = []
         only_ingredients: List[str] = []
+
         only_mode = False
         needs_price_confirm = False
 
-        # 特殊只要句型
+        # 特殊只要句型（預先定義）
         for pat in SPECIAL_ONLY_PATTERNS:
             if pat in t:
                 only_mode = True
@@ -379,8 +442,8 @@ class MenuTool:
             if m_only:
                 only_mode = True
                 needs_price_confirm = True
-                only_part = m_only.group(1)
 
+                only_part = m_only.group(1)
                 candidates = set()
 
                 # recipes 配料
@@ -429,7 +492,7 @@ class MenuTool:
             "large": bool(large),
             "heavy": bool(heavy),
             "extra_egg": bool(extra_egg),
-            "quantity": quantity,
+            "quantity": int(quantity) if isinstance(quantity, int) and quantity > 0 else 1,
             "ingredients_mode": "only" if only_mode else "default",
             "ingredients_only": only_ingredients,
             "ingredients_add": add_ingredients,
@@ -450,15 +513,22 @@ if __name__ == "__main__":
         "我要一個飯糰",
         "我要一個飯團",
         "我要一個飯糰醬燒里肌紫米",
+        "我要一個飯糰 要蒜香的",
+        "我要五個傳統飯糰",
+        "我要25個傳統飯糰",
+        "我要二十五個傳統飯糰",
         "源味傳統只要肉鬆",
         "只要飯跟蛋",
         "只要飯",
+        "我要一個黑椒紫米",
+        "我要一個泡菜白米",
     ]
 
     for s in tests:
         print("\n句子:", s)
         frame = menu_tool.parse_riceball_utterance(s)
         print("frame:", frame)
+
         if frame.get("flavor"):
             addon = menu_tool.quote_riceball_customization_price(
                 flavor=frame["flavor"],
@@ -468,3 +538,4 @@ if __name__ == "__main__":
                 only_mode=(frame.get("ingredients_mode") == "only"),
             )
             print("addon_quote:", addon)
+

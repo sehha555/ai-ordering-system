@@ -7,6 +7,7 @@ import requests
 from typing import Dict, Any, List
 from src.tools.riceball_tool import menu_tool
 
+
 LM_STUDIO_URL = "http://127.0.0.1:1234/v1/chat/completions"
 MODEL_NAME = "qwen2.5-14b-instruct-1m"
 
@@ -85,6 +86,7 @@ if __name__ == "__main__":
         reply = process_riceball_conversation(text)
         print(f"助手：{reply}")
         print("-" * 50)
+
 
 
 
