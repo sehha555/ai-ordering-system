@@ -1,111 +1,86 @@
-import re
-from typing import Dict, Any, Optional, List
+"""訂單路由器 - 物件介面"""
+from typing import Dict, Any, List
 
-from src.tools.snack_tool import snack_tool
+# 同音字正規化
+NORMALIZE_MAP = {"飯團": "飯糰"}
 
+# 內嵌 keywords
+RICE_KEYWORDS = ["白米", "紫米", "混米"]
+RICEBALL_KEYWORDS = ["飯糰"]
+FLAVOR_ALIASES = {"醬燒里肌": "醬燒里肌"}
 
+SINGLE_ITEM_MARKERS = ["單點", "單獨"]
+CARRIER_KEYWORDS = ["漢堡", "吐司", "饅頭"]
+DRINK_KEYWORDS = [
+    "豆漿", "無糖豆漿", "清漿", "白漿", "米漿", "糙米漿", "薏仁漿", 
+    "十穀漿", "五穀漿", "豆紅", "紅豆", "鮮奶茶", "奶茶", "紅茶", 
+    "綠茶", "混漿", "薏牛", "咖啡", "黑糖奶茶", "黑糖"
+]
+
+def normalize_text(text: str) -> str:
+    t = text
+    for wrong, correct in NORMALIZE_MAP.items():
+        t = t.replace(wrong, correct)
+    return t
+
+def _route(text: str, current_order_has_main: bool = False) -> Dict[str, Any]:
+    """內部路由邏輯"""
+    t = normalize_text(text)
+    
+    # 1. 單點
+    if any(marker in t for marker in SINGLE_ITEM_MARKERS):
+        return {'route_type': 'snack', 'needs_clarify': False, 'note': 'single_item_context'}
+    
+    # 2. carrier
+    if any(c in t for c in CARRIER_KEYWORDS):
+        return {'route_type': 'carrier', 'needs_clarify': False, 'note': 'hit:carrier'}
+    
+    # 3. 飲料
+    if any(kw in t for kw in DRINK_KEYWORDS):
+        return {'route_type': 'drink', 'needs_clarify': False, 'note': 'hit:drink_keywords'}
+    
+    # 4. 米種上下文
+    if current_order_has_main and any(rice in t for rice in RICE_KEYWORDS):
+        return {'route_type': 'riceball', 'needs_clarify': False, 'note': 'hit:rice_keyword_context'}
+    
+    # 5. 飯糰
+    if any(kw in t for kw in RICEBALL_KEYWORDS):
+        return {'route_type': 'riceball', 'needs_clarify': False, 'note': 'hit:riceball_keywords'}
+    
+    # 6. 口味
+    for flavor, aliases in FLAVOR_ALIASES.items():
+        if aliases in t:
+            return {'route_type': 'riceball', 'needs_clarify': False, 'note': f'hit:flavor({flavor})'}
+    
+    # 7. 米種兜底
+    if any(rice in t for rice in RICE_KEYWORDS):
+        return {'route_type': 'riceball', 'needs_clarify': False, 'note': 'hit:rice_keyword_fallback'}
+    
+    return {
+        'route_type': 'unknown',
+        'needs_clarify': True,
+        'clarify_question': '想點哪一類？飯糰、漢堡、饅頭、飲料或單點？',
+        'frame': None,
+        'note': None
+    }
+
+# ✅ 物件介面（支援 order_router.route()）
 class OrderRouter:
-    # 用來判斷「單點語境」
-    SINGLE_ITEM_MARKERS = ["單點", "一份", "一盤", "來一份", "給我一份"]
-
-    # 明確載體關鍵字（先只做你提出的吐司/漢堡/蛋餅）
-    CARRIER_KEYWORDS = ["蛋餅", "吐司", "漢堡"]
-
-    # 模糊「X蛋」的蛋白質詞（你提到的三種）
-    PROTEIN_WORDS = ["肉片", "鮪魚", "雞絲"]
-
     def route(self, text: str, current_order_has_main: bool = False) -> Dict[str, Any]:
-        t = text.strip()
+        return _route(text, current_order_has_main)
 
-        # 1) 單點語境：優先判斷，避免把「一份肉片」轉成肉片蛋餅
-        if self._is_single_item_context(t):
-            frame = snack_tool.parse_snack_utterance(t)
-            quote = snack_tool.quote_snack_price(frame)
-
-            pack_question = None
-            if current_order_has_main and frame.get("suggest_pack_with_main") and frame.get("packable"):
-                pack_question = "這份要不要跟前面的主餐裝在一起？"
-
-            return {
-                "route_type": "snack",
-                "frame": frame,
-                "quote": quote,
-                "needs_clarify": bool(frame.get("missing_slots")),
-                "clarify_question": "要單點哪一樣？" if frame.get("missing_slots") else None,
-                "pack_question": pack_question,
-            }
-
-        # 2) 明確載體：交給對應工具（這裡先不引入 toast_tool/burger_tool，先回傳 route）
-        if any(k in t for k in self.CARRIER_KEYWORDS):
-            if "蛋餅" in t:
-                return {
-                    "route_type": "egg_pancake",
-                    "needs_clarify": False,
-                    "clarify_question": None,
-                    "note": "已判定為蛋餅語境，請呼叫 egg_pancake_tool.parse_egg_pancake_utterance。",
-                }
-            if "吐司" in t:
-                return {
-                    "route_type": "toast",
-                    "needs_clarify": False,
-                    "clarify_question": None,
-                    "note": "已判定為吐司語境，請呼叫 toast_tool。",
-                }
-            if "漢堡" in t:
-                return {
-                    "route_type": "burger",
-                    "needs_clarify": False,
-                    "clarify_question": None,
-                    "note": "已判定為漢堡語境，請呼叫 burger_tool。",
-                }
-
-        # 3) 模糊「X蛋」：需要澄清載體（吐司或漢堡）
-        protein = self._detect_protein_egg(t)
-        if protein:
-            return {
-                "route_type": "ambiguous_protein_egg",
-                "needs_clarify": True,
-                "clarify_question": f"要做成吐司還是漢堡？（{protein}蛋）",
-                "extracted": {"protein": protein},
-            }
-
-        # 4) 其他：暫時回 unknown
-        return {
-            "route_type": "unknown",
-            "needs_clarify": True,
-            "clarify_question": "想點哪一類？蛋餅、吐司、漢堡或單點？",
-        }
-
-    def _is_single_item_context(self, text: str) -> bool:
-        if any(m in text for m in self.SINGLE_ITEM_MARKERS):
-            return True
-        # 「一份 + 肉片/醬燒肉片」這種也算
-        if ("一份" in text) and any(p in text for p in ["肉片", "醬燒肉片"]):
-            return True
-        return False
-
-    def _detect_protein_egg(self, text: str) -> Optional[str]:
-        # 例如：肉片蛋 / 鮪魚蛋 / 雞絲蛋
-        for p in self.PROTEIN_WORDS:
-            if (p in text) and ("蛋" in text) and ("蛋餅" not in text) and ("吐司" not in text) and ("漢堡" not in text):
-                return p
-        return None
-
-
+# ✅ 全域匯出
 order_router = OrderRouter()
 
-
 if __name__ == "__main__":
-    tests = [
-        "我要單點一份肉片",
-        "來一份醬燒肉片",
-        "我要一個肉片蛋",
-        "我要一個鮪魚蛋",
-        "我要醬燒肉片蛋餅",
-        "我要火腿蛋吐司",
-        "我要肉片蛋漢堡",
-    ]
-
+    tests = ['我要一個飯糰','我要一個飯團','我要一個饅頭','我要一杯豆漿','黑糖奶茶','黑糖饅頭','我要單點薯餅']
     for t in tests:
-        r = order_router.route(t, current_order_has_main=True)
-        print(f"「{t}」→ {r.get('route_type')} / clarify={r.get('clarify_question')} / pack={r.get('pack_question')}")
+        result = order_router.route(t)
+        print(t + ' => ' + result['route_type'])
+
+
+
+
+
+
+

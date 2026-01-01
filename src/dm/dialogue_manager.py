@@ -1,364 +1,269 @@
-﻿from __future__ import annotations
+# -*- coding: utf-8 -*-
+"""對話狀態機 - 支援 riceball/carrier/drink 全品類"""
 
-import re
-from typing import Dict, Any, Optional, List, Tuple
-
-from src.dm.session_store import InMemorySessionStore
-from src.dm.clarify_policy import question_for_missing_slot
-from src.dm.slot_parsers import parse_strict_price_confirm
-from src.services.llm_tool_caller import LLMToolCaller
+from typing import Dict, Any, List
 from src.tools.order_router import order_router
-from src.tools.riceball_tool import menu_tool
-
-
-# ---- Safety / limits ----
-MAX_INPUT_LEN = 240
-MAX_SEGMENTS = 6
-
-
-def _is_checkout_utterance(text: str) -> bool:
-    t = (text or "").strip()
-    markers = ["結帳", "買單", "這樣就好", "就這樣", "不需要", "不用", "不用了", "沒了", "就這些", "好了"]
-    return any(m in t for m in markers)
-
-
-def _normalize_text(text: str) -> str:
-    t = (text or "").strip()
-    if len(t) > MAX_INPUT_LEN:
-        t = t[:MAX_INPUT_LEN]
-    return t
-
-
-_SPLIT_RE = re.compile(
-    r"""
-    (?:[，,、；;。\.]+)|
-    (?:\s*(?:跟|和|以及|再|還要|還想要|另外|加上)\s*)
-    """,
-    re.VERBOSE,
-)
-
-
-def _split_multi_items(text: str, max_segments: int = MAX_SEGMENTS) -> List[str]:
-    """
-    把單句拆成多段品項描述，過濾掉純結帳片段。
-    """
-    t = _normalize_text(text)
-    parts = [p.strip() for p in _SPLIT_RE.split(t) if p and p.strip()]
-    parts = [p for p in parts if not _is_checkout_utterance(p)]
-    return parts[:max_segments]
-
-
-def _format_specs(frame: Dict[str, Any]) -> str:
-    parts: List[str] = []
-    if frame.get("large"):
-        parts.append("加大")
-    if frame.get("heavy"):
-        parts.append("重量版")
-    if frame.get("extra_egg"):
-        parts.append("加蛋")
-    if frame.get("ingredients_add"):
-        parts.append("+" + ",".join(frame["ingredients_add"]))
-    return "·".join(parts)
-
-
-def _next_missing(frame: Dict[str, Any]) -> List[str]:
-    missing: List[str] = []
-    if not frame.get("flavor"):
-        missing.append("flavor")
-    if not frame.get("rice"):
-        missing.append("rice")
-    if frame.get("needs_price_confirm"):
-        missing.append("price_confirm")
-    return missing
+from src.tools.riceball_tool import riceball_tool
+from src.tools.carrier_tool import carrier_tool
+from src.tools.drink_tool import drink_tool
 
 
 class DialogueManager:
-    """
-    支援：
-    - 多輪單項：沿用 pending.slot 補齊
-    - 單輪多項：split -> queue -> 逐段處理，遇到缺槽就暫停追問；補完後自動續跑 queue
-    """
-
-    def __init__(self, store: Optional[InMemorySessionStore] = None, llm: Optional[LLMToolCaller] = None):
-        self.store = store or InMemorySessionStore()
-        self.llm = llm or LLMToolCaller()
-
-        self.tool_map = {
-            "parse_riceball_utterance": menu_tool.parse_riceball_utterance,
-            "quote_riceball_price": menu_tool.quote_riceball_price,
-            "quote_riceball_customization_price": menu_tool.quote_riceball_customization_price,
-        }
-
-        self.allowed_args = {
-            "parse_riceball_utterance": {"text"},
-            "quote_riceball_price": {"flavor", "large", "heavy", "extra_egg"},
-            "quote_riceball_customization_price": {
-                "flavor",
-                "add_ingredients",
-                "remove_ingredients",
-                "only_ingredients",
-                "only_mode",
-            },
-        }
+    def __init__(self):
+        self.sessions: Dict[str, Dict[str, Any]] = {}
 
     def handle(self, session_id: str, text: str) -> str:
-        text = _normalize_text(text)
+        if session_id not in self.sessions:
+            self.sessions[session_id] = {
+                "order": [],
+                "current_item": None,
+                "missing_slots": [],
+                "route_type": None,
+                "state": "idle",
+            }
 
-        state = self.store.get(session_id) or {}
-        pending = state.get("pending") or {}
-        pending.setdefault("slot", None)
-        pending.setdefault("frame", None)
-        pending.setdefault("queue", [])
-        if not isinstance(pending["queue"], list):
-            pending["queue"] = []
-        state["pending"] = pending
+        session = self.sessions[session_id]
+        return self._process_text(session_id, session, text)
 
-        cart = state.setdefault("cart", [])
+    def _process_text(self, sid: str, session: Dict[str, Any], text: str) -> str:
+        # 1) 結帳攔截
+        if "結帳" in text:
+            if session["missing_slots"]:
+                return self._get_missing_slots_reminder(session["missing_slots"])
+            if session["order"]:
+                return self.get_order_summary(sid)
+            return "目前沒有品項，請先點餐～"
 
-        added_desc: List[str] = []
-        checkout_intent = _is_checkout_utterance(text)
+        # 2.5) 補槽優先：上一輪在補槽就沿用上一輪 route_type，不再重新路由
+        if (
+            session.get("missing_slots")
+            and session.get("route_type")
+            and session.get("current_item")
+        ):
+            rt = session["route_type"]
+            tool_result = self._call_tool(rt, text)
 
-        # 單輪多項：只在「非補槽狀態」時才拆句入 queue
-        if pending["slot"] not in ("rice", "flavor", "price_confirm"):
-            segs = _split_multi_items(text)
-            if segs:
-                # 第一段當作本輪主處理，其餘塞 queue
-                head, rest = segs[0], segs[1:]
-                if rest:
-                    pending["queue"].extend(rest)
-                text = head
+            if tool_result.get("frame"):
+                # merge：保留既有已填欄位，再用新結果覆蓋/補上
+                session["current_item"].update(tool_result["frame"])
 
-        # 主 loop：本輪輸入 + queue 自動續跑
-        while True:
-            slot = pending.get("slot")
-
-            # 0) await_more_items + 結帳
-            if slot == "await_more_items" and checkout_intent and not pending["queue"]:
-                if not cart:
-                    return "目前還沒有餐點要結帳。你想點什麼？"
-                return self._final_checkout_message(session_id, cart)
-
-            # A) 補 slot：rice / flavor
-            if slot in ("rice", "flavor"):
-                frame = pending.get("frame") or {}
-                parsed = menu_tool.parse_riceball_utterance(text)
-
-                if slot == "rice":
-                    if not parsed.get("rice"):
-                        return self._prefix_added(added_desc, "請問要白米、紫米還是混米？")
-                    frame["rice"] = parsed["rice"]
-                else:  # flavor
-                    if not parsed.get("flavor"):
-                        return self._prefix_added(added_desc, "請再說一次口味（例如：源味傳統、黑椒里肌、韓式泡菜…）")
-                    frame["flavor"] = parsed["flavor"]
-
-                missing = _next_missing(frame)
-                if missing:
-                    next_slot = "price_confirm" if "price_confirm" in missing else missing[0]
-                    pending["slot"] = next_slot
-                    pending["frame"] = frame
-                    self.store.set(session_id, state)
-                    return self._prefix_added(added_desc, question_for_missing_slot(frame, missing))
-
-                # frame 完整 -> 入 cart
-                cart.append(frame)
-                added_desc.append(self._format_item_desc(frame))
-
-                pending["slot"] = "await_more_items"
-                pending["frame"] = None
-
-                # 自動續跑 queue（同一輪輸入）
-                nxt = self._pop_next_segment(pending)
-                if nxt is None:
-                    self.store.set(session_id, state)
-                    return self._added_and_ask_more(added_desc)
-
-                text = nxt
-                checkout_intent = _is_checkout_utterance(text)
-                continue
-
-            # A2) 補 slot：price_confirm
-            if slot == "price_confirm":
-                r = parse_strict_price_confirm(text, min_price=35, step=5)
-                if not r["ok"]:
-                    return self._prefix_added(added_desc, r["message"])
-
-                frame = pending.get("frame") or {}
-                frame["price_confirm"] = r["price"]
-
-                cart.append(frame)
-                added_desc.append(self._format_item_desc(frame))
-
-                pending["slot"] = "await_more_items"
-                pending["frame"] = None
-
-                nxt = self._pop_next_segment(pending)
-                if nxt is None:
-                    self.store.set(session_id, state)
-                    return self._added_and_ask_more(added_desc)
-
-                text = nxt
-                checkout_intent = _is_checkout_utterance(text)
-                continue
-
-            # B) Router（非飯糰路由先回澄清 / 或提示尚未支援）
-            route = order_router.route(text, current_order_has_main=bool(state.get("has_main")))
-            route_type = route.get("route_type")
-
-            if route_type == "snack":
-                frame = route.get("frame") or {}
-                missing = frame.get("missing_slots") or []
-                if missing:
-                    # snack 的缺槽策略先簡化：直接問 clarify_question
-                    q = route.get("clarify_question") or "要單點哪一樣？"
-                    self.store.set(session_id, state)
-                    return self._prefix_added(added_desc, q)
-
-                cart.append(frame)
-                added_desc.append(frame.get("name") or frame.get("item_name") or "單點")
-                pending["slot"] = "await_more_items"
-
-                nxt = self._pop_next_segment(pending)
-                if nxt is None:
-                    self.store.set(session_id, state)
-                    return self._added_and_ask_more(added_desc)
-
-                text = nxt
-                checkout_intent = _is_checkout_utterance(text)
-                continue
-
-            if route_type in ("egg_pancake", "toast", "burger"):
-                # 重要：不要把 route.note 回給使用者（資訊洩漏）
-                self.store.set(session_id, state)
-                return self._prefix_added(
-                    added_desc,
-                    "目前蛋餅/吐司/漢堡的自動解析還沒接上（正在施工中）。先用飯糰或單點測試可以嗎？",
+                # 重新計算缺少的欄位
+                session["missing_slots"] = self._recompute_missing_slots(
+                    rt, session["current_item"]
                 )
 
-            if route_type in ("ambiguous_protein_egg", "unknown"):
-                q = route.get("clarify_question") or "想點哪一類？"
-                self.store.set(session_id, state)
-                return self._prefix_added(added_desc, q)
+                if not session["missing_slots"]:
+                    # 補完所有欄位 → 加入訂單
+                    self._add_to_order(session)
+                    return f"已加入：{self._format_item(session['order'][-1])}。還需要什麼嗎？"
 
-            # C) LLM tool-calling：主要用來把「飯糰自然語句」轉成 frame
-            call = self.llm.call_tool_required(text, menu_tool.get_openai_tools_schema())
-            if not call.get("ok"):
-                self.store.set(session_id, state)
-                return self._prefix_added(added_desc, "請再說清楚一點～")
+                # 還有缺 → 繼續追問
+                return self.get_clarify_message(rt, session["missing_slots"])
 
-            exec_res = self.llm.execute_tool_call(
-                call["tool_call"],
-                tool_map=self.tool_map,
-                allowed_args=self.allowed_args,
-            )
-            if not exec_res.get("ok"):
-                self.store.set(session_id, state)
-                return self._prefix_added(added_desc, "系統解析失敗，請再說一次～")
+        # 2) 路由
+        route_result = order_router.route(text, current_order_has_main=bool(session["order"]))
+        session["route_type"] = route_result["route_type"]
 
-            frame = exec_res.get("result") or {}
-            state["has_main"] = True
+        if route_result["route_type"] == "unknown":
+            return route_result["clarify_question"]
 
-            missing = frame.get("missing_slots") or _next_missing(frame)
-            if missing:
-                next_slot = "price_confirm" if "price_confirm" in missing else missing[0]
-                pending["slot"] = next_slot
-                pending["frame"] = frame
-                self.store.set(session_id, state)
-                return self._prefix_added(added_desc, question_for_missing_slot(frame, missing))
+        # 3) Tool 解析
+        tool_result = self._call_tool(route_result["route_type"], text)
 
-            cart.append(frame)
-            added_desc.append(self._format_item_desc(frame))
-            pending["slot"] = "await_more_items"
+        if tool_result.get("frame"):
+            session["current_item"] = tool_result["frame"]
+            session["missing_slots"] = tool_result.get("missing_slots", [])
 
-            nxt = self._pop_next_segment(pending)
-            if nxt is None:
-                self.store.set(session_id, state)
-                return self._added_and_ask_more(added_desc)
+            if not session["missing_slots"]:
+                # 完整品項 → 加入訂單
+                self._add_to_order(session)
+                return f"已加入：{self._format_item(tool_result['frame'])}。還需要什麼嗎？"
 
-            text = nxt
-            checkout_intent = _is_checkout_utterance(text)
-            continue
+            # 缺槽 → 追問
+            return self.get_clarify_message(route_result["route_type"], session["missing_slots"])
 
-    # ---- Helpers ----
+        return "抱歉，沒聽懂，請再說一次？"
 
-    def _pop_next_segment(self, pending: Dict[str, Any]) -> Optional[str]:
-        q = pending.get("queue") or []
-        if not q:
-            return None
-        # FIFO
-        seg = q.pop(0)
-        seg = (seg or "").strip()
-        return seg or None
+    def _recompute_missing_slots(self, route_type: str, frame: Dict[str, Any]) -> List[str]:
+        """根據 route_type 與 frame 重新計算缺失槽位"""
+        missing: List[str] = []
 
-    def _format_item_desc(self, frame: Dict[str, Any]) -> str:
-        flavor = frame.get("flavor") or ""
-        rice = frame.get("rice") or ""
-        specs = _format_specs(frame)
-        item_desc = f"{flavor}{rice}"
-        if specs:
-            item_desc += f"（{specs}）"
-        qty = int(frame.get("quantity") or 1)
-        if qty > 1:
-            item_desc += f" x{qty}"
-        return item_desc
-
-    def _prefix_added(self, added_desc: List[str], msg: str) -> str:
-        if not added_desc:
-            return msg
-        joined = "、".join(added_desc)
-        return f"已先幫你加入：{joined}。\n{msg}"
-
-    def _added_and_ask_more(self, added_desc: List[str]) -> str:
-        if not added_desc:
-            return "還需要什麼嗎？"
-        joined = "、".join(added_desc)
-        return f"已加入：{joined}。\n還需要什麼嗎？"
-
-    def _final_checkout_message(self, session_id: str, cart: List[Dict[str, Any]]) -> str:
-        total = 0
-
-        for frame in cart:
-            qty = int(frame.get("quantity") or 1)
-            qty = qty if qty > 0 else 1
-
-            # 人工選價：視為該品項單價
-            if frame.get("price_confirm") is not None:
-                total += int(frame["price_confirm"]) * qty
-                continue
-
-            # 目前結帳邏輯以飯糰為主（其他品類後續接上再擴充）
+        if route_type == "riceball":
             if not frame.get("flavor"):
-                # 略過不可計價的 frame，避免 KeyError
-                continue
+                missing.append("flavor")
+            if not frame.get("rice"):
+                missing.append("rice")
+            if frame.get("needs_price_confirm") and not frame.get("price_confirm"):
+                missing.append("price_confirm")
+            return missing
 
-            base = menu_tool.quote_riceball_price(
-                flavor=frame["flavor"],
-                large=frame.get("large", False),
-                heavy=frame.get("heavy", False),
-                extra_egg=frame.get("extra_egg", False),
-            )
+        if route_type == "drink":
+            if not frame.get("drink"):
+                missing.append("drink")
+            if not frame.get("temp"):
+                missing.append("temp")
+            if not frame.get("size"):
+                missing.append("size")
+            return missing
 
-            addon = menu_tool.quote_riceball_customization_price(
-                flavor=frame["flavor"],
-                add_ingredients=frame.get("ingredients_add", []),
-                remove_ingredients=frame.get("ingredients_remove", []),
-                only_ingredients=frame.get("ingredients_only", []),
-                only_mode=(frame.get("ingredients_mode") == "only"),
-            )
+        if route_type == "carrier":
+            if not frame.get("flavor"):
+                missing.append("flavor")
+            if frame.get("carrier") is None:
+                # 若 tool 有 carrier 欄位就檢查；沒有就不強制
+                pass
+            else:
+                if not frame.get("carrier"):
+                    missing.append("carrier")
+            return missing
 
-            if addon.get("status") == "needs_price_confirm":
-                state = self.store.get(session_id) or {}
-                pending = state.get("pending") or {}
-                pending["slot"] = "price_confirm"
-                pending["frame"] = frame
-                pending.setdefault("queue", [])
-                state["pending"] = pending
-                self.store.set(session_id, state)
-                return "你想要包多少錢的？（最低35元、5元級距，例如35/40/45）"
+        return missing
 
-            price = int(base.get("total_price") or 0) + int(addon.get("addon_total") or 0)
-            total += price * qty
+    def _call_tool(self, route_type: str, text: str) -> Dict[str, Any]:
+        """統一 tool 回傳格式：{'frame': dict|None, 'missing_slots': List[str]}"""
+        try:
+            if route_type == "riceball":
+                result = riceball_tool.parse_riceball_utterance(text)
+                return {
+                    "frame": {
+                        "itemtype": result.get("item_type", "riceball"),
+                        "flavor": result.get("flavor"),
+                        "rice": result.get("rice"),
+                        "large": result.get("large", False),
+                        "heavy": result.get("heavy", False),
+                        "extra_egg": result.get("extra_egg", False),
+                        "quantity": result.get("quantity", 1),
+                        "needs_price_confirm": result.get("needs_price_confirm"),
+                        "price_confirm": result.get("price_confirm"),
+                    },
+                    "missing_slots": result.get("missing_slots", []),
+                }
 
-        # 視為送單：清空 session
-        self.store.clear(session_id)
-        return f"這樣一共 {total} 元。"
+            if route_type == "carrier":
+                result = carrier_tool.parse_carrier_utterance(text)
+                # 兼容：如果 tool 已回 {'frame':..., 'missing_slots':...} 就直接用
+                if isinstance(result, dict) and "frame" in result and "missing_slots" in result:
+                    return result
+                return {"frame": result, "missing_slots": (result or {}).get("missing_slots", [])}
+
+            if route_type == "drink":
+                result = drink_tool.parse_drink_utterance(text)
+                if isinstance(result, dict) and "frame" in result and "missing_slots" in result:
+                    return result
+                return {"frame": result, "missing_slots": (result or {}).get("missing_slots", [])}
+
+        except Exception as e:
+            print(f"工具錯誤 {route_type}: {e}")
+            return {"frame": None, "missing_slots": []}
+
+        return {"frame": None, "missing_slots": []}
+
+    def get_clarify_message(self, route_type: str, missing_slots: List[str]) -> str:
+        """各品類專用追問語"""
+        if route_type == "drink":
+            if "temp" in missing_slots:
+                return "你要冰的、溫的？"
+            if "size" in missing_slots:
+                return "大杯還中杯？"
+            return "請問要什麼飲料？"
+
+        if route_type == "riceball":
+            if "rice" in missing_slots:
+                return "請問要白米、紫米還是混米？"
+            if "flavor" in missing_slots:
+                return "想要哪個口味？比如鮪魚、黑椒里肌、源味傳統？"
+            if "price_confirm" in missing_slots:
+                return "這是特殊客製，需要確認價格，請告訴店員！"
+            return "請問要什麼飯糰？"
+
+        if route_type == "carrier":
+            if "carrier" in missing_slots:
+                return "你要漢堡、吐司還是饅頭？"
+            if "flavor" in missing_slots:
+                return "請問要什麼口味？"
+            return "你要漢堡、吐司還是饅頭？"
+
+        return "請問要補充什麼？"
+
+    def _get_missing_slots_reminder(self, missing_slots: List[str]) -> str:
+        if "rice" in missing_slots:
+            return "你要紫米、白米還是混米？"
+        if "temp" in missing_slots:
+            return "還沒說要冰的還是溫的，請先決定～"
+        if "size" in missing_slots:
+            return "還沒說要大杯還中杯，請先決定～"
+        if "price_confirm" in missing_slots:
+            return "有特殊客製需要確認，請告訴店員價格！"
+        return "還有一些沒選好，請先補完再結帳！"
+
+    def _add_to_order(self, session: Dict[str, Any]) -> None:
+        if session.get("current_item"):
+            session["order"].append(session["current_item"].copy())
+            session["current_item"] = None
+            session["missing_slots"] = []
+
+    def _format_item(self, frame: Dict[str, Any]) -> str:
+        itemtype = frame.get("itemtype")
+
+        if itemtype == "drink":
+            parts: List[str] = []
+            if frame.get("size"):
+                parts.append(str(frame["size"]))
+            if frame.get("temp"):
+                parts.append(str(frame["temp"]))
+            if frame.get("sugar"):
+                parts.append(str(frame["sugar"]))
+            parts.append(str(frame.get("drink", "飲料")))
+            return " ".join(parts)
+
+        if itemtype == "riceball":
+            rice = frame.get("rice", "")
+            flavor = frame.get("flavor", "未知口味")
+            extras: List[str] = []
+            if frame.get("large"):
+                extras.append("加大")
+            if frame.get("heavy"):
+                extras.append("重量")
+            if frame.get("extra_egg"):
+                extras.append("加蛋")
+            return f"{rice}{'·' if rice else ''}{flavor}{'·' + '·'.join(extras) if extras else ''}"
+
+        if itemtype in ("carrier", "carrier_item"):
+            carrier = frame.get("carrier")
+            flavor = frame.get("flavor")
+            if carrier and flavor:
+                return f"{flavor}{carrier}"
+            if flavor:
+                return str(flavor)
+            if carrier:
+                return str(carrier)
+            return "餐點"
+
+        return "未知品項"
+
+    def get_order_summary(self, session_id: str) -> str:
+        session = self.sessions.get(session_id, {})
+        order = session.get("order", [])
+        if not order:
+            return "目前沒有品項"
+
+        items = [self._format_item(item) for item in order]
+        total_items = sum(int(item.get("quantity", 1) or 1) for item in order)
+        return f"訂單確認：{', '.join(items)}。共 {total_items} 個品項，請稍候結帳！"
+
+
+if __name__ == "__main__":
+    dm = DialogueManager()
+    sid = "test"
+    print("=== 飲料測試 ===")
+    print("1>", repr(dm.handle(sid, "我要一杯豆漿")))
+    print("2>", repr(dm.handle(sid, "冰的 大杯")))
+    print("3>", repr(dm.handle(sid, "結帳")))
+
+    print("\n=== 飯糰測試 ===")
+    sid2 = "riceball"
+    print("1>", repr(dm.handle(sid2, "我要一個飯糰")))
+    print("2>", repr(dm.handle(sid2, "紫米黑椒")))
+    print("3>", repr(dm.handle(sid2, "加大")))
+    print("4>", repr(dm.handle(sid2, "結帳")))
+

@@ -1,4 +1,4 @@
-﻿"""
+"""
 源飯糰工具 - 查詢、報價、配方、口語解析、加料加價
 （維持 menu_tool 介面供 llm_service 使用）
 """
@@ -539,3 +539,5 @@ if __name__ == "__main__":
             )
             print("addon_quote:", addon)
 
+
+riceball_tool = MenuTool()
