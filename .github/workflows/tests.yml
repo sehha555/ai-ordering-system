@@ -21,7 +21,7 @@ jobs:
       run: pip install uv
 
     - name: Install dependencies
-      run: uv pip sync --all-features
+      run: uv sync --all-extras --locked
 
     - name: Run tests
       run: uv run pytest -q --strict-markers
