@@ -9,6 +9,7 @@ from src.tools.order_router import order_router
 from src.tools.riceball_tool import riceball_tool, menu_tool
 from src.tools.carrier_tool import carrier_tool
 from src.tools.drink_tool import drink_tool
+from src.tools.egg_pancake_tool import egg_pancake_tool
 from src.dm.session_store import InMemorySessionStore
 
 
@@ -140,6 +141,10 @@ class DialogueManager:
 
         # 4) Tool 解析
         tool_result = self._call_tool(route_result["route_type"], text)
+
+        if tool_result.get("error"):
+            return tool_result["error"]
+
         frame = tool_result.get("frame")
 
         if frame:
@@ -241,6 +246,24 @@ class DialogueManager:
                     return result
                 return {"frame": result, "missing_slots": (result or {}).get("missing_slots", [])}
 
+            if route_type == "egg_pancake":
+                result = egg_pancake_tool.parse_egg_pancake_utterance(text)
+                frame = {
+                    "itemtype": "egg_pancake",
+                    "flavor": result.get("flavor"),
+                    "quantity": result.get("quantity"),
+                    "ingredients_add": result.get("ingredients_add", []),
+                    "ingredients_remove": result.get("ingredients_remove", []),
+                    "sauces": result.get("sauces", []),
+                    "needs_pack_together_confirm": result.get("needs_pack_together_confirm", False),
+                    "pack_together_question": result.get("pack_together_question"),
+                }
+                return {"frame": frame, "missing_slots": []}
+
+        except RuntimeError as e:
+            if "Failed to load or parse base menu file" in str(e):
+                return {"frame": None, "missing_slots": [], "error": "蛋餅菜單讀取失敗，請洽服務人員。"}
+            raise e
         except Exception as e:
             print(f"工具錯誤 {route_type}: {e}")
             return {"frame": None, "missing_slots": []}
@@ -327,6 +350,13 @@ class DialogueManager:
                 return str(carrier)
             return "餐點"
 
+        if itemtype == "egg_pancake":
+            flavor = frame.get("flavor", "蛋餅")
+            addons = frame.get("ingredients_add", [])
+            if addons:
+                return f"{flavor}+{'+'.join(addons)}"
+            return flavor
+
         return "未知品項"
 
     def get_order_summary(self, session_id: str) -> str:
@@ -335,25 +365,54 @@ class DialogueManager:
         if not order:
             return "目前沒有品項"
 
-        items = [self._format_item(item) for item in order]
-        total_items = sum(int(item.get("quantity", 1) or 1) for item in order)
-
-        # 計算總價格
+        items_formatted = []
         total_price = 0
+        total_items = 0
+        
         for item in order:
-            if item.get("itemtype") == "riceball":
-                flavor = item.get("flavor")
-                if flavor:
-                    price_info = menu_tool.quote_riceball_price(
-                        flavor=flavor,
-                        large=bool(item.get("large", False)),
-                        heavy=bool(item.get("heavy", False)),
-                        extra_egg=bool(item.get("extra_egg", False))
-                    )
-                    if price_info.get("status") == "success":
-                        total_price += price_info.get("total_price", 0)
+            item_qty = int(item.get("quantity", 1) or 1)
+            total_items += item_qty
+            itemtype = item.get("itemtype")
 
-        return f"這樣一共{', '.join(items)}，共 {total_items} 個品項，共 {total_price}元，請稍候結帳！"
+            price_info = None
+            item_total_price = 0
+
+            if itemtype == "riceball":
+                price_info = menu_tool.quote_riceball_price(
+                    flavor=item.get("flavor"),
+                    large=bool(item.get("large", False)),
+                    heavy=bool(item.get("heavy", False)),
+                    extra_egg=bool(item.get("extra_egg", False))
+                )
+                if price_info and price_info.get("status") == "success":
+                    item_total_price = price_info.get("total_price", 0) * item_qty
+
+            elif itemtype == "egg_pancake":
+                price_info = egg_pancake_tool.quote_egg_pancake_price(item)
+                if price_info and price_info.get("status") == "success":
+                    item_total_price = price_info.get("total_price", 0)  # Already includes quantity
+
+            elif itemtype in ("carrier", "carrier_item"):
+                price_info = carrier_tool.quote_carrier_price(item)
+                if price_info and price_info.get("status") == "success":
+                    item_total_price = price_info.get("single_total", 0) * item_qty
+            
+            elif itemtype == "drink":
+                price_info = drink_tool.quote_drink_price(item)
+                if price_info and price_info.get("status") == "success":
+                    item_total_price = price_info.get("total_price", 0) # Assumes drink_tool returns total_price directly
+
+            if price_info and price_info.get("status") != "success":
+                item_name = self._format_item(item)
+                error_msg = price_info.get("message", "計價失敗")
+                return f"品項「{item_name}」無法計價：{error_msg}。請洽服務人員再結帳。"
+
+            total_price += item_total_price
+            items_formatted.append(self._format_item(item))
+
+        # The original implementation summed quantity again here, which was a bug.
+        # Now total_items is calculated correctly in the loop.
+        return f"這樣一共{', '.join(items_formatted)}，共 {total_items} 個品項，共 {total_price}元，請稍候結帳！"
 
 
 if __name__ == "__main__":

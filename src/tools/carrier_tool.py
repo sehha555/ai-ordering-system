@@ -1,12 +1,8 @@
-import json
 import re
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from src.tools.menu import menu_price_service
 from src.tools.riceball_tool import INGREDIENT_SYNONYMS, menu_tool as riceball_menu_tool
-
-
-MENU_FILE = Path(__file__).parent / "menu" / "menu_all.json"
 
 CARRIERS = ("吐司", "漢堡", "饅頭")
 
@@ -127,7 +123,7 @@ class CarrierTool:
             missing.append("flavor")
 
         frame: Dict[str, Any] = {
-            "item_type": "carrier_item",
+            "itemtype": "carrier_item",
             "carrier": carrier,  # 吐司/漢堡/饅頭
             "flavor": flavor,    # e.g. 豬肉蛋 / 醬燒肉片蛋 / 饅頭夾蛋
             "quantity": qty,
@@ -219,12 +215,7 @@ class CarrierTool:
 
     # ---------- internal ----------
     def _load_menu(self) -> List[Dict[str, Any]]:
-        try:
-            with open(MENU_FILE, "r", encoding="utf-8-sig") as f:
-                data = json.load(f)
-            return data if isinstance(data, list) else data.get("items", [])
-        except FileNotFoundError:
-            return []
+        return menu_price_service.get_raw_menu()
 
     def _build_price_index(self, items: List[Dict[str, Any]]) -> Dict[Tuple[str, str], int]:
         out: Dict[Tuple[str, str], int] = {}

@@ -3,16 +3,16 @@
 （維持 menu_tool 介面供 llm_service 使用）
 """
 
-import json
 import re
+import json
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 
 from src.config.config_loader import load_json_config
+from src.tools.menu import menu_price_service
 
 MENU_TOOL_VERSION = "2025-12-27-config-v6"
 
-MENU_FILE = Path(__file__).parent / "menu" / "menu_all.json"
 RECIPES_FILE = Path(__file__).parent / "menu" / "riceball_recipes.json"
 
 # 飯糰價格規則
@@ -163,12 +163,11 @@ class MenuTool:
 
     def _load_menu(self) -> Dict[str, Any]:
         try:
-            with open(MENU_FILE, "r", encoding="utf-8-sig") as f:
-                data = json.load(f)
-            if isinstance(data, list):
-                return {"items": data}
-            return data
-        except FileNotFoundError:
+            items = menu_price_service.get_raw_menu()
+            return {"items": items}
+        except RuntimeError:
+            # If the service fails, return an empty structure to maintain behavior
+            # for callers that expect a dict. The error will be caught upstream.
             return {"items": []}
 
     def _load_recipes(self) -> Dict[str, Any]:
