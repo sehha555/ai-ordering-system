@@ -9,6 +9,7 @@ from src.tools.order_router import order_router
 from src.tools.riceball_tool import riceball_tool, menu_tool
 from src.tools.carrier_tool import carrier_tool
 from src.tools.drink_tool import drink_tool
+from src.tools.snack_tool import snack_tool
 from src.tools.egg_pancake_tool import egg_pancake_tool
 from src.dm.session_store import InMemorySessionStore
 
@@ -214,6 +215,11 @@ class DialogueManager:
                 missing.append("carrier")
             return missing
 
+        if route_type == "snack":
+            if not frame.get("snack"):
+                missing.append("snack")
+            return missing
+
         return missing
 
     def _call_tool(self, route_type: str, text: str) -> Dict[str, Any]:
@@ -245,6 +251,10 @@ class DialogueManager:
                 if isinstance(result, dict) and "frame" in result and "missing_slots" in result:
                     return result
                 return {"frame": result, "missing_slots": (result or {}).get("missing_slots", [])}
+
+            if route_type == "snack":
+                result = snack_tool.parse_snack_utterance(text)
+                return {"frame": result, "missing_slots": result.get("missing_slots", [])}
 
             if route_type == "egg_pancake":
                 result = egg_pancake_tool.parse_egg_pancake_utterance(text)
@@ -357,6 +367,22 @@ class DialogueManager:
                 return f"{flavor}+{'+'.join(addons)}"
             return flavor
 
+        if itemtype == "snack":
+            quantity = frame.get("quantity", 1)
+            snack_name = frame.get("snack", "點心")
+            
+            details = []
+            if frame.get("egg_cook") and frame.get("snack") == "荷包蛋":
+                details.append(frame.get("egg_cook"))
+            if frame.get("no_pepper"):
+                details.append("不要胡椒")
+            
+            detail_str = f"({','.join(details)})" if details else ""
+
+            if quantity > 1:
+                return f"{quantity}份 {snack_name}{detail_str}"
+            return f"{snack_name}{detail_str}"
+
         return "未知品項"
 
     def get_order_summary(self, session_id: str) -> str:
@@ -401,6 +427,11 @@ class DialogueManager:
                 price_info = drink_tool.quote_drink_price(item)
                 if price_info and price_info.get("status") == "success":
                     item_total_price = price_info.get("total_price", 0) # Assumes drink_tool returns total_price directly
+
+            elif itemtype == "snack":
+                price_info = snack_tool.quote_snack_price(item)
+                if price_info and price_info.get("status") == "success":
+                    item_total_price = price_info.get("total_price", 0)
 
             if price_info and price_info.get("status") != "success":
                 item_name = self._format_item(item)

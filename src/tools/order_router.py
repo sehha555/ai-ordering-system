@@ -1,5 +1,6 @@
 """訂單路由器 - 物件介面"""
 from typing import Dict, Any, List
+from src.tools.snack_tool import snack_tool
 
 
 # 同音字正規化
@@ -15,6 +16,7 @@ FLAVOR_ALIASES = {"醬燒里肌": "醬燒里肌"}
 SINGLE_ITEM_MARKERS = ["單點", "單獨"]
 CARRIER_KEYWORDS = ["漢堡", "吐司", "饅頭"]
 DRINK_KEYWORDS = ["豆漿", "紅茶", "綠茶", "鮮奶", "奶茶", "漿", "奶", "豆", "紅"]
+SNACK_KEYWORDS = snack_tool.snack_keywords # 動態載入
 
 
 EGG_PANCAKE_KEYWORDS = ["蛋餅"]
@@ -35,11 +37,11 @@ def _route(text: str, current_order_has_main: bool = False) -> Dict[str, Any]:
     if "蛋餅飯糰" in t:
         return {"route_type": "riceball", "needs_clarify": False, "note": "exact_sku_guard:egg_pancake_riceball"}
 
-    # 1. 單點
+    # 1. 單點 (直接歸類為點心)
     if any(marker in t for marker in SINGLE_ITEM_MARKERS):
         return {"route_type": "snack", "needs_clarify": False, "note": "single_item_context"}
 
-    # ---- 主要品項路由 (飯糰 > 蛋餅 > 載體 > 飲品) ----
+    # ---- 主要品項路由 (飯糰 > 蛋餅 > 載體 > 點心 > 飲品) ----
 
     # 2. 飯糰 (關鍵字)
     if any(kw in t for kw in RICEBALL_KEYWORDS):
@@ -67,7 +69,11 @@ def _route(text: str, current_order_has_main: bool = False) -> Dict[str, Any]:
     if any(c in t for c in CARRIER_KEYWORDS):
         return {"route_type": "carrier", "needs_clarify": False, "note": "hit:carrier"}
 
-    # 8. 飲料
+    # 8. 點心 (新增) - 順序在載體之後，避免 "薯餅蛋吐司" 被誤判
+    if any(kw in t for kw in SNACK_KEYWORDS):
+        return {"route_type": "snack", "needs_clarify": False, "note": "hit:snack_keywords"}
+
+    # 9. 飲料
     if any(kw in t for kw in DRINK_KEYWORDS):
         return {"route_type": "drink", "needs_clarify": False, "note": "hit:drink_keywords"}
 

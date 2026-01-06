@@ -1,136 +1,125 @@
-from typing import Dict, Any, List, Optional
+import re
+from typing import Dict, List, Optional, Any
+
+from src.tools.menu import menu_price_service
+from src.tools.riceball_tool import _chinese_number_to_int
+
+# Define aliases to handle variations in user requests
+SNACK_ALIASES = {
+    "煎餃": "煎餃(8顆)",
+    "蘿蔔糕": "港式蘿蔔糕",
+    "港式蘿蔔糕": "港式蘿蔔糕",
+    "韭菜餡餅": "韭菜餡餅(5顆)",
+    "餡餅": "韭菜餡餅(5顆)",
+    "荷包蛋": "荷包蛋",
+    "蛋": "荷包蛋",
+    "蔥蛋": "蔥蛋",
+    "熱狗": "熱狗(3條)",
+    "薯餅": "薯餅(1片)",
+    "醬燒肉片": "醬燒肉片(1份)",
+    "肉片": "醬燒肉片(1份)",
+    "麥克雞塊": "麥克雞塊(5個)",
+    "雞塊": "麥克雞塊(5個)",
+    "香酥脆薯": "香酥脆薯",
+    "薯條": "香酥脆薯",
+    "原味卡啦雞腿": "原味咔啦雞腿",
+    "卡啦雞": "原味咔啦雞腿",
+    "無骨雞排": "無骨雞排",
+    "雞排": "無骨雞排"
+}
 
 
 class SnackTool:
-    # menu_all.json 明列點心：醬燒肉片(1份) 35 元 [file:110]
-    SNACK_PRICES = {
-        "醬燒肉片(1份)": 35,
-    }
+    def __init__(self):
+        self.menu_items = [item for item in menu_price_service.get_raw_menu() if item['category'] == '點心']
+        self.snack_names = sorted([item['name'] for item in self.menu_items], key=len, reverse=True)
+        self.snack_keywords = sorted(list(SNACK_ALIASES.keys()), key=len, reverse=True)
+        # Sort aliases by length for longest-match-first
+        self.sorted_aliases = sorted(SNACK_ALIASES.items(), key=lambda x: len(x[0]), reverse=True)
 
-    # 明列品項同義詞（客人簡稱）
-    SNACK_ALIASES = {
-        "醬燒肉片": "醬燒肉片(1份)",
-        "肉片": "醬燒肉片(1份)",
-    }
-
-    # 隱藏規則：多數肉類單點(1份) 統一 35
-    HIDDEN_MEAT_UNIT_PRICE = 35
-
-    # 你提到常見的（可再擴充）
-    HIDDEN_MEAT_KEYS = {
-        "雞絲": "雞絲",
-        "鮪魚": "鮪魚",
-        "雞排": "雞排",
-        "豬肉": "豬肉",
-        "培根": "培根",
-        "火腿": "火腿",
-        "肉鬆": "肉鬆",
-        # 肉片已經被明列映射處理
-    }
-
-    # 哪些單點建議問「要不要跟主餐裝一起」
-    # 你說蛋類/肉片/雞排等都可以問，這裡先把肉類類型都視為 True
     def parse_snack_utterance(self, text: str) -> Dict[str, Any]:
-        t = text.strip()
+        """Parses the user's utterance to identify snack, quantity, and options."""
+        snack = self.detect_snack(text)
+        quantity = self.parse_quantity(text)
+        
+        # Parse options
+        egg_cook = "全熟"  # Default
+        if "半熟" in text:
+            egg_cook = "半熟"
+        
+        no_pepper = False
+        if snack in ["麥克雞塊(5個)", "香酥脆薯"] and ("不要胡椒" in text or "無椒" in text):
+            no_pepper = True
 
-        qty = self._parse_quantity(t)
-
-        item, is_hidden = self._detect_item_or_hidden_meat(t)
-
-        missing_slots: List[str] = []
-        if not item:
-            missing_slots.append("item")
-
-        packable = True if item else False
-        suggest_pack_with_main = True if item else False
-
-        return {
-            "item_type": "snack",
-            "item_name": item,
-            "quantity": qty,
-            "is_hidden_item": is_hidden,
-            "packable": packable,
-            "suggest_pack_with_main": suggest_pack_with_main,
-            "missing_slots": missing_slots,
+        frame = {
+            "itemtype": "snack",
+            "snack": snack,
+            "quantity": quantity,
+            "egg_cook": egg_cook if snack == "荷包蛋" else None,
+            "no_pepper": no_pepper,
             "raw_text": text,
+            "missing_slots": []
         }
 
-    def quote_snack_price(self, frame: Dict[str, Any]) -> Dict[str, Any]:
-        item = frame.get("item_name")
-        qty = frame.get("quantity", 1)
-        is_hidden = frame.get("is_hidden_item", False)
+        if not snack:
+            frame["missing_slots"].append("snack")
 
-        if not item:
-            return {
-                "status": "error",
-                "message": "找不到此單點品項，請再確認一次。",
-                "item_name": item,
-                "quantity": qty,
-            }
+        return frame
 
-        if item in self.SNACK_PRICES:
-            single = self.SNACK_PRICES[item]
-        elif is_hidden:
-            single = self.HIDDEN_MEAT_UNIT_PRICE
-        else:
-            return {
-                "status": "error",
-                "message": "找不到此單點品項，請再確認一次。",
-                "item_name": item,
-                "quantity": qty,
-            }
+    def detect_snack(self, text: str) -> Optional[str]:
+        """Detects the snack item from the text, prioritizing longer alias matches."""
+        # 1. Longest alias match first
+        for alias, canonical_name in self.sorted_aliases:
+            if alias in text:
+                return canonical_name
+        
+        # 2. Fallback to full menu name matching (less likely to be used)
+        for snack_name in self.snack_names:
+            if snack_name in text:
+                return snack_name
+        return None
 
-        total = single * qty
-        hidden_note = "（隱藏單點）" if is_hidden else ""
-
-        return {
-            "status": "success",
-            "item_name": item,
-            "quantity": qty,
-            "single_price": single,
-            "total_price": total,
-            "is_hidden_item": is_hidden,
-            "message": f"{qty}份{item}{hidden_note}，共 {total}元",
-        }
-
-    def _detect_item_or_hidden_meat(self, text: str) -> (Optional[str], bool):
-        # 1) 先吃明列品項（肉片/醬燒肉片）
-        keys = sorted(self.SNACK_ALIASES.keys(), key=len, reverse=True)
-        for k in keys:
-            if k in text:
-                return self.SNACK_ALIASES[k], False
-
-        # 2) 再走隱藏規則：抓到肉類關鍵字就給「{key}(1份)」
-        for k, canon in self.HIDDEN_MEAT_KEYS.items():
-            if k in text:
-                return f"{canon}(1份)", True
-
-        return None, False
-
-    def _parse_quantity(self, text: str) -> int:
-        # 單點通常一份，但支援「兩份雞絲」這種
-        zh_map = {"一": 1, "二": 2, "兩": 2, "三": 3, "四": 4, "五": 5}
-        m = __import__("re").search(r"(\\d+)\\s*份", text)
+    def parse_quantity(self, text: str) -> int:
+        """Parses the quantity from the utterance."""
+        if "一份" in text or "來一份" in text:
+            return 1
+        m = re.search(r'(\d+)\s*(份|個)', text)
         if m:
             return int(m.group(1))
-        m2 = __import__("re").search(r"([一二兩三四五])\\s*份", text)
-        if m2:
-            return zh_map.get(m2.group(1), 1)
+        m_cn = re.search(r'([一二兩三四五六七八九十]{1,3})\s*(份|個)', text)
+        if m_cn:
+            val = _chinese_number_to_int(m_cn.group(1))
+            if val is not None:
+                return val
         return 1
 
+    def quote_snack_price(self, frame: Dict[str, Any]) -> Dict[str, Any]:
+        """Calculates the price for the given snack frame and adds notes."""
+        snack_name = frame.get("snack")
+        quantity = frame.get("quantity", 1)
 
+        if not snack_name:
+            return {"status": "error", "message": "缺少點心名稱，無法計價。"}
+
+        try:
+            base_price = menu_price_service.get_price("點心", snack_name)
+            total_price = base_price * quantity
+            
+            message = f"{quantity}份{snack_name}，共 {total_price}元"
+
+            return {
+                "status": "success",
+                "snack": snack_name,
+                "quantity": quantity,
+                "single_price": base_price,
+                "total_price": total_price,
+                "message": message,
+            }
+        except KeyError:
+            return {"status": "error", "message": f"找不到點心品項：{snack_name}，無法計價。"}
+        except RuntimeError as e:
+            raise e
+
+
+# Global instance
 snack_tool = SnackTool()
-
-
-if __name__ == "__main__":
-    tests = [
-        "我要單點一份肉片",
-        "來一份醬燒肉片",
-        "單點一份雞絲",
-        "單點兩份鮪魚",
-        "單點一份雞排",
-    ]
-    for t in tests:
-        frame = snack_tool.parse_snack_utterance(t)
-        quote = snack_tool.quote_snack_price(frame)
-        print(f"「{t}」→ {quote.get('message')}")
