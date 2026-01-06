@@ -121,3 +121,40 @@ def checkout_price_should_be_correct_for_pork(context):
     assert actual_price is not None, "Could not find price in response"
     assert actual_price == expected_price, f"Price mismatch: expected {expected_price}, got {actual_price}"
 
+
+import builtins
+from src.tools.menu import menu_price_service
+
+def test_egg_pancake_menu_load_error_handling(monkeypatch):
+    """
+    Given the egg pancake menu file is missing,
+    When a user tries to order an egg pancake,
+    Then the system should return a user-friendly error message.
+    """
+    # Arrange
+    dm = DialogueManager()
+    session_id = "test_session_menu_error"
+
+    # Invalidate the cache in the new central service to force a re-read
+    menu_price_service.clear_cache()
+
+    # Mock builtins.open to only fail for the menu file
+    original_open = builtins.open
+    def mock_open_fail(file, *args, **kwargs):
+        # The path to the menu file is constructed via os.path.join,
+        # so we check for the filename's presence in the path.
+        if isinstance(file, str) and 'menu_all.json' in file:
+            raise FileNotFoundError("Mock file not found for testing")
+        return original_open(file, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", mock_open_fail)
+
+    # Act
+    response = dm.handle(session_id, "我要一個蛋餅")
+
+    # Assert
+    assert "菜單" in response
+    assert "讀取失敗" in response
+    assert "蛋餅菜單讀取失敗，請洽服務人員。" in response
+    assert "找不到品項" not in response
+

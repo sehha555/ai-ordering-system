@@ -10,7 +10,8 @@ pytestmark = pytest.mark.bdd
 scenarios('router_riceball_normalize.feature',
           'router_rice_keyword_context.feature',
           'router_riceball_from_rice_signal.feature',
-          'router_guard_exclude_rice_signal.feature')
+          'router_guard_exclude_rice_signal.feature',
+          'router_egg_pancake_riceball_conflict.feature')
 
 # Fixtures
 @pytest.fixture
