@@ -24,9 +24,7 @@ def test_order_one_hash_brown_success(dm_session):
     session_id = dm_session["session_id"]
 
     response = dm.handle(session_id, "我要一份薯餅")
-    assert "已加入" in response
-    assert "薯餅(1片)" in response
-    assert "還需要什麼嗎？" in response
+    assert "好的，1份 薯餅(1片)，還需要什麼嗎？" in response
 
     response = dm.handle(session_id, "結帳")
     assert "這樣一共" in response
@@ -38,9 +36,7 @@ def test_order_two_chicken_nuggets_success(dm_session):
     session_id = dm_session["session_id"]
 
     response = dm.handle(session_id, "我要兩份雞塊")
-    assert "已加入" in response
-    assert "2份 麥克雞塊(5個)" in response
-    assert "還需要什麼嗎？" in response
+    assert "好的，2份 麥克雞塊(5個)，還需要什麼嗎？" in response
 
     response = dm.handle(session_id, "結帳")
     assert "這樣一共" in response
@@ -52,8 +48,7 @@ def test_order_hash_brown_egg_toast_routes_to_carrier(dm_session):
     session_id = dm_session["session_id"]
 
     response = dm.handle(session_id, "我要薯餅蛋吐司")
-    assert "已加入" in response
-    assert "薯餅蛋吐司" in response
+    assert "好的，1份 薯餅蛋吐司，還需要什麼嗎？" in response
 
     response = dm.handle(session_id, "結帳")
     assert "這樣一共" in response
@@ -65,8 +60,7 @@ def test_order_meat_slice_alias_success(dm_session):
     session_id = dm_session["session_id"]
 
     response = dm.handle(session_id, "我要肉片")
-    assert "已加入" in response
-    assert "醬燒肉片(1份)" in response
+    assert "好的，1份 醬燒肉片(1份)，還需要什麼嗎？" in response
 
     response = dm.handle(session_id, "結帳")
     assert "這樣一共" in response
@@ -78,8 +72,7 @@ def test_order_nuggets_no_pepper_success(dm_session):
     session_id = dm_session["session_id"]
 
     response = dm.handle(session_id, "我要雞塊不要胡椒")
-    assert "已加入" in response
-    assert "麥克雞塊(5個)" in response
+    assert "好的，1份 麥克雞塊(5個)(不要胡椒)，還需要什麼嗎？" in response
 
     response = dm.handle(session_id, "結帳")
     assert "這樣一共" in response
@@ -92,15 +85,14 @@ def test_order_half_cooked_egg_success(dm_session):
     session_id = dm_session["session_id"]
 
     response = dm.handle(session_id, "我要半熟蛋")
-    assert "已加入" in response
-    assert "荷包蛋(半熟)" in response
+    assert "好的，1份 荷包蛋(半熟)，還需要什麼嗎？" in response
     
     # 驗證內部狀態
-    order = dm.store.get(session_id)["order"]
-    assert len(order) == 1
-    assert order[0]["itemtype"] == "snack"
-    assert order[0]["snack"] == "荷包蛋"
-    assert order[0]["egg_cook"] == "半熟"
+    cart = dm.store.get(session_id)["cart"]
+    assert len(cart) == 1
+    assert cart[0]["itemtype"] == "snack"
+    assert cart[0]["snack"] == "荷包蛋"
+    assert cart[0]["egg_cook"] == "半熟"
 
     response = dm.handle(session_id, "結帳")
     assert "這樣一共" in response

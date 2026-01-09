@@ -27,16 +27,11 @@ def test_order_large_iced_milk_tea_success(dm_session):
     session_id = dm_session["session_id"]
 
     response = dm.handle(session_id, "我要一杯大冰奶")
-    assert "已加入" in response
-    assert "純鮮奶茶" in response
-    assert "大杯" in response
-    assert "冰" in response
-    assert "還需要什麼嗎？" in response
+    assert "好的，1份 純鮮奶茶(大杯, 冰)，還需要什麼嗎？" in response
 
     response = dm.handle(session_id, "結帳")
     assert "這樣一共" in response
     assert "40元" in response
-
 def test_order_medium_unsweetened_soy_milk_success(dm_session):
     """
     Test ordering "無糖豆漿中杯" successfully, providing missing info, and verifying its price.
@@ -50,9 +45,7 @@ def test_order_medium_unsweetened_soy_milk_success(dm_session):
     
     # Provide missing temp
     response = dm.handle(session_id, "冰的")
-    assert "已加入" in response
-    assert "中杯 冰" in response
-    assert "還需要什麼嗎？" in response
+    assert "好的，1份 無糖豆漿(中杯, 冰, 無糖)，還需要什麼嗎？" in response
 
     # Checkout
     response = dm.handle(session_id, "結帳")
@@ -68,11 +61,7 @@ def test_order_two_large_hot_brown_sugar_milk_tea_success(dm_session):
     session_id = dm_session["session_id"]
 
     response = dm.handle(session_id, "我要兩杯熱黑糖奶茶大杯")
-    assert "已加入" in response
-    assert "黑糖純鮮奶茶" in response
-    assert "大杯" in response
-    assert "熱" in response
-    assert "還需要什麼嗎？" in response
+    assert "好的，2份 黑糖純鮮奶茶(大杯, 熱)，還需要什麼嗎？" in response
 
     response = dm.handle(session_id, "結帳")
     assert "這樣一共" in response
@@ -84,10 +73,7 @@ def test_order_shortcut_large_iced_milk_tea(dm_session):
     session_id = dm_session["session_id"]
 
     response = dm.handle(session_id, "我要一杯大冰奶")
-    assert "已加入" in response
-    assert "純鮮奶茶" in response
-    assert "大杯" in response
-    assert "冰" in response
+    assert "好的，1份 純鮮奶茶(大杯, 冰)，還需要什麼嗎？" in response
 
 def test_order_shortcut_small_hot_soy_milk(dm_session):
     """測試 "小熱豆" => size 中杯, temp 熱"""
@@ -95,10 +81,7 @@ def test_order_shortcut_small_hot_soy_milk(dm_session):
     session_id = dm_session["session_id"]
 
     response = dm.handle(session_id, "我要一杯小熱豆")
-    assert "已加入" in response
-    assert "有糖豆漿" in response
-    assert "中杯" in response
-    assert "熱" in response
+    assert "好的，1份 有糖豆漿(中杯, 熱)，還需要什麼嗎？" in response
 
 def test_order_shortcut_medium_warm_red_tea(dm_session):
     """測試 "中溫紅" => size 中杯, temp 溫"""
@@ -106,7 +89,4 @@ def test_order_shortcut_medium_warm_red_tea(dm_session):
     session_id = dm_session["session_id"]
 
     response = dm.handle(session_id, "我要一杯中溫紅")
-    assert "已加入" in response
-    assert "精選紅茶" in response
-    assert "中杯" in response
-    assert "溫" in response
+    assert "好的，1份 精選紅茶(中杯, 溫)，還需要什麼嗎？" in response

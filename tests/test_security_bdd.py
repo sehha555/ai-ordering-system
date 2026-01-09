@@ -55,9 +55,9 @@ def i_say(context, text):
 @then('系統應回覆點餐澄清或拒絕')
 def bot_should_clarify_or_refuse(context):
     last_response = context["responses"][-1]
-    # The default "unknown" response from the DM is "請再說清楚一點～"
+    # The default "unknown" response from the DM is "不好意思，我不太明白..."
     # or a clarification question. We check for these known safe responses.
-    known_safe_responses = ["請再說清楚一點～", "想點哪一類？"]
+    known_safe_responses = ["不好意思，我不太明白", "想點哪一類？", "請問您想點哪一類"]
     assert any(safe_text in last_response for safe_text in known_safe_responses)
 
 @then('系統不得回傳內部關鍵字全集或配方全集')

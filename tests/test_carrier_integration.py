@@ -27,9 +27,7 @@ def test_order_ham_egg_toast_success(dm_session):
 
     # User orders ham egg toast
     response = dm.handle(session_id, "我要一個火腿蛋吐司")
-    assert "已加入" in response
-    assert "火腿蛋吐司" in response
-    assert "還需要什麼嗎？" in response
+    assert "好的，1份 火腿蛋吐司，還需要什麼嗎？" in response
 
     # Checkout
     response = dm.handle(session_id, "結帳")
@@ -45,9 +43,7 @@ def test_order_pork_egg_burger_success(dm_session):
 
     # User orders pork egg burger
     response = dm.handle(session_id, "我要豬肉蛋漢堡")
-    assert "已加入" in response
-    assert "豬肉蛋漢堡" in response
-    assert "還需要什麼嗎？" in response
+    assert "好的，1份 豬肉蛋漢堡，還需要什麼嗎？" in response
 
     # Checkout
     response = dm.handle(session_id, "結帳")
@@ -61,13 +57,12 @@ def test_order_mantou_add_meat_success(dm_session):
     dm = dm_session["dm"]
     session_id = dm_session["session_id"]
 
-    # User orders mantou with egg and meat slices
+    # User orders mantou with egg and meat slices, which should be directly resolved.
     response = dm.handle(session_id, "我要饅頭夾蛋加肉片")
-    assert "已加入" in response
-    assert "醬燒肉片蛋饅頭" in response # Check inferred flavor in response
-    assert "還需要什麼嗎？" in response
-
+    assert "好的，1份 醬燒肉片蛋饅頭，還需要什麼嗎？" in response
+    
     # Checkout
     response = dm.handle(session_id, "結帳")
     assert "這樣一共" in response
+    assert "共 1 個品項" in response
     assert "65元" in response # Price of 醬燒肉片蛋饅頭

@@ -16,9 +16,7 @@ def test_order_egg_pancake_and_confirm(dm, session_id):
     Case 1: 輸入「我要一個起司蛋餅」→ 回覆包含加入品項關鍵字
     """
     response = dm.handle(session_id, "我要一個起司蛋餅")
-    assert "已加入" in response
-    assert "起司蛋餅" in response
-
+    assert "好的，1份 起司蛋餅，還需要什麼嗎？" in response
 def test_checkout_egg_pancake(dm, session_id):
     """
     Case 2: 接著輸入「結帳」→ 回覆包含 40 元
