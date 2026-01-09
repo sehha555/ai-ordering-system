@@ -8,6 +8,7 @@ from src.tools.drink_tool import drink_tool
 from src.tools.snack_tool import snack_tool
 from src.tools.jam_toast_tool import jam_toast_tool
 from src.tools.egg_pancake_tool import egg_pancake_tool
+from src.tools.combo_tool import combo_tool # NEW IMPORT
 from src.dm.session_store import InMemorySessionStore
 
 
@@ -66,6 +67,53 @@ class DialogueManager:
 
         return self._process_new_order(session_id, session, text)
         
+    def _flush_pending_queue(self, session: Dict[str, Any], newly_completed_items: List[Dict[str, Any]]) -> Optional[str]:
+        """
+        Iterates through pending_frames.
+        If a frame is complete, moves it to cart/combo.
+        If a frame is incomplete, SKIPS it (keeps in pending).
+        Returns clarification message for the FIRST incomplete item found (if any),
+        BUT continues processing subsequent items to move complete ones to cart.
+        """
+        clarify_msg = None
+        i = 0
+        while i < len(session["pending_frames"]):
+            current_frame = session["pending_frames"][i]
+            
+            if current_frame["missing_slots"]:
+                # Found an incomplete item. Capture clarify message if it's the FIRST one.
+                if clarify_msg is None:
+                    item_type = current_frame.get("itemtype", "unknown")
+                    clarify_msg = self.get_clarify_message(item_type, current_frame["missing_slots"])
+                # Skip this item and move to next
+                i += 1
+                continue
+            
+            # Handle Complete Frame
+            if current_frame.get("_is_combo_sub_item") and session.get("current_combo_frame"):
+                session["pending_frames"].pop(i)
+                session["current_combo_frame"]["sub_items"].append(current_frame)
+                
+                # Check if combo is done (no sub-items left in pending)
+                has_sub_items_left = False
+                for f in session["pending_frames"]:
+                     if f.get("_is_combo_sub_item"):
+                         has_sub_items_left = True
+                         break
+                
+                if not has_sub_items_left:
+                    completed_combo = session.pop("current_combo_frame")
+                    session["cart"].append(completed_combo)
+                    newly_completed_items.append(completed_combo)
+                # Do NOT increment i, as elements shifted
+            else:
+                completed_frame = session["pending_frames"].pop(i)
+                session["cart"].append(completed_frame)
+                newly_completed_items.append(completed_frame)
+                # Do NOT increment i
+        
+        return clarify_msg
+
     def _process_pending_frames(self, session_id: str, session: Dict[str, Any], text: str) -> str:
         """Processes the first item in the pending_frames queue."""
         pending_frame = session["pending_frames"][0]
@@ -111,28 +159,48 @@ class DialogueManager:
         pending_frame["raw_text"] = text
         pending_frame["missing_slots"] = self._recompute_missing_slots(route_type, pending_frame)
         
-        if not pending_frame["missing_slots"]:
-            session["cart"].append(pending_frame)
-            session["pending_frames"].pop(0)
+        newly_completed_items = []
+        clarify_msg = self._flush_pending_queue(session, newly_completed_items)
+        
+        if clarify_msg:
+            return clarify_msg
             
-            if session["pending_frames"]:
-                next_pending = session["pending_frames"][0]
-                item_type = next_pending.get("itemtype", "unknown")
-                return self.get_clarify_message(item_type, next_pending.get('missing_slots', []))
-            else:
-                item_qty = session['cart'][-1].get("quantity", 1)
-                formatted_item = self._format_item(session['cart'][-1])
-                return f"好的，{item_qty}份 {formatted_item}，還需要什麼嗎？"
-        else:
-            return self.get_clarify_message(route_type, pending_frame["missing_slots"])
+        if newly_completed_items:
+            # Format items with quantity for the summary
+            completed_summary_parts = []
+            for item in newly_completed_items:
+                formatted_item = self._format_item(item)
+                completed_summary_parts.append(f"{item.get('quantity', 1)}份 {formatted_item}")
+            
+            return f"好的，{'、'.join(completed_summary_parts)}，還需要什麼嗎？"
+
+        return "請問還需要什麼嗎？"
 
     def _process_new_order(self, session_id: str, session: Dict[str, Any], text: str) -> str:
         """Processes a new order by splitting utterance and handling each span."""
         spans = self._split_utterance(text)
         newly_completed_items = []
+        parsed_frames = []
 
         for span in spans:
             if not span: continue
+            
+            # --- NEW COMBO LOGIC START ---
+            combo_frame = combo_tool.parse_combo_utterance(span)
+            if combo_frame:
+                # Store the main combo frame
+                session["current_combo_frame"] = combo_frame
+                session["current_combo_frame"]["sub_items"] = [] # To store completed sub-items
+
+                # Explode combo into sub-items and add them to pending_frames
+                sub_items = combo_tool.explode_combo_items(combo_frame)
+                for i, sub_item in enumerate(sub_items):
+                    sub_item["_is_combo_sub_item"] = True
+                    sub_item["_combo_sub_item_index"] = i # Track order
+                    sub_item["missing_slots"] = self._recompute_missing_slots(sub_item.get("itemtype", "unknown"), sub_item)
+                    parsed_frames.append(sub_item)
+                continue
+            # --- NEW COMBO LOGIC END ---
             
             route_result = order_router.route(span, current_order_has_main=bool(session["cart"]))
             route_type = route_result["route_type"]
@@ -158,17 +226,15 @@ class DialogueManager:
                 frame['raw_text'] = span
 
             frame['missing_slots'] = self._recompute_missing_slots(route_type, frame)
-            
-            if not frame["missing_slots"]:
-                session["cart"].append(frame)
-                newly_completed_items.append(frame)
-            else:
-                session["pending_frames"].append(frame)
+            parsed_frames.append(frame)
 
-        if session["pending_frames"]:
-            first_pending = session["pending_frames"][0]
-            item_type = first_pending.get("itemtype", "unknown")
-            return self.get_clarify_message(item_type, first_pending.get('missing_slots', []))
+        # Add all parsed frames to pending_frames
+        session["pending_frames"].extend(parsed_frames)
+
+        # Process pending frames (move complete ones to cart until blocked)
+        clarify_msg = self._flush_pending_queue(session, newly_completed_items)
+        if clarify_msg:
+            return clarify_msg
         
         if newly_completed_items:
             # Format items with quantity for the summary
@@ -192,35 +258,37 @@ class DialogueManager:
 
     def _recompute_missing_slots(self, route_type: str, frame: Dict[str, Any]) -> List[str]:
         missing: List[str] = []
-
+        # Write debug info to a file
+        with open("dm_debug.log", "a", encoding="utf-8") as f:
+            f.write(f"DEBUG: _recompute_missing_slots - route_type: {route_type}, frame: {frame}\n")
+        
         if route_type == "riceball":
             if not frame.get("flavor"): missing.append("flavor")
             if not frame.get("rice"): missing.append("rice")
-            return missing
-
-        if route_type == "drink":
+            
+        elif route_type == "drink":
             if not frame.get("drink"): missing.append("drink")
             if not frame.get("temp"): missing.append("temp")
             if not frame.get("size"): missing.append("size")
-            return missing
-
-        if route_type == "carrier":
-            if not frame.get("flavor"): missing.append("flavor")
+            
+        elif route_type == "carrier":
             if not frame.get("carrier"): missing.append("carrier")
-            return missing
-
-        if route_type == "snack":
-            if not frame.get("snack"): missing.append("snack")
-            return missing
-
-        if route_type == "jam_toast":
-            if not frame.get("jam_toast"): missing.append("flavor")
-            return missing
-        
-        if route_type == "egg_pancake":
             if not frame.get("flavor"): missing.append("flavor")
-            return missing
+            
+        elif route_type == "jam_toast":
+            # Check if full name is constructed, otherwise check components
+            if not frame.get("jam_toast"):
+                 if not frame.get("flavor"): missing.append("flavor")
+                 if not frame.get("size"): missing.append("size")
+        
+        elif route_type == "egg_pancake":
+            if not frame.get("flavor"): missing.append("flavor")
+            
+        elif route_type == "snack":
+            if not frame.get("snack"): missing.append("snack")
 
+        with open("dm_debug.log", "a", encoding="utf-8") as f:
+            f.write(f"DEBUG: _recompute_missing_slots - returning missing: {missing}\n")
         return missing
 
     def _call_tool(self, route_type: str, text: str) -> Dict[str, Any]:
@@ -332,6 +400,8 @@ class DialogueManager:
             if frame.get("no_toast"): details.append("不烤")
             if frame.get("cut_edge"): details.append("切邊")
             if details: base_str += f"({','.join(details)})"
+        elif itemtype == "combo": # NEW COMBO FORMATTING
+            base_str = frame.get("combo_name", "套餐")
         else:
             base_str = "未知品項"
 
@@ -365,6 +435,8 @@ class DialogueManager:
             elif itemtype == "drink": price_info = drink_tool.quote_drink_price(item)
             elif itemtype == "snack": price_info = snack_tool.quote_snack_price(item)
             elif itemtype == "jam_toast": price_info = jam_toast_tool.quote_jam_toast_price(item)
+            elif itemtype == "combo": # NEW COMBO PRICING
+                price_info = combo_tool.quote_combo_price(item)
 
             if price_info and price_info.get("status") == "success":
                 # Handle tools that return total vs single price

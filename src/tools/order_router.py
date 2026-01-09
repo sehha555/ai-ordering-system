@@ -31,7 +31,6 @@ def normalize_text(text: str) -> str:
 
 
 def _route(text: str, current_order_has_main: bool = False) -> Dict[str, Any]:
-    """內部路由邏輯"""
     t = normalize_text(text)
 
     # Exact SKU guard for "蛋餅飯糰"
@@ -112,11 +111,3 @@ if __name__ == "__main__":
     for t in tests:
         result = order_router.route(t)
         print(t + " => " + result["route_type"])
-
-
-
-
-
-
-
-
