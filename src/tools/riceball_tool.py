@@ -476,16 +476,15 @@ class MenuTool:
         add_ingredients = _dedupe_keep_order(add_ingredients)
         remove_ingredients = _dedupe_keep_order(remove_ingredients)
 
-        missing_slots: List[str] = []
+        # DialogueManager will recompute missing_slots
+        missing_slots = []
         if flavor is None:
             missing_slots.append("flavor")
         if rice is None:
             missing_slots.append("rice")
-        if needs_price_confirm:
-            missing_slots.append("price_confirm")
 
         return {
-            "item_type": "riceball",
+            "itemtype": "riceball",
             "flavor": flavor,
             "rice": rice,
             "large": bool(large),
@@ -497,8 +496,8 @@ class MenuTool:
             "ingredients_add": add_ingredients,
             "ingredients_remove": remove_ingredients,
             "needs_price_confirm": needs_price_confirm,
-            "missing_slots": missing_slots,
             "raw_text": original_text,
+            "missing_slots": missing_slots,
         }
 
 

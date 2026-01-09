@@ -16,10 +16,6 @@ class InMemorySessionStore:
             "cart": [],
             "pending_frames": [],
             "last_user_text": None,
-            "order": [],
-            "current_item": None,
-            "missing_slots": [],
-            "route_type": None,
             "state": "idle",
         }
         self._data[session_id] = default_session_state

@@ -116,14 +116,10 @@ class CarrierTool:
             if ("饅頭", "饅頭夾蛋") in self.price_index:
                 flavor = "饅頭夾蛋"
 
-        missing: List[str] = []
-        if not carrier:
-            missing.append("carrier")
-        if not flavor:
-            missing.append("flavor")
+        missing: List[str] = [] # DialogueManager will recompute missing slots
 
         frame: Dict[str, Any] = {
-            "itemtype": "carrier_item",
+            "itemtype": "carrier", # Explicitly set itemtype
             "carrier": carrier,  # 吐司/漢堡/饅頭
             "flavor": flavor,    # e.g. 豬肉蛋 / 醬燒肉片蛋 / 饅頭夾蛋
             "quantity": qty,
@@ -133,7 +129,6 @@ class CarrierTool:
             "ingredients_add": add_ingredients,
             "ingredients_remove": remove_ingredients,
             "ingredients": [],  # finalize_frame 會補齊
-            "missing_slots": missing,
             "raw_text": original,
         }
 
@@ -194,6 +189,10 @@ class CarrierTool:
         unknown_add: List[str] = []
         for raw in (frame.get("ingredients_add") or []):
             key = self._normalize_ingredient(raw)
+            # 推回口味後，不再把「肉/肉片/肉鬆」當作加料收費（避免雙算）
+            if flavor and key and key in flavor:
+                continue
+
             if key in riceball_menu_tool.ADDON_PRICE_TABLE:
                 addon_total += int(riceball_menu_tool.ADDON_PRICE_TABLE[key])
             else:

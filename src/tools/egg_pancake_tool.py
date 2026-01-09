@@ -129,7 +129,7 @@ class EggPancakeTool:
         ingredients_add = self._expand_counts(charge_counts)
 
         return {
-            "item_type": "egg_pancake",
+            "itemtype": "egg_pancake", # Use 'itemtype' for consistency with DM
             "quantity": qty,
             "flavor": final_flavor,
             "ingredients_add": ingredients_add,

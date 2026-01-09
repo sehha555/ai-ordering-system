@@ -14,9 +14,10 @@ FLAVOR_ALIASES = {"醬燒里肌": "醬燒里肌"}
 
 
 SINGLE_ITEM_MARKERS = ["單點", "單獨"]
-CARRIER_KEYWORDS = ["漢堡", "吐司", "饅頭"]
+CARRIER_KEYWORDS = ["漢堡", "饅頭"] # "吐司" 關鍵字太寬泛，交給 jam_toast 優先處理
 DRINK_KEYWORDS = ["豆漿", "紅茶", "綠茶", "鮮奶", "奶茶", "漿", "奶", "豆", "紅"]
 SNACK_KEYWORDS = snack_tool.snack_keywords # 動態載入
+JAM_TOAST_KEYWORDS = ["果醬吐司", "草莓", "花生", "蒜香", "奶酥", "巧克力"]
 
 
 EGG_PANCAKE_KEYWORDS = ["蛋餅"]
@@ -41,39 +42,42 @@ def _route(text: str, current_order_has_main: bool = False) -> Dict[str, Any]:
     if any(marker in t for marker in SINGLE_ITEM_MARKERS):
         return {"route_type": "snack", "needs_clarify": False, "note": "single_item_context"}
 
-    # ---- 主要品項路由 (飯糰 > 蛋餅 > 載體 > 點心 > 飲品) ----
+    # ---- 主要品項路由 ----
 
-    # 2. 飯糰 (關鍵字)
+    # 2. 飯糰
     if any(kw in t for kw in RICEBALL_KEYWORDS):
         return {"route_type": "riceball", "needs_clarify": False, "note": "hit:riceball_keywords"}
-
-    # 3. 米種上下文
     if current_order_has_main and any(rice in t for rice in RICE_KEYWORDS):
         return {"route_type": "riceball", "needs_clarify": False, "note": "hit:rice_keyword_context"}
-    
-    # 4. 口味 (飯糰)
     for flavor, aliases in FLAVOR_ALIASES.items():
         if aliases in t:
             return {"route_type": "riceball", "needs_clarify": False, "note": f"hit:flavor({flavor})"}
-
-    # 5. 米種兜底
     if any(rice in t for rice in RICE_KEYWORDS):
         return {"route_type": "riceball", "needs_clarify": False, "note": "hit:rice_keyword_fallback"}
 
-
-    # 6. 蛋餅 (新增)
+    # 3. 蛋餅
     if any(kw in t for kw in EGG_PANCAKE_KEYWORDS) and not any(kw in t for kw in RICEBALL_KEYWORDS):
         return {"route_type": "egg_pancake", "needs_clarify": False, "note": "hit:egg_pancake_keywords"}
 
-    # 7. 載體 (漢堡/吐司/饅頭)
-    if any(c in t for c in CARRIER_KEYWORDS):
+    # 4. 果醬吐司 (優先於一般載體)
+    is_jam_toast = any(kw in t for kw in JAM_TOAST_KEYWORDS)
+    is_toast_carrier = "吐司" in t or "薄片" in t or "厚片" in t
+    if is_jam_toast and is_toast_carrier:
+        return {"route_type": "jam_toast", "needs_clarify": False, "note": "hit:jam_toast_keywords"}
+
+    # 5. 載體 (漢堡/吐司/饅頭)
+    if any(c in t for c in CARRIER_KEYWORDS) or "吐司" in t: # 把吐司放回這裡作為 fallback
         return {"route_type": "carrier", "needs_clarify": False, "note": "hit:carrier"}
 
-    # 8. 點心 (新增) - 順序在載體之後，避免 "薯餅蛋吐司" 被誤判
+    # 6. 鮪魚蛋 (無載體時，應視為 carrier 問題)
+    if "鮪魚" in t and "蛋" in t and not any(carrier_word in t for carrier_word in ["吐司","饅頭","漢堡","貝果","蛋餅","飯糰"]):
+        return {"route_type": "carrier", "needs_clarify": False, "note": "hit:tuna_egg_needs_carrier"}
+
+    # 7. 點心
     if any(kw in t for kw in SNACK_KEYWORDS):
         return {"route_type": "snack", "needs_clarify": False, "note": "hit:snack_keywords"}
 
-    # 9. 飲料
+    # 8. 飲料
     if any(kw in t for kw in DRINK_KEYWORDS):
         return {"route_type": "drink", "needs_clarify": False, "note": "hit:drink_keywords"}
 
