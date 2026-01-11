@@ -1,0 +1,7 @@
+{
+  "drink_swap": {
+    "enabled": true,
+    "allowed_categories": ["飲品"],
+    "disallow_if_not_in_menu": true
+  }
+}

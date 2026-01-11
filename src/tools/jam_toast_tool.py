@@ -49,6 +49,8 @@ class JamToastTool:
         frame = {
             "itemtype": "jam_toast",
             "jam_toast": full_name,
+            "flavor": flavor,
+            "size": size,
             "quantity": quantity,
             "no_toast": no_toast,
             "cut_edge": cut_edge,

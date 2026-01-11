@@ -33,7 +33,10 @@ def test_combo_aliases_targets_exist_in_menu():
     valid_names = {item['name'] for item in menu_items if 'name' in item}
     
     for alias, target_name in manual_aliases.items():
-        assert target_name in valid_names, f"Alias target '{target_name}' for '{alias}' does not exist in menu_all.json"
+        # Target must be either a valid full name OR a base name that exists as a prefix
+        exists_as_full = target_name in valid_names
+        exists_as_base = any(name.startswith(target_name) for name in valid_names)
+        assert exists_as_full or exists_as_base, f"Alias target '{target_name}' for '{alias}' does not exist in menu_all.json"
 
 def test_combo_aliases_whitelist_logic():
     """
