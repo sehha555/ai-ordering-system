@@ -2,9 +2,11 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.tools.menu import menu_price_service
+from src.config.alias_loader import load_combo_aliases
 
 class ComboTool:
     def __init__(self):
+        self.alias_cfg = load_combo_aliases()
         self._load_menu_data()
 
     def _load_menu_data(self):
@@ -19,30 +21,56 @@ class ComboTool:
         self.item_name_to_category = {item['name']: item['category'] for item in all_items if 'name' in item and 'category' in item}
         self.all_item_names = sorted(list(self.item_name_to_category.keys()), key=len, reverse=True)
 
-        # Build reverse index for combo detection by content (maps sub-item name to list of short combo names)
-        self.sub_item_to_combo_names = {} 
-
         # Create a mapping from simplified names to canonical names
         self.simple_name_to_canonical = {}
+        
+        # Load manual aliases from config
+        self.manual_aliases = self.alias_cfg.get("manual_aliases", {})
+        
+        # Load normalization rules
+        norm_rules = self.alias_cfg.get("normalize_rules", {})
+        remove_tokens = norm_rules.get("remove_tokens", [])
+        regex_removals = norm_rules.get("regex_removals", [])
+
         for name in self.all_item_names:
             # Create a simplified version of the name for matching
-            simplified = name.replace("傳統", "").replace("有糖", "").replace("無糖", "").replace("精選", "").replace("純", "").replace("黑糖", "").replace("+豆漿", "").replace("清香", "").replace("純鮮奶", "").replace("咖啡", "").replace("茶", "")
-            simplified = re.sub(r'\(.*\)', '', simplified).strip()
+            simplified = name
+            for token in remove_tokens:
+                simplified = simplified.replace(token, "")
+            
+            for pattern in regex_removals:
+                simplified = re.sub(pattern, '', simplified)
+            
+            simplified = simplified.strip()
             self.simple_name_to_canonical[simplified] = name
+            
+            # Also map the name without just the parens, if different (fallback logic from original code, mostly covered by regex but kept for safety)
+            simplified_no_parens = re.sub(r'\(.*\)', '', name).strip()
+            if simplified_no_parens != simplified:
+                self.simple_name_to_canonical[simplified_no_parens] = name
+
+        # Integrate manual aliases into simple_name_to_canonical if not present (or overwrite/prioritize)
+        for alias, canonical in self.manual_aliases.items():
+            # Only add if the canonical exists in menu (safety check)
+            if canonical in self.item_name_to_category:
+                self.simple_name_to_canonical[alias] = canonical
+            else:
+                 print(f"Warning: Alias target '{canonical}' for '{alias}' not found in menu. Ignoring.")
+
+        # Build reverse index for combo detection by content (maps sub-item name to list of short combo names)
+        # Key: Simplified Name (as likely spoken by user or in combo description)
+        self.sub_item_to_combo_names = {} 
 
         for item in all_items:
             if item.get("category") == "套餐":
                 full_combo_name = item.get("name") # e.g., "套餐一 醬燒肉片蛋餅+豆漿(大)"
                 
                 if not full_combo_name or "price" not in item:
-                    print(f"Warning: Malformed combo entry found (missing name or price): {item}. Skipping.")
                     continue
 
                 # Try to extract the simple combo name (e.g., "套餐一", "兒童餐")
-                # Updated regex to match typical combo patterns from menu_all.json
                 match = re.match(r"^(套餐[一二三四五六七八九十ABCDE]|兒童餐)\s*(.*)", full_combo_name)
                 if not match:
-                    print(f"Warning: Could not parse short combo name from '{full_combo_name}'. Skipping.")
                     continue
                 
                 combo_name_short = match.group(1) # e.g., "套餐一"
@@ -54,16 +82,22 @@ class ComboTool:
                     "full_name": full_combo_name
                 }
 
-                # Populate sub_item_to_combo_names for content matching
-                # Iterate through all known item names and check if they are in the description_string
+                # Populate sub_item_to_combo_names
+                # We check which simplified names are present in the description string
                 temp_description = description_string
-                for known_item_name in self.all_item_names:
-                    if known_item_name in temp_description:
-                        if known_item_name not in self.sub_item_to_combo_names:
-                            self.sub_item_to_combo_names[known_item_name] = []
-                        self.sub_item_to_combo_names[known_item_name].append(combo_name_short)
-                        # Replace to avoid matching same sub-item multiple times if description is complex
-                        temp_description = temp_description.replace(known_item_name, "", 1)
+                
+                # Iterate over simple_name_to_canonical to find matches
+                # Sort keys by length to match longest first
+                sorted_simple_names = sorted(self.simple_name_to_canonical.keys(), key=len, reverse=True)
+                
+                for simple_name in sorted_simple_names:
+                    if simple_name in temp_description:
+                        if simple_name not in self.sub_item_to_combo_names:
+                            self.sub_item_to_combo_names[simple_name] = []
+                        if combo_name_short not in self.sub_item_to_combo_names[simple_name]:
+                            self.sub_item_to_combo_names[simple_name].append(combo_name_short)
+                        
+                        temp_description = temp_description.replace(simple_name, "", 1)
 
 
     def parse_combo_utterance(self, text: str) -> Optional[Dict[str, Any]]:
@@ -88,6 +122,16 @@ class ComboTool:
         
         if not found_sub_items_in_text:
             return None
+
+        # Guard: If only one item matched, and it exists as a standalone product, 
+        # prefer the standalone product (return None so router handles it).
+        if len(found_sub_items_in_text) == 1:
+            simple_name = found_sub_items_in_text[0]
+            allow_single_list = self.alias_cfg.get("allow_single_item_keywords", [])
+            
+            # Check config whitelist OR dynamic existence
+            if simple_name in allow_single_list or simple_name in self.simple_name_to_canonical:
+                return None
 
         # Find potential combos that include all the found items
         possible_combos = set()
@@ -118,7 +162,12 @@ class ComboTool:
         if not combo_name_short or combo_name_short not in self.combo_index:
             return {"status": "error", "message": f"找不到套餐：{combo_name_short}"}
 
-        price = self.combo_index[combo_name_short]["price"]
+        full_name = self.combo_index[combo_name_short].get("full_name")
+        try:
+            price = menu_price_service.get_price("套餐", full_name)
+        except KeyError:
+            return {"status": "error", "message": f"無法取得套餐價格：{combo_name_short}"}
+
         quantity = frame.get("quantity", 1)
         return {
             "status": "success",

@@ -33,7 +33,7 @@ class DialogueManager:
         self.llm = llm
         self.store = store or InMemorySessionStore()
         self.sessions = _SessionsProxy(self.store)
-        self.split_keywords = sorted(["、", "，", "跟", "還要", "再來", "再給我"], key=len, reverse=True)
+        self.split_keywords = sorted(["、", "，", "跟", "還要", "再來", "再給我", "再一個", "再一份"], key=len, reverse=True)
 
     def _split_utterance(self, text: str) -> List[str]:
         """Splits a single user utterance into multiple potential order spans."""
@@ -194,11 +194,18 @@ class DialogueManager:
 
                 # Explode combo into sub-items and add them to pending_frames
                 sub_items = combo_tool.explode_combo_items(combo_frame)
-                for i, sub_item in enumerate(sub_items):
-                    sub_item["_is_combo_sub_item"] = True
-                    sub_item["_combo_sub_item_index"] = i # Track order
-                    sub_item["missing_slots"] = self._recompute_missing_slots(sub_item.get("itemtype", "unknown"), sub_item)
-                    parsed_frames.append(sub_item)
+                
+                if not sub_items:
+                    # If no sub-items parsed, consider the combo complete as-is (opaque combo)
+                    completed_combo = session.pop("current_combo_frame")
+                    session["cart"].append(completed_combo)
+                    newly_completed_items.append(completed_combo)
+                else:
+                    for i, sub_item in enumerate(sub_items):
+                        sub_item["_is_combo_sub_item"] = True
+                        sub_item["_combo_sub_item_index"] = i # Track order
+                        sub_item["missing_slots"] = self._recompute_missing_slots(sub_item.get("itemtype", "unknown"), sub_item)
+                        parsed_frames.append(sub_item)
                 continue
             # --- NEW COMBO LOGIC END ---
             
