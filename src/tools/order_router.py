@@ -22,6 +22,12 @@ JAM_TOAST_KEYWORDS = ["果醬吐司", "草莓", "花生", "蒜香", "奶酥", "�
 
 EGG_PANCAKE_KEYWORDS = ["蛋餅"]
 
+# 編輯訂單關鍵字
+CANCEL_LAST_KEYWORDS = ["取消上一個", "刪掉剛剛的", "上一項不要", "撤銷", "取消上一個", "刪掉剛剛", "取消剛剛的"]
+CLEAR_ALL_KEYWORDS = ["全部取消", "清空購物車", "都不要了", "全部不要", "清空"]
+REMOVE_INDEX_KEYWORDS = ["刪除第", "取消第", "個不要", "項不要", "刪第"]
+CHECKOUT_KEYWORDS = ["結帳", "送出", "下單", "就這些", "買單", "結案", "沒了"]
+
 
 def normalize_text(text: str) -> str:
     t = text
@@ -32,6 +38,22 @@ def normalize_text(text: str) -> str:
 
 def _route(text: str, current_order_has_main: bool = False) -> Dict[str, Any]:
     t = normalize_text(text)
+
+    # 0. 結帳與編輯路由 (優先級高)
+    if any(kw in t for kw in CHECKOUT_KEYWORDS):
+        return {"route_type": "checkout", "needs_clarify": False}
+
+    if any(kw in t for kw in CLEAR_ALL_KEYWORDS):
+        return {"route_type": "clear_all", "needs_clarify": False}
+    
+    if any(kw in t for kw in REMOVE_INDEX_KEYWORDS) or (("第" in t) and ("項" in t or "個" in t) and ("刪" in t or "取消" in t)):
+        return {"route_type": "remove_index", "needs_clarify": False}
+
+    if any(kw in t for kw in CANCEL_LAST_KEYWORDS):
+        return {"route_type": "cancel_last", "needs_clarify": False}
+    
+    if t == "取消": # 純粹的取消，交給 DM 根據狀態判斷
+        return {"route_type": "cancel_generic", "needs_clarify": False}
 
     # Exact SKU guard for "蛋餅飯糰"
     if "蛋餅飯糰" in t:

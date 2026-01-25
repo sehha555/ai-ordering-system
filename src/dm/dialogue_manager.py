@@ -1,8 +1,10 @@
 import re
+import uuid
+from datetime import datetime
 from typing import Dict, Any, List, Optional
 
 from src.tools.order_router import order_router
-from src.tools.riceball_tool import riceball_tool, menu_tool
+from src.tools.riceball_tool import riceball_tool, menu_tool, _chinese_number_to_int
 from src.tools.carrier_tool import carrier_tool
 from src.tools.drink_tool import drink_tool
 from src.tools.snack_tool import snack_tool
@@ -11,6 +13,7 @@ from src.tools.egg_pancake_tool import egg_pancake_tool
 from src.tools.combo_tool import combo_tool 
 from src.tools.menu import menu_price_service
 from src.dm.session_store import InMemorySessionStore
+from src.repository.order_repository import order_repo
 
 
 RICE_CHOICES_TEXT = "還差米種，你要紫米、白米還是混米？"
@@ -44,21 +47,182 @@ class DialogueManager:
 
     def handle(self, session_id: str, text: str) -> str:
         session = self.store.get(session_id)
+        self._ensure_session_defaults(session)
         session["last_user_text"] = text.strip()
+        session["history"].append(text.strip())
 
-        if "結帳" in text:
+        # 0. 訂單凍結檢查
+        if session["status"] == "SUBMITTED":
+            return "訂單已送出，若需要修改請洽店員處理喔！"
+
+        # 1. 結帳確認狀態處理
+        if session["status"] == "CONFIRMING_CHECKOUT":
+            if any(kw in text for kw in ["好", "對", "確定", "是", "ok", "要", "是的"]):
+                return self._submit_order(session)
+            elif any(kw in text for kw in ["取消", "不", "不要", "改一下", "還沒"]):
+                session["status"] = "OPEN"
+                return "好的，訂單尚未送出。請問還需要什麼嗎？"
+
+        # 2. 清空確認狀態處理
+        if session.get("pending_clear_confirm"):
+            affirmative = ["好", "對", "確定", "是", "ok", "是的", "要"]
+            if any(text.strip() == kw for kw in affirmative) or any(kw in text for kw in ["可以", "沒問題"]):
+                session["cart"] = []
+                session["pending_frames"] = []
+                session.pop("current_combo_frame", None)
+                session.pop("pending_clear_confirm", None)
+                session["status"] = "OPEN"
+                return "好的，已為您清空購物車，您可以重新開始點餐。"
+            else:
+                session.pop("pending_clear_confirm", None)
+                return "好的，已為您保留訂單。請問還需要什麼嗎？"
+
+        # 3. 路由判斷
+        route_res = order_router.route(text, current_order_has_main=bool(session["cart"]))
+        rtype = route_res["route_type"]
+
+        # 4. 結帳/編輯功能路由
+        if rtype == "checkout":
             if session["pending_frames"]:
                 first = session["pending_frames"][0]
                 return self.get_clarify_message(first.get("itemtype", "unknown"), first.get("missing_slots", []), first)
-            if session["cart"]:
-                return self.get_order_summary(session_id)
-            return "您的購物車是空的，請先點餐喔！"
+            if not session["cart"]:
+                return "您的購物車是空的，請先點餐喔！"
+            
+            session["status"] = "CONFIRMING_CHECKOUT"
+            summary = self.get_order_summary(session_id)
+            return f"{summary}。確定要送出訂單嗎？"
 
+        if rtype == "clear_all":
+            session["pending_clear_confirm"] = True
+            return "確定要清空購物車嗎？"
+        if rtype == "remove_index":
+            return self._handle_remove_index(session, text)
+        if rtype == "cancel_last":
+            return self._handle_cancel_last(session)
+        if rtype == "cancel_generic":
+            return self._handle_cancel_generic(session)
+
+        # 5. 既有補槽流程
         if session["pending_frames"]:
             return self._process_pending_frames(session_id, session, text)
 
+        # 6. 新訂單解析
         return self._process_new_order(session_id, session, text)
         
+    def _submit_order(self, session: Dict[str, Any]) -> str:
+        """生成 Payload 並送出訂單"""
+        order_id = f"SN-{datetime.now().strftime('%m%d')}-{str(uuid.uuid4())[:4].upper()}"
+        total_price = self._calculate_cart_total(session)
+        
+        items_payload = []
+        for item in session["cart"]:
+            qty = int(item.get("quantity", 1) or 1)
+            pi = self._get_price_info(item)
+            item_total = self._extract_total_from_pi(pi, qty)
+            unit_price = item_total // qty if qty > 0 else 0
+            
+            items_payload.append({
+                "name": self._format_item(item),
+                "quantity": qty,
+                "unit_price": unit_price,
+                "subtotal": item_total
+            })
+
+        order_payload = {
+            "order_id": order_id,
+            "status": "SUCCESS",
+            "created_at": datetime.now().isoformat(),
+            "items": items_payload,
+            "total_price": total_price,
+            "raw_history": session.get("history", [])
+        }
+        
+        session["order_payload"] = order_payload
+        session["status"] = "SUBMITTED"
+        
+        # 落庫儲存
+        order_repo.save_order(order_payload, session.get("session_id", "unknown"))
+        
+        return f"好的，訂單已送出！您的訂單編號是 {order_id}，請至櫃檯結帳領取。"
+
+    def _handle_cancel_last(self, session: Dict[str, Any]) -> str:
+        if session["cart"]:
+            item = session["cart"].pop()
+            name = self._format_item(item)
+            return f"好的，已取消您最後點的：{name}。{self._get_short_summary(session)}"
+        return "目前沒有品項可以取消喔。"
+
+    def _handle_remove_index(self, session: Dict[str, Any], text: str) -> str:
+        cart = session["cart"]
+        if not cart: return "購物車目前是空的喔。"
+        idx = self._parse_index(text)
+        if idx is None: return f"抱歉，我不確定您要刪除第幾項。目前共有 {len(cart)} 項。"
+        
+        if 1 <= idx <= len(cart):
+            removed = cart.pop(idx - 1)
+            name = self._format_item(removed)
+            return f"好的，已為您刪除第 {idx} 項：{name}。{self._get_short_summary(session)}"
+        return f"目前只有 {len(cart)} 項品項，請確認要刪除第幾項。"
+
+    def _handle_cancel_generic(self, session: Dict[str, Any]) -> str:
+        if session["pending_frames"]:
+            removed = session["pending_frames"].pop(0)
+            if removed.get("_is_combo_sub_item"):
+                session.pop("current_combo_frame", None)
+                session["pending_frames"] = [f for f in session["pending_frames"] if not f.get("_is_combo_sub_item")]
+            return "好的，已取消剛剛的變更或品項。還需要什麼嗎？"
+        if session.get("pending_clear_confirm"):
+            session.pop("pending_clear_confirm")
+            return "好的，已取消清空操作。還需要什麼嗎？"
+        return self._handle_cancel_last(session)
+
+    def _parse_index(self, text: str) -> Optional[int]:
+        patterns = [r"第\s*(\d+|[一二三四五六七八九十]+)\s*(?:項|個|份)?", r"(\d+|[一二三四五六七八九十]+)\s*(?:項|個|份)"]
+        for p in patterns:
+            m = re.search(p, text)
+            if m:
+                token = m.group(1)
+                return int(token) if token.isdigit() else _chinese_number_to_int(token)
+        return None
+
+    def _get_short_summary(self, session: Dict[str, Any]) -> str:
+        cart = session["cart"]
+        if not cart: return "目前購物車已空。"
+        total = self._calculate_cart_total(session)
+        return f"目前剩餘 {len(cart)} 項品項，總計 {total}元。還需要什麼嗎？"
+
+    def _calculate_cart_total(self, session: Dict[str, Any]) -> int:
+        total = 0
+        for item in session["cart"]:
+            qty = int(item.get("quantity", 1) or 1)
+            pi = self._get_price_info(item)
+            if pi and pi.get("status") == "success":
+                total += self._extract_total_from_pi(pi, qty)
+        return total
+
+    def _extract_total_from_pi(self, pi: Dict[str, Any], qty: int) -> int:
+        if not pi: return 0
+        if "total_price" in pi and pi["total_price"] is not None:
+            return pi["total_price"]
+        if "single_total" in pi:
+            return pi["single_total"] * qty
+        if "single_price" in pi:
+            return pi["single_price"] * qty
+        return 0
+
+    def _get_price_info(self, item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        rtype = item.get("itemtype")
+        pi = None
+        if rtype == "riceball": pi = menu_tool.quote_riceball_price(flavor=item.get("flavor"), large=item.get("large", False), heavy=item.get("heavy", False), extra_egg=item.get("extra_egg", False))
+        elif rtype == "egg_pancake": pi = egg_pancake_tool.quote_egg_pancake_price(item)
+        elif rtype == "carrier": pi = carrier_tool.quote_carrier_price(item)
+        elif rtype == "drink": pi = drink_tool.quote_drink_price(item)
+        elif rtype == "snack": pi = snack_tool.quote_snack_price(item)
+        elif rtype == "jam_toast": pi = jam_toast_tool.quote_jam_toast_price(item)
+        elif rtype == "combo": pi = combo_tool.quote_combo_price(item)
+        return pi
+
     def _flush_pending_queue(self, session: Dict[str, Any], newly_completed: List[Dict[str, Any]]) -> Optional[str]:
         clarify_msg = None
         i = 0
@@ -69,7 +233,6 @@ class DialogueManager:
                     clarify_msg = self.get_clarify_message(frame.get("itemtype", "unknown"), frame["missing_slots"], frame)
                 i += 1
                 continue
-            
             if frame.get("_is_combo_sub_item") and session.get("current_combo_frame"):
                 sub_item = session["pending_frames"].pop(i)
                 session["current_combo_frame"]["sub_items"].append(sub_item)
@@ -87,7 +250,6 @@ class DialogueManager:
     def _process_pending_frames(self, session_id: str, session: Dict[str, Any], text: str) -> str:
         pending = session["pending_frames"][0]
         rtype = pending.get("itemtype", "unknown")
-        
         prefix = ""
         if pending.get("_price_driven_confirm"):
             if any(kw in text for kw in ["中杯", "是", "對", "好", "可以", "ok"]):
@@ -100,49 +262,33 @@ class DialogueManager:
                 pending.pop("_price_driven_confirm")
                 pending["missing_slots"] = self._recompute_missing_slots(rtype, pending)
                 prefix = "好的，"
-
         res = self._call_tool(rtype, text)
         if res.get("error"): return res["error"]
-        
         frame = res.get("frame", {})
         for k, v in frame.items():
-            if v is not None and v not in [[], {}, ""]:
-                pending[k] = v
-
+            if v is not None and v not in [[], {}, ""]: pending[k] = v
         if rtype == "carrier" and pending.get("carrier") and not pending.get("flavor"):
             matching = [f for f in carrier_tool.flavors_by_carrier.get(pending["carrier"], []) if text.strip() in f]
             if matching: pending["flavor"] = sorted(matching, key=len)[0]
-        
         pending["raw_text"] = text
         pending["missing_slots"] = self._recompute_missing_slots(rtype, pending)
-        
         if pending.get("_is_combo_sub_item") and rtype == "drink" and session.get("current_combo_frame"):
             session["current_combo_frame"]["swap_drink"] = {"drink": pending.get("drink"), "size": pending.get("size"), "temp": pending.get("temp")}
-        
         newly_done = []
         msg = self._flush_pending_queue(session, newly_done)
-        if msg: 
-            return prefix + msg
+        if msg: return prefix + msg
         if newly_done:
             summary = "、".join([f"{i.get('quantity', 1)}份 {self._format_item(i)}" for i in newly_done])
             return f"好的，{summary}，還需要什麼嗎？"
         return prefix + "請問還需要什麼嗎？"
 
     def _handle_drink_swap(self, span: str, session: Dict[str, Any], parsed_frames: List[Dict[str, Any]]) -> bool:
-        if not any(kw in span for kw in ["換", "改", "改成", "不要"]):
-            return False
-            
+        if not any(kw in span for kw in ["換", "改", "改成", "不要"]): return False
         dr = drink_tool.parse_drink_utterance(span)
-        if not dr.get("drink"):
-            return False
-            
+        if not dr.get("drink"): return False
         target = next((f for f in parsed_frames if f.get("_is_combo_sub_item") and f.get("itemtype") == "drink"), None)
-        if not target:
-            target = next((f for f in session.get("pending_frames", []) if f.get("_is_combo_sub_item") and f.get("itemtype") == "drink"), None)
-        
-        if not target:
-            return False
-            
+        if not target: target = next((f for f in session.get("pending_frames", []) if f.get("_is_combo_sub_item") and f.get("itemtype") == "drink"), None)
+        if not target: return False
         if not dr.get("size") and session.get("current_combo_frame"):
             combo_short = session["current_combo_frame"].get("combo_name")
             combo_data = combo_tool.combo_index.get(combo_short)
@@ -151,31 +297,19 @@ class DialogueManager:
                 p_old = menu_price_service.get_price("飲品", old_can)
                 candidates = combo_tool.resolve_swap_drink_candidates(dr["drink"])
                 chosen_can, delta, needs_confirm = combo_tool.choose_default_by_price(candidates, p_old)
-                
                 if chosen_can and needs_confirm:
                     chosen_size = "中杯" if "(中)" in chosen_can else "大杯" if "(大)" in chosen_can else "中杯"
                     other_candidates = [c for c in candidates if c != chosen_can]
-                    
-                    # Formatting names for display
-                    def fmt(name):
-                        return name.replace("精選", "").replace("有糖", "").replace("無糖", "").replace("(中)", "中杯").replace("(大)", "大杯")
-                    
-                    old_disp = fmt(old_can)
-                    new_disp_base = dr["drink"]
-                    
+                    def fmt(name): return name.replace("精選", "").replace("有糖", "").replace("無糖", "").replace("(中)", "中杯").replace("(大)", "大杯")
+                    old_disp, new_disp_base = fmt(old_can), dr["drink"]
                     msg = f"原本{old_disp}{p_old}元，{new_disp_base}{chosen_size}也是{p_old}元，確認換{chosen_size}嗎？"
-                    if delta > 0:
-                        msg = f"原本{old_disp}{p_old}元，{new_disp_base}{chosen_size}需補差價{delta}元，確認換{chosen_size}嗎？"
-                    
+                    if delta > 0: msg = f"原本{old_disp}{p_old}元，{new_disp_base}{chosen_size}需補差價{delta}元，確認換{chosen_size}嗎？"
                     for oc in other_candidates:
                         p_oc = menu_price_service.get_price("飲品", oc)
                         oc_size = "中杯" if "(中)" in oc else "大杯" if "(大)" in oc else "中杯"
                         oc_delta = p_oc - p_old
-                        if oc_delta > 0:
-                            msg += f"要{oc_size}需補差價{oc_delta}元。"
-                        else:
-                            msg += f"{oc_size}也是{p_oc}元。"
-                    
+                        if oc_delta > 0: msg += f"要{oc_size}需補差價{oc_delta}元。"
+                        else: msg += f"{oc_size}也是{p_oc}元。"
                     target.update({"drink": dr.get("drink"), "size": None, "temp": dr.get("temp") or target.get("temp")})
                     target["_price_driven_confirm"] = True
                     target["_price_driven_chosen_size"] = chosen_size
@@ -183,7 +317,6 @@ class DialogueManager:
                     target["missing_slots"] = ["_price_driven_confirm"]
                     session["current_combo_frame"]["swap_drink"] = {"drink": target["drink"], "size": None, "temp": target["temp"]}
                     return True
-
         target.update({"drink": dr.get("drink"), "size": dr.get("size") or target.get("size"), "temp": dr.get("temp") or target.get("temp")})
         target["missing_slots"] = self._recompute_missing_slots("drink", target)
         session["current_combo_frame"]["swap_drink"] = {"drink": target["drink"], "size": target["size"], "temp": target["temp"]}
@@ -192,7 +325,6 @@ class DialogueManager:
     def _process_new_order(self, session_id: str, session: Dict[str, Any], text: str) -> str:
         spans = self._split_utterance(text)
         newly_done, parsed = [], []
-
         for span in spans:
             if not span: continue
             combo = combo_tool.parse_combo_utterance(span)
@@ -211,15 +343,11 @@ class DialogueManager:
                         parsed.append(s)
                     self._handle_drink_swap(span, session, parsed)
                 continue
-
-            if session.get("current_combo_frame") and self._handle_drink_swap(span, session, parsed):
-                continue
-
+            if session.get("current_combo_frame") and self._handle_drink_swap(span, session, parsed): continue
             res = order_router.route(span, current_order_has_main=bool(session["cart"]))
             if res["route_type"] == "unknown":
                 if self.llm and hasattr(self.llm, 'call_tool_required'): self.llm.call_tool_required(text=text, session=session)
                 return f"不好意思，我不太明白「{span}」的部分，可以請您再說一次嗎？"
-            
             tool_res = self._call_tool(res["route_type"], span)
             if tool_res.get("error"): return tool_res["error"]
             frame = tool_res.get("frame")
@@ -228,7 +356,6 @@ class DialogueManager:
             frame.setdefault('raw_text', span)
             frame['missing_slots'] = self._recompute_missing_slots(res["route_type"], frame)
             parsed.append(frame)
-
         session["pending_frames"].extend(parsed)
         msg = self._flush_pending_queue(session, newly_done)
         if msg: return msg
@@ -280,8 +407,7 @@ class DialogueManager:
     def get_clarify_message(self, rtype: str, missing: List[str], pending_frame: Optional[Dict[str, Any]] = None) -> str:
         if not missing: return "請問還需要什麼嗎？"
         f = missing[0]
-        if f == "_price_driven_confirm" and pending_frame:
-            return pending_frame.get("_price_driven_msg", "確認換杯型嗎？")
+        if f == "_price_driven_confirm" and pending_frame: return pending_frame.get("_price_driven_msg", "確認換杯型嗎？")
         if rtype == "drink":
             if f == "temp": return "你要冰的、溫的？"
             if f == "size": return "大杯還中杯？"
@@ -326,20 +452,15 @@ class DialogueManager:
         items, total = [], 0
         for item in cart:
             qty = int(item.get("quantity", 1) or 1)
-            rtype = item.get("itemtype")
-            pi = None
-            if rtype == "riceball": pi = menu_tool.quote_riceball_price(flavor=item.get("flavor"), large=item.get("large", False), heavy=item.get("heavy", False), extra_egg=item.get("extra_egg", False))
-            elif rtype == "egg_pancake": pi = egg_pancake_tool.quote_egg_pancake_price(item)
-            elif rtype == "carrier": pi = carrier_tool.quote_carrier_price(item)
-            elif rtype == "drink": pi = drink_tool.quote_drink_price(item)
-            elif rtype == "snack": pi = snack_tool.quote_snack_price(item)
-            elif rtype == "jam_toast": pi = jam_toast_tool.quote_jam_toast_price(item)
-            elif rtype == "combo": pi = combo_tool.quote_combo_price(item)
-
+            pi = self._get_price_info(item)
             if pi and pi.get("status") == "success":
-                t = pi.get('total_price') or (pi.get('single_price', 0) * qty) or (pi.get('single_total', 0) * qty)
-                total += t
+                total += self._extract_total_from_pi(pi, qty)
                 items.append(self._format_item(item))
-            else:
-                return f"品項「{self._format_item(item)}」無法計價：{pi.get('message', '計價失敗') if pi else '計價失敗'}。請洽服務人員再結帳。"
-        return f"這樣一共{', '.join(items)}，共 {len(cart)} 個品項，共 {total}元，請稍候結帳！"
+            else: return f"品項「{self._format_item(item)}」無法計價：{pi.get('message', '計價失敗') if pi else '計價失敗'}。請洽服務人員再結帳。"
+        return f"這樣一共{', '.join(items)}，共 {len(cart)} 個品項，共 {total}元"
+
+    def _ensure_session_defaults(self, session: Dict[str, Any]) -> None:
+        session.setdefault("cart", [])
+        session.setdefault("pending_frames", [])
+        session.setdefault("history", [])
+        session.setdefault("status", "OPEN")
