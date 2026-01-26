@@ -38,6 +38,11 @@ class TTSService:
         except ImportError:
             logger.error("[TTS] 未安裝 pyttsx3，請執行: pip install pyttsx3")
             self.engine = None
+        except Exception as e:
+            # 處理缺失 TTS 驅動（eSpeak/eSpeak-ng）或其他初始化錯誤
+            logger.warning(f"[TTS] pyttsx3 初始化失敗: {str(e)}。TTS 功能將不可用。")
+            self.language = language
+            self.engine = None
 
     def _setup_language(self, language: str):
         """設置語言"""
