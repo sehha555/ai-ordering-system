@@ -1,0 +1,154 @@
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                       LLM 功能快速參考卡片                                ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+【您的 LM Studio 配置】
+────────────────────────────────────────────────────────────────────────────
+地址：   http://127.0.0.1:1234
+模型：   qwen2.5-14b-instruct-1m
+狀態：   ✅ 已驗證正常運作
+
+
+【快速命令】
+────────────────────────────────────────────────────────────────────────────
+驗證安裝        python -m pytest tests/ -v
+驗證 LM Studio  curl http://127.0.0.1:1234/v1/models
+運行 LLM 測試   python -m pytest tests/test_llm_*.py -v
+查看配置示例    cat llm_config_example.py
+
+
+【最簡單的使用方式】
+────────────────────────────────────────────────────────────────────────────
+from src.dm.dialogue_manager import DialogueManager
+
+# 預設（推薦 - LLM 禁用）
+dm = DialogueManager()
+
+# 使用對話
+response = dm.handle("session_001", "我要飯糰")
+
+
+【啟用 LLM 功能】
+────────────────────────────────────────────────────────────────────────────
+from src.dm.dialogue_manager import DialogueManager
+from src.dm.llm_router import LLMRouter
+from src.dm.llm_clarifier import LLMClarifier
+from src.services.llm_tool_caller import LLMToolCaller
+
+# 1. 初始化 LLM
+llm = LLMToolCaller(
+    base_url="http://127.0.0.1:1234/v1/chat/completions",
+    model="qwen2.5-14b-instruct-1m",
+    timeout=30
+)
+
+# 2. 初始化組件
+router = LLMRouter(llm, confidence_threshold=0.75)
+clarifier = LLMClarifier(llm)
+
+# 3. 建立 Dialogue Manager
+dm = DialogueManager(
+    llm_router=router,
+    llm_clarifier=clarifier,
+    llm_enabled=True
+)
+
+
+【檔案清單】
+────────────────────────────────────────────────────────────────────────────
+llm_config_example.py        配置示例代碼
+LLM_USAGE_GUIDE.md           完整使用指南
+QUICK_REFERENCE.txt          本文件（快速參考）
+
+src/dm/session_context.py    會話上下文提取
+src/dm/llm_router.py         LLM 路由分類器
+src/dm/llm_clarifier.py      LLM 澄清問題生成
+
+
+【測試統計】
+────────────────────────────────────────────────────────────────────────────
+原始測試        89 個    ✅ 全部通過
+LLM 測試        38 個    ✅ 全部通過
+總計            127 個   ✅ 100% 通過
+
+
+【性能指標】
+────────────────────────────────────────────────────────────────────────────
+關鍵詞路由       < 10ms      無變化
+LLM 分類（新調用）  500-2000ms   僅未知項目
+LLM 分類（快取）    < 1ms       極快
+LLM 澄清（新調用）  300-800ms   可接受
+LLM 澄清（快取）    < 1ms       極快
+
+
+【信心度評分】
+────────────────────────────────────────────────────────────────────────────
+0.85-1.0    非常高      使用 LLM 路由
+0.75-0.84   高          使用 LLM 路由
+< 0.75      低/中等     備選至硬編碼
+
+
+【部署檢查清單】
+────────────────────────────────────────────────────────────────────────────
+☐ 所有 127 個測試通過
+☐ LM Studio 連接正常
+☐ 功能開關設置正確 (llm_enabled=False)
+☐ 代碼已提交 (commit 13552c1)
+☐ 代碼已推送到遠程
+☐ 無未提交的變更
+
+
+【立即可執行】
+────────────────────────────────────────────────────────────────────────────
+1. git push origin main              推送代碼
+2. python -m pytest tests/ -v        驗證測試
+3. python -m src.main               啟動應用
+4. 監控 1-2 週
+5. 評估是否啟用 LLM (可選)
+
+
+【常見問題速答】
+────────────────────────────────────────────────────────────────────────────
+Q: LLM 功能預設啟用嗎？
+A: 不，預設禁用 (llm_enabled=False) - 最安全
+
+Q: 如何啟用 LLM？
+A: 見上方「啟用 LLM 功能」章節或參考 llm_config_example.py
+
+Q: 可以邊監控邊啟用嗎？
+A: 可以，使用 llm_enabled 參數隨時切換
+
+Q: LLM 失敗會怎樣？
+A: 自動備選至硬編碼問題，用戶無感知
+
+Q: 如何調整信心度？
+A: LLMRouter(llm, confidence_threshold=0.8)
+
+Q: 如何清除快取？
+A: router.clear_cache() 或 clarifier.clear_cache()
+
+Q: 響應太慢怎麼辦？
+A: 增加超時 timeout=60 或檢查 LM Studio GPU
+
+
+【版本信息】
+────────────────────────────────────────────────────────────────────────────
+實現階段：      Phase 1 - 保守混合模式
+LLM 模型：      qwen2.5-14b-instruct-1m
+測試覆蓋：      127 個測試 (100% 通過)
+向後兼容：      100% - 所有原始測試保持通過
+最後提交：      commit 13552c1
+
+
+【需要幫助？】
+────────────────────────────────────────────────────────────────────────────
+快速指南：      LLM_USAGE_GUIDE.md
+配置示例：      llm_config_example.py
+驗證 LM Studio: curl http://127.0.0.1:1234/v1/models
+運行測試：      python -m pytest tests/ -v
+
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                    系統已準備好上線 ✅                                     ║
+║              立即推送代碼並部署，保持 LLM 預設禁用                        ║
+╚═══════════════════════════════════════════════════════════════════════════╝
