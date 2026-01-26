@@ -10,10 +10,13 @@ from src.tools.drink_tool import drink_tool
 from src.tools.snack_tool import snack_tool
 from src.tools.jam_toast_tool import jam_toast_tool
 from src.tools.egg_pancake_tool import egg_pancake_tool
-from src.tools.combo_tool import combo_tool 
+from src.tools.combo_tool import combo_tool
 from src.tools.menu import menu_price_service
 from src.dm.session_store import InMemorySessionStore
 from src.repository.order_repository import order_repo
+from src.dm.session_context import SessionContext
+from src.dm.llm_router import LLMRouter
+from src.dm.llm_clarifier import LLMClarifier
 
 
 RICE_CHOICES_TEXT = "還差米種，你要紫米、白米還是混米？"
@@ -31,10 +34,20 @@ class _SessionsProxy:
 
 
 class DialogueManager:
-    def __init__(self, llm: Any = None, store: Optional[InMemorySessionStore] = None, **kwargs):
+    def __init__(
+        self,
+        llm: Any = None,
+        store: Optional[InMemorySessionStore] = None,
+        llm_router: Optional[LLMRouter] = None,
+        llm_clarifier: Optional[LLMClarifier] = None,
+        llm_enabled: bool = False,
+        **kwargs
+    ):
         self.llm = llm
         self.store = store or InMemorySessionStore()
         self.sessions = _SessionsProxy(self.store)
+        self.llm_router = llm_router if llm_enabled else None
+        self.llm_clarifier = llm_clarifier if llm_enabled else None
         self.split_keywords = sorted(["、", "，", "跟", "還要", "再來", "再給我", "再一個", "再一份"], key=len, reverse=True)
 
     def _split_utterance(self, text: str) -> List[str]:
@@ -46,6 +59,8 @@ class DialogueManager:
         return [s.strip() for s in t.split(sep) if s.strip()]
 
     def handle(self, session_id: str, text: str) -> str:
+        # 追蹤當前會話 ID，供 get_clarify_message 使用
+        self._last_session_id = session_id
         session = self.store.get(session_id)
         self._ensure_session_defaults(session)
         session["last_user_text"] = text.strip()
@@ -346,8 +361,22 @@ class DialogueManager:
             if session.get("current_combo_frame") and self._handle_drink_swap(span, session, parsed): continue
             res = order_router.route(span, current_order_has_main=bool(session["cart"]))
             if res["route_type"] == "unknown":
-                if self.llm and hasattr(self.llm, 'call_tool_required'): self.llm.call_tool_required(text=text, session=session)
-                return f"不好意思，我不太明白「{span}」的部分，可以請您再說一次嗎？"
+                # 如果啟用了 LLM 路由器，嘗試使用 LLM 進行分類
+                if self.llm_router:
+                    context = SessionContext.from_session(session)
+                    llm_res = self.llm_router.classify(
+                        span,
+                        current_order_has_main=bool(session["cart"]),
+                        session_context=context
+                    )
+                    # 如果 LLM 信心度足夠高，使用 LLM 的結果
+                    if llm_res.get("confidence", 0) > 0.75 and llm_res.get("route_type") != "unknown":
+                        res = llm_res
+
+                # 如果仍然是未知，返回澄清提示
+                if res["route_type"] == "unknown":
+                    if self.llm and hasattr(self.llm, 'call_tool_required'): self.llm.call_tool_required(text=text, session=session)
+                    return f"不好意思，我不太明白「{span}」的部分，可以請您再說一次嗎？"
             tool_res = self._call_tool(res["route_type"], span)
             if tool_res.get("error"): return tool_res["error"]
             frame = tool_res.get("frame")
@@ -408,6 +437,23 @@ class DialogueManager:
         if not missing: return "請問還需要什麼嗎？"
         f = missing[0]
         if f == "_price_driven_confirm" and pending_frame: return pending_frame.get("_price_driven_msg", "確認換杯型嗎？")
+
+        # 如果啟用了 LLM 澄清器，嘗試生成自然的問題
+        if self.llm_clarifier:
+            try:
+                context = SessionContext.from_session(self.sessions.get(getattr(self, '_last_session_id', None), {}))
+                question = self.llm_clarifier.generate_question(
+                    rtype,
+                    missing,
+                    pending_frame,
+                    context
+                )
+                return question
+            except Exception:
+                # 如果 LLM 失敗，備選至硬編碼問題
+                pass
+
+        # 硬編碼的備選問題（或 LLM 不可用時使用）
         if rtype == "drink":
             if f == "temp": return "你要冰的、溫的？"
             if f == "size": return "大杯還中杯？"
