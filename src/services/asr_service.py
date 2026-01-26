@@ -6,7 +6,6 @@ ASR Service - 語音辨識服務 (使用 OpenAI Whisper)
 import logging
 import os
 from typing import Optional
-import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +109,7 @@ class ASRService:
 
         try:
             import tempfile
+            import numpy as np
 
             # 將字節保存為臨時 wav 文件
             audio_array = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
