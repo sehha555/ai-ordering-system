@@ -18,9 +18,6 @@ from src.services.asr_service import ASRService
 from src.services.tts_service import TTSService
 from src.dm.dialogue_manager import DialogueManager
 from src.dm.session_store import InMemorySessionStore
-from src.dm.llm_router import LLMRouter
-from src.dm.llm_clarifier import LLMClarifier
-from src.services.llm_tool_caller import LLMToolCaller
 
 # Load environment variables
 load_dotenv()
@@ -41,20 +38,10 @@ class VoiceOrderingCLI:
         self.tts_service = TTSService(language="zh", rate=150)
         self.session_store = InMemorySessionStore()
 
-        # 初始化 LLM Tool Caller（用於對話中調用工具）
-        llm_tool_caller = LLMToolCaller()
-
-        # 初始化 LLM Router 和 Clarifier（用於 NLU）
-        llm_router = LLMRouter(llm=llm_tool_caller)
-        llm_clarifier = LLMClarifier(llm=llm_tool_caller)
-
-        # 初始化對話管理器，啟用 LLM 功能
-        self.dialogue_manager = DialogueManager(
-            store=self.session_store,
-            llm_router=llm_router,
-            llm_clarifier=llm_clarifier,
-            llm_enabled=True  # 啟用 LLM 自然語言處理
-        )
+        # 初始化對話管理器
+        # 注意: 先使用基本的 order_router 流程（已驗證穩定）
+        # 如需要 LLM 增強，可在後續升級
+        self.dialogue_manager = DialogueManager(store=self.session_store)
         self.session_id = "voice_user_001"
 
         # 錄音參數
@@ -72,11 +59,13 @@ class VoiceOrderingCLI:
         else:
             print("[警告] TTS 引擎未初始化，語音回應可能不可用")
 
-        print("\n系統初始化完成！")
-        print("\n使用說明:")
-        print("  按 Space 鍵開始錄音")
-        print("  按 Space 鍵停止錄音")
-        print("  輸入 'quit' 退出系統\n")
+        print("\n系統初始化完成！\n")
+        print("模式: 標準菜單路由 (穩定版)")
+        print("支援菜單: 飯糰、蛋餅、漢堡、雞塊、吐司、套餐等\n")
+        print("使用說明:")
+        print("  - 直接按 Enter 進行語音輸入（自動錄 5 秒）")
+        print("  - 輸入文字後按 Enter 進行文字輸入")
+        print("  - 輸入 'quit' 退出系統\n")
 
     def record_audio(self, duration: int = 5) -> np.ndarray:
         """
@@ -88,8 +77,8 @@ class VoiceOrderingCLI:
         Returns:
             錄音的 numpy 陣列
         """
-        print(f"\n準備開始錄音... ({duration} 秒)")
-        print("請開始說話...")
+        print(f"\n錄音開始（{duration} 秒）...")
+        print("請對著麥克風說話...")
 
         try:
             # 使用 sounddevice 進行錄音
@@ -111,8 +100,13 @@ class VoiceOrderingCLI:
 
     def process_voice_order(self):
         """處理語音點餐"""
+        print("=" * 70)
+        print("進入語音點餐模式")
+        print("=" * 70)
+        print("提示: 空輸入 = 語音; 文字 = 文字輸入; 'quit' = 退出\n")
+
         while True:
-            user_input = input("\n[直接按 Enter 進行語音輸入，或輸入文字後按 Enter，輸入 'quit' 退出]: ").strip()
+            user_input = input(">>> ").strip()
 
             if user_input.lower() == "quit":
                 print("\n感謝使用，再見！\n")
@@ -128,11 +122,18 @@ class VoiceOrderingCLI:
                     continue
 
                 # 保存為臨時文件並識別
-                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                    sf.write(tmp.name, audio_data, self.sample_rate)
-                    temp_path = tmp.name
-
+                import os
+                temp_path = None
                 try:
+                    # 創建臨時文件
+                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                        temp_path = tmp.name
+
+                    # 寫入音訊數據（確保格式正確）
+                    if len(audio_data.shape) > 1:
+                        audio_data = audio_data.flatten()
+                    sf.write(temp_path, audio_data, self.sample_rate)
+
                     # ASR 識別
                     print("\nASR 識別中...")
                     asr_result = self.asr_service.transcribe(temp_path)
@@ -150,21 +151,32 @@ class VoiceOrderingCLI:
 
                     # 對話管理器處理
                     print("店員思考中...")
-                    response = self.dialogue_manager.handle(self.session_id, user_text)
-                    print(f"店員: {response}")
+                    try:
+                        response = self.dialogue_manager.handle(self.session_id, user_text)
+                        print(f"店員: {response}")
 
-                    # TTS 播放回應
-                    if self.tts_service.engine:
-                        print("\n播放語音回應...\n")
-                        self.tts_service.speak(response)
-                    else:
-                        print("[警告] TTS 不可用，無法播放語音")
+                        # TTS 播放回應
+                        if self.tts_service.engine:
+                            print("\n播放語音回應...\n")
+                            self.tts_service.speak(response)
+                        else:
+                            print("[警告] TTS 不可用，無法播放語音")
+                    except Exception as dm_error:
+                        print(f"[對話管理器錯誤] {dm_error}")
+                        print("請重試或輸入簡化的菜單名稱")
+
+                except Exception as record_error:
+                    print(f"[錯誤] 音訊錄製或處理失敗: {record_error}")
+                    import traceback
+                    traceback.print_exc()
 
                 finally:
-                    import os
-
-                    if os.path.exists(temp_path):
-                        os.unlink(temp_path)
+                    # 清理臨時文件
+                    if temp_path and os.path.exists(temp_path):
+                        try:
+                            os.unlink(temp_path)
+                        except Exception as cleanup_error:
+                            print(f"[警告] 無法刪除臨時文件: {cleanup_error}")
 
             else:
                 # 文字輸入（用於測試或無麥克風時）
