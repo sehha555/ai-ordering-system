@@ -6,8 +6,6 @@ import sys
 from pathlib import Path
 import numpy as np
 import sounddevice as sd
-import soundfile as sf
-import tempfile
 from dotenv import load_dotenv
 
 # Add project root to Python path
@@ -121,32 +119,33 @@ class VoiceOrderingCLI:
                     print("[警告] 未錄製到音訊")
                     continue
 
-                # 保存為臨時文件並識別
-                import os
-                temp_path = None
+                # 直接用字節流識別，無需保存檔案
                 try:
-                    # 創建臨時文件
-                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                        temp_path = tmp.name
-
-                    # 寫入音訊數據（確保格式正確）
+                    # 確保音訊數據格式正確
                     if len(audio_data.shape) > 1:
                         audio_data = audio_data.flatten()
-                    sf.write(temp_path, audio_data, self.sample_rate)
 
-                    # ASR 識別
+                    # ASR 識別（使用字節流方式，不需要檔案）
                     print("\nASR 識別中...")
-                    asr_result = self.asr_service.transcribe(temp_path)
+
+                    # 轉換為字節
+                    audio_bytes = audio_data.astype(np.int16).tobytes()
+
+                    # 使用 transcribe_bytes 方法（無需 FFmpeg）
+                    asr_result = self.asr_service.transcribe_bytes(
+                        audio_bytes,
+                        sample_rate=self.sample_rate
+                    )
 
                     if asr_result.get("error"):
                         print(f"[錯誤] ASR 識別失敗: {asr_result['error']}")
                         continue
 
-                    user_text = asr_result.get("text", "")
+                    user_text = asr_result.get("text", "").strip()
                     print(f"\n您說: {user_text}")
 
                     if not user_text:
-                        print("[警告] 未識別到語音內容")
+                        print("[警告] 未識別到語音內容，請重試")
                         continue
 
                     # 對話管理器處理
@@ -165,18 +164,10 @@ class VoiceOrderingCLI:
                         print(f"[對話管理器錯誤] {dm_error}")
                         print("請重試或輸入簡化的菜單名稱")
 
-                except Exception as record_error:
-                    print(f"[錯誤] 音訊錄製或處理失敗: {record_error}")
+                except Exception as error:
+                    print(f"[錯誤] 音訊處理失敗: {error}")
                     import traceback
                     traceback.print_exc()
-
-                finally:
-                    # 清理臨時文件
-                    if temp_path and os.path.exists(temp_path):
-                        try:
-                            os.unlink(temp_path)
-                        except Exception as cleanup_error:
-                            print(f"[警告] 無法刪除臨時文件: {cleanup_error}")
 
             else:
                 # 文字輸入（用於測試或無麥克風時）
