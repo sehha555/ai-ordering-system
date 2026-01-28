@@ -16,6 +16,9 @@ from src.services.asr_service import ASRService
 from src.services.tts_service import TTSService
 from src.dm.dialogue_manager import DialogueManager
 from src.dm.session_store import InMemorySessionStore
+from src.dm.tool_registry import ToolRegistry
+from src.dm.llm_conversation_processor import LLMConversationProcessor
+from src.services.llm_tool_caller import LLMToolCaller
 
 # Load environment variables
 load_dotenv()
@@ -24,8 +27,13 @@ load_dotenv()
 class VoiceOrderingCLI:
     """實時語音點餐系統"""
 
-    def __init__(self):
-        """初始化系統"""
+    def __init__(self, use_llm: bool = True):
+        """
+        初始化系統
+
+        Args:
+            use_llm: 是否啟用 LLM 增強功能，預設 True
+        """
         print("\n" + "=" * 70)
         print("源飯糰 AI 語音點餐系統 - 語音模式")
         print("=" * 70)
@@ -37,10 +45,31 @@ class VoiceOrderingCLI:
         self.session_store = InMemorySessionStore()
 
         # 初始化對話管理器
-        # 注意: 先使用基本的 order_router 流程（已驗證穩定）
-        # 如需要 LLM 增強，可在後續升級
         self.dialogue_manager = DialogueManager(store=self.session_store)
         self.session_id = "voice_user_001"
+
+        # 初始化 LLM 組件（可選）
+        self.use_llm = False
+        self.processor = None
+        if use_llm:
+            try:
+                print("正在初始化 LLM 增強功能...")
+                llm = LLMToolCaller()
+                tool_registry = ToolRegistry(self.dialogue_manager, self.session_store)
+                self.processor = LLMConversationProcessor(
+                    llm=llm,
+                    tool_registry=tool_registry,
+                    dialogue_manager=self.dialogue_manager,
+                    timeout=30,
+                    fallback_enabled=True,
+                )
+                self.use_llm = True
+                print("[OK] LLM 對話模式已啟用")
+            except Exception as llm_error:
+                print(f"[警告] LLM 初始化失敗: {llm_error}")
+                print("[警告] 將使用標準菜單路由作為備選方案")
+                self.use_llm = False
+                self.processor = None
 
         # 錄音參數
         self.sample_rate = 16000  # 16kHz
@@ -58,7 +87,8 @@ class VoiceOrderingCLI:
             print("[警告] TTS 引擎未初始化，語音回應可能不可用")
 
         print("\n系統初始化完成！\n")
-        print("模式: 標準菜單路由 (穩定版)")
+        mode_display = "LLM 增強模式 (進階版)" if self.use_llm else "標準菜單路由 (穩定版)"
+        print(f"模式: {mode_display}")
         print("支援菜單: 飯糰、蛋餅、漢堡、雞塊、吐司、套餐等\n")
         print("使用說明:")
         print("  - 直接按 Enter 進行語音輸入（自動錄 5 秒）")
@@ -151,7 +181,10 @@ class VoiceOrderingCLI:
                     # 對話管理器處理
                     print("店員思考中...")
                     try:
-                        response = self.dialogue_manager.handle(self.session_id, user_text)
+                        if self.use_llm:
+                            response = self.processor.handle(self.session_id, user_text)
+                        else:
+                            response = self.dialogue_manager.handle(self.session_id, user_text)
                         print(f"店員: {response}")
 
                         # TTS 播放回應
@@ -175,7 +208,10 @@ class VoiceOrderingCLI:
 
                 # 對話管理器處理
                 print("店員思考中...")
-                response = self.dialogue_manager.handle(self.session_id, user_input)
+                if self.use_llm:
+                    response = self.processor.handle(self.session_id, user_input)
+                else:
+                    response = self.dialogue_manager.handle(self.session_id, user_input)
                 print(f"店員: {response}\n")
 
                 # 嘗試播放 TTS
@@ -221,7 +257,10 @@ class VoiceOrderingCLI:
                 continue
 
             # 對話管理器處理
-            response = self.dialogue_manager.handle(self.session_id, user_input)
+            if self.use_llm:
+                response = self.processor.handle(self.session_id, user_input)
+            else:
+                response = self.dialogue_manager.handle(self.session_id, user_input)
             print(f"店員: {response}\n")
 
             # 嘗試播放 TTS
