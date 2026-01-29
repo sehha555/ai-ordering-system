@@ -4,6 +4,15 @@ from src.dm.dialogue_manager import DialogueManager
 from src.dm.session_store import InMemorySessionStore
 from src.tools.menu import menu_price_service
 
+# 導入各工具的別名映射
+from src.tools.riceball_tool import FLAVOR_ALIASES as RICEBALL_ALIASES
+from src.tools.drink_tool import DRINK_ALIASES, SIZE_MAP as DRINK_SIZE_MAP, TEMP_MAP as DRINK_TEMP_MAP
+from src.tools.egg_pancake_tool import EggPancakeTool
+from src.tools.snack_tool import SNACK_ALIASES
+
+# 蛋餅別名
+EGG_PANCAKE_ALIASES = EggPancakeTool.FLAVOR_ALIASES
+
 
 class ToolRegistry:
     """
@@ -31,6 +40,69 @@ class ToolRegistry:
         if not self._session_id:
             raise RuntimeError("Session ID not set")
         return self.store.get(self._session_id)
+
+    # ============ 別名解析輔助方法 ============
+
+    def _resolve_riceball_flavor(self, flavor: Optional[str]) -> Optional[str]:
+        """將飯糰口味別名轉換為標準名稱"""
+        if not flavor:
+            return None
+        # 長字優先匹配
+        for alias in sorted(RICEBALL_ALIASES.keys(), key=len, reverse=True):
+            if alias == flavor or alias in flavor:
+                return RICEBALL_ALIASES[alias]
+        return flavor
+
+    def _resolve_drink_flavor(self, flavor: Optional[str]) -> Optional[str]:
+        """將飲料別名轉換為標準名稱"""
+        if not flavor:
+            return None
+        # 長字優先匹配
+        for alias in sorted(DRINK_ALIASES.keys(), key=len, reverse=True):
+            if alias == flavor or alias in flavor:
+                return DRINK_ALIASES[alias]
+        return flavor
+
+    def _resolve_drink_size(self, size: Optional[str]) -> Optional[str]:
+        """將飲料杯型轉換為標準名稱"""
+        if not size:
+            return None
+        for alias, canonical in DRINK_SIZE_MAP.items():
+            if alias == size or alias in size:
+                return canonical
+        # 已經是標準格式
+        if size in ["大杯", "中杯"]:
+            return size
+        return size
+
+    def _resolve_drink_temp(self, temp: Optional[str]) -> Optional[str]:
+        """將飲料溫度轉換為標準名稱"""
+        if not temp:
+            return None
+        for alias, canonical in DRINK_TEMP_MAP.items():
+            if alias == temp or alias in temp:
+                return canonical
+        return temp
+
+    def _resolve_egg_pancake_flavor(self, flavor: Optional[str]) -> Optional[str]:
+        """將蛋餅口味別名轉換為標準名稱"""
+        if not flavor:
+            return None
+        # 長字優先匹配
+        for alias in sorted(EGG_PANCAKE_ALIASES.keys(), key=len, reverse=True):
+            if alias == flavor or alias in flavor:
+                return EGG_PANCAKE_ALIASES[alias]
+        return flavor
+
+    def _resolve_snack_flavor(self, flavor: Optional[str]) -> Optional[str]:
+        """將點心別名轉換為標準名稱"""
+        if not flavor:
+            return None
+        # 長字優先匹配
+        for alias in sorted(SNACK_ALIASES.keys(), key=len, reverse=True):
+            if alias == flavor or alias in flavor:
+                return SNACK_ALIASES[alias]
+        return flavor
 
     # ============ 工具實現 ============
 
@@ -78,10 +150,11 @@ class ToolRegistry:
                 "quantity": max(1, quantity),
             }
 
-            # 根據品項類型填充字段
+            # 根據品項類型填充字段（使用別名解析）
             if item_type == "riceball":
-                if flavor:
-                    item["flavor"] = flavor
+                resolved_flavor = self._resolve_riceball_flavor(flavor)
+                if resolved_flavor:
+                    item["flavor"] = resolved_flavor
                 if rice:
                     item["rice"] = rice
                 item["large"] = bool(large)
@@ -89,33 +162,39 @@ class ToolRegistry:
                 item["spicy"] = bool(spicy)
 
             elif item_type == "drink":
-                if flavor:
-                    item["drink"] = flavor
-                if temp:
-                    item["temp"] = temp
-                if size:
-                    item["size"] = size
+                resolved_flavor = self._resolve_drink_flavor(flavor)
+                resolved_size = self._resolve_drink_size(size)
+                resolved_temp = self._resolve_drink_temp(temp)
+                if resolved_flavor:
+                    item["drink"] = resolved_flavor
+                if resolved_temp:
+                    item["temp"] = resolved_temp
+                if resolved_size:
+                    item["size"] = resolved_size
 
             elif item_type == "carrier":
                 if carrier:
                     item["carrier"] = carrier
                 if flavor:
-                    item["flavor"] = flavor
+                    item["flavor"] = flavor  # 載體的 flavor 通常是完整的（如「豬肉蛋」）
 
             elif item_type == "egg_pancake":
-                if flavor:
-                    item["flavor"] = flavor
+                resolved_flavor = self._resolve_egg_pancake_flavor(flavor)
+                if resolved_flavor:
+                    item["flavor"] = resolved_flavor
 
             elif item_type == "jam_toast":
                 if flavor:
                     item["flavor"] = flavor
-                    item["jam_toast"] = f"果醬吐司({flavor}/{size or '薄片'})"
+                    resolved_size = size or "薄片"
+                    item["jam_toast"] = f"果醬吐司({flavor}/{resolved_size})"
                 if size:
                     item["size"] = size
 
             elif item_type == "snack":
-                if flavor:
-                    item["snack"] = flavor
+                resolved_flavor = self._resolve_snack_flavor(flavor)
+                if resolved_flavor:
+                    item["snack"] = resolved_flavor
 
             elif item_type == "combo":
                 if combo_name:
@@ -128,14 +207,26 @@ class ToolRegistry:
             # 添加到購物車
             session["cart"].append(item)
 
-            # 構建確認信息
-            display_name = flavor or combo_name or item_type
-            if item_type == "carrier" and carrier:
-                display_name = f"{flavor or ''}{carrier}"
-            elif item_type == "riceball" and rice:
-                display_name = f"{rice}{flavor or '飯糰'}"
-            elif item_type == "drink" and size and temp:
-                display_name = f"{size}{temp}{flavor or '飲料'}"
+            # 構建確認信息（使用解析後的值）
+            if item_type == "riceball":
+                display_flavor = item.get("flavor", "飯糰")
+                display_rice = item.get("rice", "")
+                display_name = f"{display_rice}{display_flavor}" if display_rice else display_flavor
+            elif item_type == "drink":
+                display_flavor = item.get("drink", "飲料")
+                display_size = item.get("size", "")
+                display_temp = item.get("temp", "")
+                display_name = f"{display_size}{display_temp}{display_flavor}"
+            elif item_type == "carrier" and carrier:
+                display_name = f"{item.get('flavor', '')}{carrier}"
+            elif item_type == "egg_pancake":
+                display_name = item.get("flavor", "蛋餅")
+            elif item_type == "snack":
+                display_name = item.get("snack", "點心")
+            elif item_type == "combo":
+                display_name = combo_name or "套餐"
+            else:
+                display_name = flavor or combo_name or item_type
 
             return {
                 "ok": True,
@@ -343,12 +434,28 @@ class ToolRegistry:
             價格信息
         """
         try:
+            # 根據品項類型解析別名
+            resolved_flavor = flavor
+            resolved_size = size
+            resolved_temp = temp
+
+            if item_type == "riceball":
+                resolved_flavor = self._resolve_riceball_flavor(flavor)
+            elif item_type == "drink":
+                resolved_flavor = self._resolve_drink_flavor(flavor)
+                resolved_size = self._resolve_drink_size(size)
+                resolved_temp = self._resolve_drink_temp(temp)
+            elif item_type == "egg_pancake":
+                resolved_flavor = self._resolve_egg_pancake_flavor(flavor)
+            elif item_type == "snack":
+                resolved_flavor = self._resolve_snack_flavor(flavor)
+
             item = {
                 "itemtype": item_type,
-                "flavor": flavor,
+                "flavor": resolved_flavor,
                 "rice": rice,
-                "size": size,
-                "temp": temp,
+                "size": resolved_size,
+                "temp": resolved_temp,
                 "large": large,
                 "extra_egg": extra_egg,
             }
