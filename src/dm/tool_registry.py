@@ -41,9 +41,13 @@ class ToolRegistry:
         rice: Optional[str] = None,
         size: Optional[str] = None,
         temp: Optional[str] = None,
+        carrier: Optional[str] = None,
+        combo_name: Optional[str] = None,
         quantity: int = 1,
         large: bool = False,
         extra_egg: bool = False,
+        spicy: bool = False,
+        customization: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         添加品項到購物車
@@ -52,11 +56,15 @@ class ToolRegistry:
             item_type: 品項類型 (riceball, drink, carrier, egg_pancake, jam_toast, snack, combo)
             flavor: 口味
             rice: 米種 (飯糰)
-            size: 杯型 (飲料)
+            size: 杯型 (飲料) / 厚度 (果醬吐司)
             temp: 溫度 (飲料)
+            carrier: 載體類型 (吐司/漢堡/饅頭)
+            combo_name: 套餐名稱
             quantity: 數量
             large: 是否加大 (飯糰)
             extra_egg: 是否加蛋 (飯糰)
+            spicy: 是否加辣菜脯 (飯糰)
+            customization: 客製化需求
 
         Returns:
             操作結果
@@ -78,6 +86,7 @@ class ToolRegistry:
                     item["rice"] = rice
                 item["large"] = bool(large)
                 item["extra_egg"] = bool(extra_egg)
+                item["spicy"] = bool(spicy)
 
             elif item_type == "drink":
                 if flavor:
@@ -88,13 +97,19 @@ class ToolRegistry:
                     item["size"] = size
 
             elif item_type == "carrier":
+                if carrier:
+                    item["carrier"] = carrier
                 if flavor:
-                    item["carrier"] = flavor
                     item["flavor"] = flavor
 
-            elif item_type in ["egg_pancake", "jam_toast"]:
+            elif item_type == "egg_pancake":
                 if flavor:
                     item["flavor"] = flavor
+
+            elif item_type == "jam_toast":
+                if flavor:
+                    item["flavor"] = flavor
+                    item["jam_toast"] = f"果醬吐司({flavor}/{size or '薄片'})"
                 if size:
                     item["size"] = size
 
@@ -102,13 +117,29 @@ class ToolRegistry:
                 if flavor:
                     item["snack"] = flavor
 
+            elif item_type == "combo":
+                if combo_name:
+                    item["combo_name"] = combo_name
+
+            # 添加客製化需求
+            if customization:
+                item["customization"] = customization
+
             # 添加到購物車
             session["cart"].append(item)
 
-            # 返回確認信息
+            # 構建確認信息
+            display_name = flavor or combo_name or item_type
+            if item_type == "carrier" and carrier:
+                display_name = f"{flavor or ''}{carrier}"
+            elif item_type == "riceball" and rice:
+                display_name = f"{rice}{flavor or '飯糰'}"
+            elif item_type == "drink" and size and temp:
+                display_name = f"{size}{temp}{flavor or '飲料'}"
+
             return {
                 "ok": True,
-                "message": f"已添加 {quantity} 份 {flavor or item_type}",
+                "message": f"已添加 {quantity} 份 {display_name}",
                 "cart_count": len(session["cart"]),
             }
 
@@ -430,33 +461,45 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "add_to_cart",
-                    "description": "添加品項到購物車",
+                    "description": "添加品項到購物車。飯糰需要口味+米種，飲料需要品項+杯型+溫度，蛋餅/吐司/漢堡/饅頭需要口味，套餐需要套餐名。",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "item_type": {
                                 "type": "string",
-                                "description": "品項類型 (riceball, drink, carrier, egg_pancake, jam_toast, snack)",
+                                "enum": ["riceball", "drink", "carrier", "egg_pancake", "jam_toast", "snack", "combo"],
+                                "description": "品項類型：riceball(飯糰)、drink(飲料)、carrier(吐司/漢堡/饅頭)、egg_pancake(蛋餅)、jam_toast(果醬吐司)、snack(點心)、combo(套餐)",
                             },
                             "flavor": {
                                 "type": "string",
-                                "description": "品項口味或名稱",
+                                "description": "品項口味或名稱。飯糰如：源味傳統、香燻培根、醬燒里肌。飲料如：有糖豆漿、純鮮奶茶。蛋餅如：原味蛋餅、起司蛋餅。載體如：豬肉蛋、火腿蛋。",
                             },
                             "rice": {
                                 "type": "string",
-                                "description": "米種 (紫米/白米/混米) - 飯糰用",
+                                "enum": ["白米", "紫米", "混米"],
+                                "description": "米種 - 飯糰專用，必填",
                             },
                             "size": {
                                 "type": "string",
-                                "description": "杯型 (中杯/大杯) - 飲料用",
+                                "description": "飲料杯型(中杯/大杯)或果醬吐司厚度(薄片/厚片)",
                             },
                             "temp": {
                                 "type": "string",
-                                "description": "溫度 (冰的/溫的) - 飲料用",
+                                "enum": ["冰", "溫", "熱"],
+                                "description": "溫度 - 飲料專用，必填",
+                            },
+                            "carrier": {
+                                "type": "string",
+                                "enum": ["吐司", "漢堡", "饅頭"],
+                                "description": "載體類型 - 吐司/漢堡/饅頭專用",
+                            },
+                            "combo_name": {
+                                "type": "string",
+                                "description": "套餐名稱如：套餐一、套餐A、兒童餐 - 套餐專用",
                             },
                             "quantity": {
                                 "type": "integer",
-                                "description": "數量",
+                                "description": "數量，預設 1",
                                 "default": 1,
                             },
                             "large": {
@@ -468,6 +511,15 @@ class ToolRegistry:
                                 "type": "boolean",
                                 "description": "是否加蛋 - 飯糰用",
                                 "default": False,
+                            },
+                            "spicy": {
+                                "type": "boolean",
+                                "description": "是否加辣菜脯 - 飯糰用",
+                                "default": False,
+                            },
+                            "customization": {
+                                "type": "string",
+                                "description": "客製化需求，如：不要小黃瓜、不要醬油膏、裝一起、不要切等",
                             },
                         },
                         "required": ["item_type"],
@@ -631,9 +683,13 @@ class ToolRegistry:
                 "rice",
                 "size",
                 "temp",
+                "carrier",
+                "combo_name",
                 "quantity",
                 "large",
                 "extra_egg",
+                "spicy",
+                "customization",
             },
             "remove_from_cart": {"index", "last", "all"},
             "get_cart_summary": set(),

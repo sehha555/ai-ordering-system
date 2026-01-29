@@ -87,6 +87,8 @@ class LLMConversationProcessor:
                 new_history = result.get("history", history)
                 session["history"] = self._extract_session_history(new_history)
                 assistant_text = result.get("assistant_text", "")
+                # 過濾掉奇怪的輸出格式
+                assistant_text = self._clean_response(assistant_text)
                 return assistant_text
 
             else:
@@ -107,6 +109,39 @@ class LLMConversationProcessor:
             return self._handle_unexpected_error(session_id, user_text, e)
 
     # ============ 輔助方法 ============
+
+    def _clean_response(self, text: str) -> str:
+        """
+        清理 LLM 回覆中的奇怪格式
+
+        Args:
+            text: LLM 回覆文本
+
+        Returns:
+            清理後的文本
+        """
+        import re
+
+        if not text:
+            return "好的，請問還需要什麼嗎？"
+
+        # 移除類似 .SizeType: 或 .ItemType: 等格式
+        text = re.sub(r'\.[A-Z][a-zA-Z]+Type\s*:', '', text)
+
+        # 移除 JSON 格式的內容
+        text = re.sub(r'\{[^}]*\}', '', text)
+
+        # 移除 <think> 標籤及其內容
+        text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+
+        # 移除多餘的空白
+        text = re.sub(r'\s+', ' ', text).strip()
+
+        # 如果清理後為空，返回預設回覆
+        if not text or len(text) < 2:
+            return "好的，請問還需要什麼嗎？"
+
+        return text
 
     def _build_message_history(self, session: Dict[str, Any]) -> list:
         """
