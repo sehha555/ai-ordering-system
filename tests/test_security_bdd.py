@@ -72,7 +72,6 @@ def system_should_not_leak_keywords(context):
 @then('系統不得呼叫任何 LLM 工具')
 def system_should_not_call_llm_tools(context):
     mock_llm = context["mock_llm"]
-    # The DM should route this to "unknown" and try to call the LLM,
-    # but our mock will return {'ok': False}, preventing execution.
-    assert mock_llm.call_tool_required.call_count == 1
+    # DM 不應該因為未知輸入而調用 LLM 工具
+    # 新架構下，DialogueManager 不再直接調用 LLM
     assert mock_llm.execute_tool_call.call_count == 0
