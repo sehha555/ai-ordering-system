@@ -3,7 +3,17 @@
     "allow": [
       "Bash(uv run pytest:*)",
       "Bash(uv run python:*)",
-      "Bash(test:*)"
+      "Bash(test:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Bash(uv lock:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(pip install:*)",
+      "Bash(ffmpeg:*)",
+      "Bash(python:*)"
     ]
   }
 }
