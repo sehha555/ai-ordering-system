@@ -52,8 +52,10 @@ app = FastAPI(title="Yuan Rice Ball Order API")
 # 註冊語音聊天路由
 app.include_router(voice_router, prefix="/api", tags=["voice"])
 
-# 掛載靜態檔案
-app.mount("/static", StaticFiles(directory="src/frontend"), name="static")
+# 掛載靜態檔案（如果目錄存在）
+_frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")
+if os.path.isdir(_frontend_dir):
+    app.mount("/static", StaticFiles(directory=_frontend_dir), name="static")
 
 # 初始化服務
 _session_store = InMemorySessionStore()
@@ -96,7 +98,10 @@ def validate_order_id(order_id: str):
 @app.get("/")
 async def serve_frontend():
     """根路徑返回前端頁面"""
-    return FileResponse("src/frontend/index.html")
+    frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "index.html")
+    if os.path.exists(frontend_path):
+        return FileResponse(frontend_path)
+    return {"message": "Voice Dashboard API", "docs": "/docs"}
 
 
 @app.get("/healthz")
