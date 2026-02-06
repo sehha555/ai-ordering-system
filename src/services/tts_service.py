@@ -1,82 +1,54 @@
 # src/services/tts_service.py
-"""TTS Service - 文字轉語音服務 (使用 pyttsx3)"""
+"""TTS Service - 文字轉語音服務 (使用 Edge TTS)"""
 
+import asyncio
 import logging
 import os
+import tempfile
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
 class TTSService:
-    """使用 pyttsx3 的文字轉語音服務"""
+    """使用 Edge TTS 的文字轉語音服務"""
 
-    def __init__(self, language: str = "zh", rate: int = 150, volume: float = 1.0):
+    # 可用的中文語音
+    VOICES = {
+        "female": "zh-TW-HsiaoChenNeural",  # 台灣女聲
+        "male": "zh-TW-YunJheNeural",       # 台灣男聲
+        "female_cn": "zh-CN-XiaoxiaoNeural", # 中國女聲
+        "male_cn": "zh-CN-YunxiNeural",      # 中國男聲
+    }
+
+    def __init__(self, voice: str = "female", rate: str = "+0%", volume: str = "+0%"):
         """
         初始化 TTS 服務
 
         Args:
-            language: 語言 (zh 中文, en 英文, etc.)
-            rate: 語速 (50-300，越高越快)
-            volume: 音量 (0.0-1.0)
+            voice: 語音類型 ("female", "male", "female_cn", "male_cn") 或完整語音名稱
+            rate: 語速調整 (如 "+10%", "-20%", "+0%")
+            volume: 音量調整 (如 "+10%", "-20%", "+0%")
         """
-        try:
-            import pyttsx3
-            self.engine = pyttsx3.init()
-            self.language = language
+        # 如果是預設的 key，轉換為完整語音名稱
+        self.voice = self.VOICES.get(voice, voice)
+        self.rate = rate
+        self.volume = volume
+        self.engine = True  # 標記為可用
 
-            # 設置語速
-            self.engine.setProperty("rate", rate)
+        # 確保輸出目錄存在
+        self.output_dir = os.path.join(tempfile.gettempdir(), "tts_output")
+        os.makedirs(self.output_dir, exist_ok=True)
 
-            # 設置音量
-            self.engine.setProperty("volume", volume)
-
-            # 嘗試設置中文語言
-            self._setup_language(language)
-
-            logger.info("[TTS] pyttsx3 引擎已初始化")
-        except ImportError:
-            logger.error("[TTS] 未安裝 pyttsx3，請執行: pip install pyttsx3")
-            self.engine = None
-        except Exception as e:
-            # 處理缺失 TTS 驅動（eSpeak/eSpeak-ng）或其他初始化錯誤
-            logger.warning(f"[TTS] pyttsx3 初始化失敗: {str(e)}。TTS 功能將不可用。")
-            self.language = language
-            self.engine = None
-
-    def _setup_language(self, language: str):
-        """設置語言"""
-        try:
-            voices = self.engine.getProperty("voices")
-            if language == "zh":
-                # 嘗試找到中文語音
-                for voice in voices:
-                    if "Chinese" in voice.name or "中文" in voice.name:
-                        self.engine.setProperty("voice", voice.id)
-                        logger.info(f"[TTS] 使用中文語音: {voice.name}")
-                        return
-            elif language == "en":
-                # 英文語音
-                for voice in voices:
-                    if "English" in voice.name:
-                        self.engine.setProperty("voice", voice.id)
-                        logger.info(f"[TTS] 使用英文語音: {voice.name}")
-                        return
-
-            # 使用預設語音
-            if voices:
-                self.engine.setProperty("voice", voices[0].id)
-                logger.info(f"[TTS] 使用預設語音: {voices[0].name}")
-        except Exception as e:
-            logger.warning(f"[TTS] 設置語言失敗: {e}，使用預設語音")
+        logger.info(f"[TTS] Edge TTS 已初始化，語音: {self.voice}")
 
     def speak(self, text: str, save_to_file: Optional[str] = None) -> dict:
         """
-        將文字轉為語音
+        將文字轉為語音（同步包裝）
 
         Args:
             text: 要轉為語音的文字
-            save_to_file: 可選，保存為 wav 文件的路徑
+            save_to_file: 可選，保存為 mp3 文件的路徑
 
         Returns:
             {
@@ -86,33 +58,15 @@ class TTSService:
                 "error": 錯誤信息（如果有）
             }
         """
-        if self.engine is None:
-            return {
-                "status": "error",
-                "text": text,
-                "error": "TTS 引擎未初始化"
-            }
-
         try:
-            if save_to_file:
-                # 保存到文件
-                self.engine.save_to_file(text, save_to_file)
-                self.engine.runAndWait()
-                return {
-                    "status": "success",
-                    "text": text,
-                    "file_path": save_to_file
-                }
-            else:
-                # 直接播放
-                self.engine.say(text)
-                self.engine.runAndWait()
-                return {
-                    "status": "success",
-                    "text": text,
-                    "file_path": None
-                }
-
+            # 在新的事件循環中運行異步方法
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                result = loop.run_until_complete(self._speak_async(text, save_to_file))
+            finally:
+                loop.close()
+            return result
         except Exception as e:
             logger.error(f"[TTS] 轉語音失敗: {e}")
             return {
@@ -121,37 +75,46 @@ class TTSService:
                 "error": str(e)
             }
 
-    def speak_async(self, text: str) -> dict:
+    async def _speak_async(self, text: str, save_to_file: Optional[str] = None) -> dict:
         """
-        異步將文字轉為語音（不等待完成）
+        將文字轉為語音（異步實現）
+        """
+        try:
+            import edge_tts
 
-        Args:
-            text: 要轉為語音的文字
+            # 決定輸出路徑
+            if save_to_file:
+                output_path = save_to_file
+            else:
+                # 使用臨時檔案
+                output_path = os.path.join(self.output_dir, f"tts_{hash(text) & 0xFFFFFFFF}.mp3")
 
-        Returns:
-            {
-                "status": "queued" 或 "error",
-                "text": 原始文字,
-                "error": 錯誤信息（如果有）
+            # 使用 Edge TTS 生成語音
+            communicate = edge_tts.Communicate(
+                text,
+                self.voice,
+                rate=self.rate,
+                volume=self.volume
+            )
+            await communicate.save(output_path)
+
+            logger.info(f"[TTS] 已生成語音: {output_path}")
+
+            return {
+                "status": "success",
+                "text": text,
+                "file_path": output_path
             }
-        """
-        if self.engine is None:
+
+        except ImportError:
+            logger.error("[TTS] 未安裝 edge-tts，請執行: pip install edge-tts")
             return {
                 "status": "error",
                 "text": text,
-                "error": "TTS 引擎未初始化"
+                "error": "edge-tts 未安裝"
             }
-
-        try:
-            self.engine.say(text)
-            # 不調用 runAndWait()，讓它在後台運行
-            return {
-                "status": "queued",
-                "text": text
-            }
-
         except Exception as e:
-            logger.error(f"[TTS] 非同步轉語音失敗: {e}")
+            logger.error(f"[TTS] Edge TTS 錯誤: {e}")
             return {
                 "status": "error",
                 "text": text,
@@ -160,22 +123,22 @@ class TTSService:
 
     def get_properties(self) -> dict:
         """獲取 TTS 引擎的當前屬性"""
-        if self.engine is None:
-            return {}
-
         return {
-            "rate": self.engine.getProperty("rate"),
-            "volume": self.engine.getProperty("volume"),
-            "voices": [{"id": v.id, "name": v.name, "languages": v.languages}
-                      for v in self.engine.getProperty("voices")]
+            "engine": "edge-tts",
+            "voice": self.voice,
+            "rate": self.rate,
+            "volume": self.volume,
+            "available_voices": list(self.VOICES.keys())
         }
 
-    def set_rate(self, rate: int):
-        """設置語速"""
-        if self.engine is not None:
-            self.engine.setProperty("rate", min(300, max(50, rate)))
+    def set_voice(self, voice: str):
+        """設置語音"""
+        self.voice = self.VOICES.get(voice, voice)
 
-    def set_volume(self, volume: float):
-        """設置音量"""
-        if self.engine is not None:
-            self.engine.setProperty("volume", min(1.0, max(0.0, volume)))
+    def set_rate(self, rate: str):
+        """設置語速 (如 '+10%', '-20%')"""
+        self.rate = rate
+
+    def set_volume(self, volume: str):
+        """設置音量 (如 '+10%', '-20%')"""
+        self.volume = volume
