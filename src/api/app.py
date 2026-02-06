@@ -65,7 +65,7 @@ _llm_caller = LLMToolCaller(
 _dialogue_manager = DialogueManager(llm=_llm_caller, store=_session_store)
 _tool_registry = ToolRegistry(_dialogue_manager, _session_store)
 _asr_service = ASRService(model_size="turbo", language="zh")  # 使用 Qwen3-ASR-Turbo
-_tts_service = TTSService(voice="female", rate="+0%")
+_tts_service = TTSService(language="zh", rate=150)
 
 
 
