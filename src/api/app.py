@@ -1,5 +1,6 @@
 import os
 import re
+import json
 from fastapi import FastAPI, HTTPException, Security, Depends, File, UploadFile, Form
 from fastapi.security.api_key import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
@@ -13,6 +14,37 @@ from src.services.asr_service import ASRService
 from src.services.tts_service import TTSService
 from src.services.llm_tool_caller import LLMToolCaller
 from src.dm.tool_registry import ToolRegistry
+
+# ============================================================================
+# 載入店家設定
+# ============================================================================
+
+def load_store_config():
+    config_path = os.path.join(os.path.dirname(__file__), "..", "config", "store_config.json")
+    with open(config_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def load_system_prompt(config):
+    """從檔案載入系統提示詞"""
+    prompt_cfg = config.get("prompt", {})
+
+    # 優先使用檔案路徑
+    if "file_path" in prompt_cfg:
+        prompt_path = prompt_cfg["file_path"]
+        # 支援相對路徑（從專案根目錄）
+        if not os.path.isabs(prompt_path):
+            prompt_path = os.path.join(os.path.dirname(__file__), "..", "..", prompt_path)
+
+        with open(prompt_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    # 否則使用預設提示詞
+    store_name = config["store"]["name"]
+    return f"你是「{store_name}」的點餐助手，負責幫客人點餐。請使用繁體中文回覆。"
+
+# 載入設定
+STORE_CONFIG = load_store_config()
+SYSTEM_PROMPT = load_system_prompt(STORE_CONFIG)
 from src.api.voice_router import router as voice_router
 
 app = FastAPI(title="Yuan Rice Ball Order API")
@@ -32,32 +64,9 @@ _llm_caller = LLMToolCaller(
 )
 _dialogue_manager = DialogueManager(llm=_llm_caller, store=_session_store)
 _tool_registry = ToolRegistry(_dialogue_manager, _session_store)
-_asr_service = ASRService(model_size="large", language="zh")  # 升級為 1.7B 模型
+_asr_service = ASRService(model_size="turbo", language="zh")  # 使用 Qwen3-ASR-Turbo
 _tts_service = TTSService(voice="female", rate="+0%")
 
-# LLM 系統提示詞
-SYSTEM_PROMPT = """你是「源飯糰」早餐店的點餐助手，負責幫客人點餐。
-
-【重要】你必須使用繁體中文回覆，不可以使用簡體中文。
-
-## 菜單品項
-- 飯糰：源味傳統、香燻培根、醬燒里肌、黑椒里肌、蜜汁燒肉、沙茶豬肉等（需選米種：紫米/白米/混米）
-- 飲料：豆漿、米漿、紅茶、奶茶、咖啡等（需選杯型：中杯/大杯，溫度：冰/溫/熱）
-- 蛋餅：原味、起司、玉米、鮪魚、培根等
-- 吐司/漢堡/饅頭：豬肉蛋、火腿蛋、起司蛋等
-- 點心：薯餅、蘿蔔糕、蛋等
-
-## 工作流程
-1. 收到點餐時，使用 add_to_cart 工具添加品項
-2. 如果品項資訊不完整，先追問必要資訊（飯糰要問米種，飲料要問杯型和溫度）
-3. 客人說「結帳」「買單」時，使用 checkout 工具
-4. 客人確認後，使用 confirm_order 工具送出訂單
-
-## 回覆原則
-- 用簡短親切的台灣口語，像真人店員一樣
-- 例如：「好 紫米傳統一個 還要嗎」「飲料要冰的溫的」「這樣XX元 確定嗎」
-- 不要說「請問」「您好」等太正式的話
-- 必須使用繁體中文（台灣用語）"""
 
 
 class TextDialogueRequest(BaseModel):
@@ -93,6 +102,19 @@ async def serve_frontend():
 @app.get("/healthz")
 async def healthz():
     return {"ok": True}
+
+
+# ============================================================================
+# 店家設定 API
+# ============================================================================
+
+@app.get("/api/store-config")
+async def get_store_config():
+    """取得店家設定（前端用）"""
+    return {
+        "store": STORE_CONFIG["store"],
+        "ui": STORE_CONFIG["ui"]
+    }
 
 
 # ============================================================================
