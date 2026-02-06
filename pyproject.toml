@@ -31,6 +31,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+asr = [
+    "qwen-asr>=0.0.6",
+    "torch>=2.0.0",
+]
 dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
