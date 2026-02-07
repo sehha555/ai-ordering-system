@@ -1,0 +1,18 @@
+{
+  "store": {
+    "name": "源飯糰",
+    "subtitle": "語音點餐系統",
+    "logo": null
+  },
+  "menu": {
+    "data_path": "src/tools/menu/menu_all.json",
+    "image_path": "src/frontend/menu.png"
+  },
+  "prompt": {
+    "file_path": "prompts/system_prompt.md"
+  },
+  "ui": {
+    "theme": "light",
+    "primary_color": "#729DAD"
+  }
+}

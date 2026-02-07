@@ -1,0 +1,847 @@
+/* 源飯糰點餐系統 - 大螢幕點餐機樣式 */
+
+:root {
+    /* 淺色主題 - 基於 #729DAD 的低飽和藍綠色調 */
+    --background: #f4f7f8;
+    --background-secondary: #ffffff;
+    --background-tertiary: #e8eef0;
+
+    /* 主色調 - 偏灰藍綠 */
+    --accent: #729DAD;
+    --accent-light: #8fb3c0;
+    --accent-dark: #5a8494;
+    --glow: rgba(114, 157, 173, 0.25);
+    --glow-strong: rgba(114, 157, 173, 0.4);
+
+    /* 文字色彩 */
+    --text-color: #2c3e42;
+    --text-muted: #5a6b70;
+    --text-dim: #8a9a9f;
+
+    /* 邊框 */
+    --border-color: #d0dce0;
+
+    /* 功能色 */
+    --success: #4a9d68;
+    --success-dark: #3a8555;
+    --error: #c45c5c;
+    --warning: #c49a30;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Microsoft JhengHei", sans-serif;
+    background-color: var(--background);
+    color: var(--text-color);
+    line-height: 1.5;
+    min-height: 100vh;
+    overflow: hidden;
+}
+
+/* 主容器 - 60/40 分欄 */
+.app-container {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+}
+
+/* ============================================================================
+   左側：菜單區域 (60%)
+   ============================================================================ */
+
+.menu-section {
+    width: 50%;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border-color);
+    background-color: var(--background);
+}
+
+/* 標題區 */
+.header {
+    background: linear-gradient(135deg, var(--background-secondary) 0%, var(--background-tertiary) 100%);
+    padding: 20px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.header h1 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    background: linear-gradient(90deg, var(--accent), var(--accent-light));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: var(--warning);
+    animation: pulse 1.5s infinite;
+    box-shadow: 0 0 8px currentColor;
+}
+
+.status-dot.online {
+    background-color: var(--success);
+    animation: none;
+}
+
+.status-dot.offline {
+    background-color: var(--error);
+    animation: none;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* 菜單容器 */
+.menu-container {
+    flex: 1;
+    overflow: hidden;
+    padding: 12px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.menu-image {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(114, 157, 173, 0.1);
+}
+
+.menu-loading {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 40px;
+    font-size: 1.1rem;
+}
+
+/* 菜單分類 */
+.menu-category {
+    margin-bottom: 8px;
+    border-radius: 12px;
+    overflow: hidden;
+    background-color: var(--background-secondary);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 2px 8px rgba(114, 157, 173, 0.08);
+}
+
+.category-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+}
+
+.category-header:hover {
+    background-color: var(--background-tertiary);
+}
+
+.category-header.expanded {
+    background-color: var(--background-tertiary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.category-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.category-icon {
+    font-size: 1.3rem;
+}
+
+.category-count {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    background-color: var(--background-tertiary);
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+
+.category-arrow {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    transition: transform 0.3s;
+}
+
+.category-header.expanded .category-arrow {
+    transform: rotate(180deg);
+}
+
+/* 菜單品項列表 */
+.category-items {
+    display: none;
+    padding: 8px;
+}
+
+.category-items.expanded {
+    display: block;
+}
+
+.menu-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px;
+    border-radius: 8px;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+
+.menu-item:hover {
+    background-color: rgba(114, 157, 173, 0.1);
+}
+
+.menu-item:active {
+    background-color: rgba(114, 157, 173, 0.2);
+    transform: scale(0.99);
+}
+
+.item-name {
+    font-size: 1rem;
+    color: var(--text-color);
+}
+
+.item-price {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--accent);
+}
+
+/* ============================================================================
+   右側：點餐互動區 (40%)
+   ============================================================================ */
+
+.interaction-section {
+    width: 50%;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--background-tertiary);
+    position: relative;
+}
+
+/* 隱藏類 */
+.hidden {
+    display: none !important;
+}
+
+/* ============================================================================
+   初始狀態：語音區域（大圓形波形）
+   ============================================================================ */
+
+.voice-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+}
+
+.voice-circle {
+    width: 280px;
+    height: 280px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #ffffff 0%, var(--background-tertiary) 100%);
+    border: 3px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s;
+    box-shadow: 0 8px 32px rgba(114, 157, 173, 0.15);
+}
+
+.voice-circle.active {
+    border-color: var(--accent);
+    box-shadow: 0 8px 40px var(--glow-strong);
+}
+
+.voice-circle.recording {
+    border-color: var(--error);
+    box-shadow: 0 0 60px rgba(217, 119, 119, 0.4);
+    animation: recording-pulse 1s infinite;
+}
+
+@keyframes recording-pulse {
+    0%, 100% { box-shadow: 0 0 40px rgba(217, 119, 119, 0.3); }
+    50% { box-shadow: 0 0 80px rgba(217, 119, 119, 0.5); }
+}
+
+.voice-circle canvas {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+}
+
+.voice-prompt {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    color: var(--text-muted);
+    text-align: center;
+    pointer-events: none;
+}
+
+.voice-prompt .mic-icon {
+    font-size: 3rem;
+    opacity: 0.8;
+}
+
+.voice-prompt span:last-child {
+    font-size: 1.1rem;
+}
+
+.voice-circle.active .voice-prompt,
+.voice-circle.recording .voice-prompt {
+    opacity: 0.3;
+}
+
+.voice-status {
+    margin-top: 24px;
+    font-size: 0.9rem;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.voice-status.listening {
+    color: var(--accent);
+}
+
+.voice-status.recording {
+    color: var(--error);
+}
+
+/* ============================================================================
+   點餐中狀態：訂單區域
+   ============================================================================ */
+
+.order-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+}
+
+.order-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.order-header h2 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--accent);
+}
+
+.btn-clear {
+    padding: 6px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-clear:hover {
+    border-color: var(--error);
+    color: var(--error);
+}
+
+/* 訂單品項列表 */
+.order-items {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 0;
+    min-height: 150px;
+}
+
+.order-empty {
+    text-align: center;
+    color: var(--text-dim);
+    padding: 40px;
+    font-size: 0.95rem;
+}
+
+.order-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.order-item:last-child {
+    border-bottom: none;
+}
+
+.order-item-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.order-item-index {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background-color: var(--background-tertiary);
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.order-item-name {
+    font-size: 1rem;
+}
+
+.order-item-qty {
+    background-color: var(--accent);
+    color: white;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.order-item-price {
+    font-weight: 600;
+    color: var(--accent);
+    font-size: 1rem;
+}
+
+/* 總計 */
+.order-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 0;
+    border-top: 1px solid var(--border-color);
+    font-size: 1.1rem;
+}
+
+#orderTotal {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--accent);
+    text-shadow: 0 0 20px var(--glow);
+}
+
+/* 縮小的圓形波形 */
+.voice-circle-small {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #ffffff 0%, var(--background-tertiary) 100%);
+    border: 2px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+    margin: 16px auto;
+    transition: all 0.3s;
+}
+
+.voice-circle-small.active {
+    border-color: var(--accent);
+    box-shadow: 0 0 20px var(--glow);
+}
+
+.voice-circle-small.recording {
+    border-color: var(--error);
+    box-shadow: 0 0 20px rgba(217, 119, 119, 0.3);
+}
+
+.voice-circle-small canvas {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+}
+
+.voice-prompt-small {
+    position: relative;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.voice-prompt-small .mic-icon {
+    font-size: 1.5rem;
+    opacity: 0.6;
+}
+
+.voice-circle-small.active .voice-prompt-small,
+.voice-circle-small.recording .voice-prompt-small {
+    opacity: 0.2;
+}
+
+.voice-status-small {
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+}
+
+/* 結帳按鈕 */
+.btn-checkout {
+    width: 100%;
+    padding: 16px;
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--success) 0%, var(--success-dark) 100%);
+    color: white;
+    font-size: 1.2rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-checkout:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(109, 191, 139, 0.4);
+}
+
+.btn-checkout:active {
+    transform: scale(0.98);
+}
+
+.btn-checkout:disabled {
+    background: var(--border-color);
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* ============================================================================
+   結帳流程
+   ============================================================================ */
+
+.checkout-flow {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 24px;
+    position: relative;
+}
+
+.checkout-step {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.checkout-step h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text-color);
+    margin-bottom: 32px;
+    text-align: center;
+}
+
+/* 選項按鈕 */
+.checkout-options {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    flex: 1;
+    align-items: center;
+}
+
+.checkout-option {
+    flex: 1;
+    max-width: 200px;
+    aspect-ratio: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    border: 2px solid var(--border-color);
+    border-radius: 20px;
+    background-color: var(--background-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 4px 12px rgba(114, 157, 173, 0.1);
+}
+
+.checkout-option:hover {
+    border-color: var(--accent);
+    background-color: rgba(114, 157, 173, 0.15);
+    transform: translateY(-4px);
+}
+
+.checkout-option:active {
+    transform: scale(0.98);
+}
+
+.checkout-option .option-icon {
+    font-size: 3rem;
+}
+
+.checkout-option .option-text {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+/* 確認頁面 */
+.confirm-summary {
+    flex: 1;
+    overflow-y: auto;
+    background-color: var(--background-tertiary);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 20px;
+    max-height: 200px;
+}
+
+.confirm-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.confirm-item:last-child {
+    border-bottom: none;
+}
+
+.confirm-info {
+    background-color: var(--background-tertiary);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 24px;
+}
+
+.confirm-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.confirm-row:last-child {
+    border-bottom: none;
+}
+
+.confirm-row.total {
+    font-size: 1.2rem;
+    font-weight: 600;
+    padding-top: 16px;
+}
+
+.confirm-row.total span:last-child {
+    color: var(--accent);
+    font-size: 1.4rem;
+}
+
+.btn-confirm {
+    width: 100%;
+    padding: 16px;
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+    color: white;
+    font-size: 1.2rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-confirm:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px var(--glow);
+}
+
+/* 完成頁面 */
+#stepComplete {
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+.complete-icon {
+    font-size: 4rem;
+    margin-bottom: 20px;
+}
+
+#stepComplete h2 {
+    margin-bottom: 40px;
+}
+
+.order-number {
+    background-color: var(--background-tertiary);
+    border-radius: 16px;
+    padding: 24px 48px;
+    margin-bottom: 24px;
+    box-shadow: 0 4px 16px rgba(114, 157, 173, 0.1);
+}
+
+.order-number span:first-child {
+    display: block;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+
+.order-number .number {
+    font-size: 3.5rem;
+    font-weight: 700;
+    color: var(--accent);
+    text-shadow: 0 0 30px var(--glow);
+}
+
+.complete-message {
+    color: var(--text-muted);
+    font-size: 1rem;
+    margin-bottom: 40px;
+}
+
+.btn-new-order {
+    padding: 14px 40px;
+    border: 2px solid var(--accent);
+    border-radius: 12px;
+    background: transparent;
+    color: var(--accent);
+    font-size: 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-new-order:hover {
+    background-color: var(--accent);
+    color: white;
+}
+
+/* 返回按鈕 */
+.btn-back {
+    position: absolute;
+    bottom: 24px;
+    left: 24px;
+    padding: 10px 24px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-back:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* ============================================================================
+   滾動條樣式
+   ============================================================================ */
+
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--background-tertiary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--accent-light);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--accent);
+}
+
+/* ============================================================================
+   響應式
+   ============================================================================ */
+
+@media (max-width: 1200px) {
+    .voice-circle {
+        width: 220px;
+        height: 220px;
+    }
+
+    .voice-prompt .mic-icon {
+        font-size: 2.5rem;
+    }
+}
+
+@media (max-width: 900px) {
+    .app-container {
+        flex-direction: column;
+    }
+
+    .menu-section {
+        width: 100%;
+        height: 50vh;
+    }
+
+    .interaction-section {
+        width: 100%;
+        height: 50vh;
+    }
+
+    .voice-circle {
+        width: 160px;
+        height: 160px;
+    }
+
+    .voice-area {
+        padding: 20px;
+    }
+}

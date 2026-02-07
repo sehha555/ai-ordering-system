@@ -23,7 +23,7 @@ dependencies = [
     "pydantic-settings>=2.1.0",
     "requests>=2.32.5",
     "openai-whisper>=20231117",
-    "pyttsx3>=2.90",
+    "edge-tts>=6.1.0",
     "python-multipart>=0.0.6",
     "numpy>=1.21.0",
     "soundfile>=0.12.1",
@@ -31,6 +31,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+asr = [
+    "qwen-asr>=0.0.6",
+    "torch>=2.0.0",
+]
 dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
