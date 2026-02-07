@@ -1,26 +1,63 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Brand colors - 淺色主題 based on #729DAD */
+  --background: #f4f7f8;
+  --background-secondary: #ffffff;
+  --background-tertiary: #e8eef0;
+  --foreground: #2c3e42;
+
+  /* Accent */
+  --accent: #729DAD;
+  --accent-light: #8fb3c0;
+  --accent-dark: #5a8494;
+  --glow: rgba(114, 157, 173, 0.25);
+
+  /* Text */
+  --text-color: #2c3e42;
+  --text-muted: #5a6b70;
+  --text-dim: #8a9a9f;
+
+  /* Borders */
+  --border-color: #d0dce0;
+
+  /* Functional */
+  --success: #4a9d68;
+  --success-dark: #3a8555;
+  --error: #c45c5c;
+  --warning: #c49a30;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-accent: var(--accent);
+  --color-accent-light: var(--accent-light);
+  --color-accent-dark: var(--accent-dark);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Microsoft JhengHei", sans-serif;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background-tertiary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--accent-light);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
 }

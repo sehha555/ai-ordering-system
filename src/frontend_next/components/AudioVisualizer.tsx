@@ -8,12 +8,12 @@ interface AudioVisualizerProps {
   volume?: number; // 0-1 range for mic input level
 }
 
-// 狀態對應的顏色
+// 狀態對應的顏色 - 品牌色系
 const STATUS_COLORS: Record<AppStatus, string> = {
-  idle: '#94A3B8',      // slate-400
-  listening: '#22C55E', // green-500
-  processing: '#F59E0B', // amber-500
-  speaking: '#3B82F6',  // blue-500
+  idle: '#729DAD',      // brand primary
+  listening: '#4a9d68', // success green
+  processing: '#c49a30', // warning amber
+  speaking: '#5a8494',  // accent-dark
 };
 
 export default function AudioVisualizer({ status, volume = 0 }: AudioVisualizerProps) {
@@ -160,7 +160,7 @@ export default function AudioVisualizer({ status, volume = 0 }: AudioVisualizerP
         className="w-64 h-64 cursor-pointer"
         style={{ width: 256, height: 256 }}
       />
-      <p className="text-lg font-medium text-gray-600">
+      <p className="text-lg font-medium" style={{ color: '#5a6b70' }}>
         {statusText[status]}
       </p>
     </div>

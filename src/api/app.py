@@ -2,6 +2,7 @@ import os
 import re
 import json
 from fastapi import FastAPI, HTTPException, Security, Depends, File, UploadFile, Form
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security.api_key import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -48,6 +49,18 @@ SYSTEM_PROMPT = load_system_prompt(STORE_CONFIG)
 from src.api.voice_router import router as voice_router
 
 app = FastAPI(title="Yuan Rice Ball Order API")
+
+# CORS - 允許 Next.js dev server
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # 註冊語音聊天路由
 app.include_router(voice_router, prefix="/api", tags=["voice"])

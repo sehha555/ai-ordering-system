@@ -4,15 +4,21 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../store/useStore';
 
 export default function LiveReceipt() {
-  const { cart, total, transcript } = useStore();
+  const { cart, total, transcript, checkoutStep, setCheckoutStep } = useStore();
 
   return (
-    <div className="w-80 bg-white rounded-2xl shadow-lg p-6 flex flex-col h-full max-h-[600px]">
+    <div
+      className="w-80 rounded-2xl shadow-lg p-6 flex flex-col h-full max-h-[600px]"
+      style={{ backgroundColor: 'white' }}
+    >
       {/* 標題 */}
-      <div className="flex items-center justify-between mb-4 pb-4 border-b border-gray-100">
-        <h2 className="text-xl font-bold text-gray-800">購物車</h2>
+      <div className="flex items-center justify-between mb-4 pb-4" style={{ borderBottom: '1px solid #d0dce0' }}>
+        <h2 className="text-xl font-bold" style={{ color: '#2c3e42' }}>購物車</h2>
         {cart.length > 0 && (
-          <span className="bg-green-100 text-green-800 text-sm font-medium px-2.5 py-0.5 rounded-full">
+          <span
+            className="text-sm font-medium px-2.5 py-0.5 rounded-full"
+            style={{ backgroundColor: 'rgba(114, 157, 173, 0.15)', color: '#5a8494' }}
+          >
             {cart.length} 項
           </span>
         )}
@@ -23,10 +29,11 @@ export default function LiveReceipt() {
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-4 p-3 bg-blue-50 rounded-lg"
+          className="mb-4 p-3 rounded-lg"
+          style={{ backgroundColor: 'rgba(114, 157, 173, 0.1)' }}
         >
-          <p className="text-sm text-gray-500 mb-1">你說的是：</p>
-          <p className="text-gray-800">{transcript}</p>
+          <p className="text-sm mb-1" style={{ color: '#8a9a9f' }}>你說的是：</p>
+          <p style={{ color: '#2c3e42' }}>{transcript}</p>
         </motion.div>
       )}
 
@@ -38,14 +45,10 @@ export default function LiveReceipt() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="flex flex-col items-center justify-center h-full text-gray-400"
+              className="flex flex-col items-center justify-center h-full"
+              style={{ color: '#8a9a9f' }}
             >
-              <svg
-                className="w-16 h-16 mb-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
+              <svg className="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -65,19 +68,20 @@ export default function LiveReceipt() {
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -20 }}
                   transition={{ duration: 0.2 }}
-                  className="bg-gray-50 rounded-lg p-3"
+                  className="rounded-lg p-3"
+                  style={{ backgroundColor: '#f4f7f8' }}
                 >
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
-                      <p className="font-medium text-gray-800">{item.name}</p>
+                      <p className="font-medium" style={{ color: '#2c3e42' }}>{item.name}</p>
                       {item.details && (
-                        <p className="text-sm text-gray-500 mt-0.5">{item.details}</p>
+                        <p className="text-sm mt-0.5" style={{ color: '#5a6b70' }}>{item.details}</p>
                       )}
                     </div>
                     <div className="text-right ml-3">
-                      <p className="font-semibold text-gray-800">${item.price}</p>
+                      <p className="font-semibold" style={{ color: '#729DAD' }}>${item.price}</p>
                       {item.quantity > 1 && (
-                        <p className="text-sm text-gray-500">x{item.quantity}</p>
+                        <p className="text-sm" style={{ color: '#5a6b70' }}>x{item.quantity}</p>
                       )}
                     </div>
                   </div>
@@ -93,14 +97,22 @@ export default function LiveReceipt() {
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="mt-4 pt-4 border-t border-gray-200"
+          className="mt-4 pt-4"
+          style={{ borderTop: '1px solid #d0dce0' }}
         >
           <div className="flex justify-between items-center">
-            <span className="text-lg font-medium text-gray-600">總計</span>
-            <span className="text-2xl font-bold text-green-600">${total}</span>
+            <span className="text-lg font-medium" style={{ color: '#5a6b70' }}>總計</span>
+            <span className="text-2xl font-bold" style={{ color: '#729DAD' }}>${total}</span>
           </div>
-          <button className="w-full mt-4 bg-green-500 hover:bg-green-600 text-white font-medium py-3 px-4 rounded-xl transition-colors">
-            說「結帳」完成訂單
+          <button
+            onClick={() => setCheckoutStep(1)}
+            className="w-full mt-4 font-medium py-3 px-4 rounded-xl transition-all hover:shadow-md"
+            style={{
+              background: 'linear-gradient(135deg, #4a9d68 0%, #3a8555 100%)',
+              color: 'white',
+            }}
+          >
+            結帳
           </button>
         </motion.div>
       )}

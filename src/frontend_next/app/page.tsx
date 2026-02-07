@@ -1,70 +1,105 @@
 'use client';
 
+import { useStore } from '../store/useStore';
 import VoiceController from '../components/VoiceController';
 import LiveReceipt from '../components/LiveReceipt';
+import MenuDisplay from '../components/MenuDisplay';
+import CheckoutFlow from '../components/CheckoutFlow';
 
 export default function Home() {
+  const { checkoutStep } = useStore();
+
   return (
-    <div className="min-h-screen bg-[#F5F7F8]">
-      {/* 頂部導航 */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+    <div className="h-screen w-screen flex overflow-hidden" style={{ backgroundColor: '#f4f7f8' }}>
+      {/* 左側：菜單區域 (50%) */}
+      <div
+        className="w-1/2 flex flex-col"
+        style={{ borderRight: '1px solid #d0dce0', backgroundColor: '#f4f7f8' }}
+      >
+        {/* 標題 */}
+        <header
+          className="flex items-center justify-between px-6 py-4"
+          style={{
+            background: 'linear-gradient(135deg, #ffffff 0%, #e8eef0 100%)',
+            borderBottom: '1px solid #d0dce0',
+          }}
+        >
           <div className="flex items-center gap-3">
             <span className="text-3xl">🍙</span>
-            <h1 className="text-xl font-bold text-gray-800">源飯糰</h1>
+            <h1
+              className="text-2xl font-bold"
+              style={{
+                background: 'linear-gradient(90deg, #729DAD, #8fb3c0)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}
+            >
+              源飯糰
+            </h1>
           </div>
-          <p className="text-sm text-gray-500">語音點餐系統</p>
-        </div>
-      </header>
+          <p className="text-sm" style={{ color: '#5a6b70' }}>語音點餐系統</p>
+        </header>
 
-      {/* 主內容 */}
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex flex-col lg:flex-row gap-8 items-start justify-center">
-          {/* 左側：語音控制區 */}
-          <div className="flex-1 flex flex-col items-center justify-center min-h-[500px]">
-            <div className="bg-white rounded-3xl shadow-lg p-8 w-full max-w-md">
-              <h2 className="text-center text-lg font-medium text-gray-600 mb-8">
-                語音點餐
-              </h2>
-              <VoiceController />
-              <div className="mt-8 text-center">
-                <p className="text-sm text-gray-400">
-                  試試說：「我要一個紫米傳統飯糰」
-                </p>
+        {/* 菜單內容 */}
+        <div className="flex-1 overflow-hidden">
+          <MenuDisplay />
+        </div>
+      </div>
+
+      {/* 右側：點餐互動區 (50%) */}
+      <div className="w-1/2 flex flex-col" style={{ backgroundColor: '#e8eef0' }}>
+        {checkoutStep > 0 ? (
+          <CheckoutFlow />
+        ) : (
+          <>
+            {/* 語音控制區 */}
+            <div className="flex-1 flex flex-col items-center justify-center px-8">
+              <div
+                className="rounded-3xl shadow-lg p-8 w-full max-w-md"
+                style={{ backgroundColor: 'white' }}
+              >
+                <h2
+                  className="text-center text-lg font-medium mb-6"
+                  style={{ color: '#5a6b70' }}
+                >
+                  語音點餐
+                </h2>
+                <VoiceController />
+              </div>
+
+              {/* 使用提示 */}
+              <div className="mt-5 flex gap-4 text-sm" style={{ color: '#8a9a9f' }}>
+                <div className="flex items-center gap-2">
+                  <span
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: '#4a9d68' }}
+                  />
+                  <span>聆聽中</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: '#c49a30' }}
+                  />
+                  <span>處理中</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: '#5a8494' }}
+                  />
+                  <span>回覆中</span>
+                </div>
               </div>
             </div>
 
-            {/* 使用提示 */}
-            <div className="mt-6 flex gap-4 text-sm text-gray-500">
-              <div className="flex items-center gap-2">
-                <kbd className="px-2 py-1 bg-gray-100 rounded text-xs">Space</kbd>
-                <span>按住說話</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 bg-green-400 rounded-full"></span>
-                <span>聆聽中</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-3 bg-blue-400 rounded-full"></span>
-                <span>回覆中</span>
-              </div>
+            {/* 購物車 */}
+            <div className="px-8 pb-6">
+              <LiveReceipt />
             </div>
-          </div>
-
-          {/* 右側：即時收據 */}
-          <div className="w-full lg:w-auto">
-            <LiveReceipt />
-          </div>
-        </div>
-      </main>
-
-      {/* 底部資訊 */}
-      <footer className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 py-3">
-        <div className="max-w-7xl mx-auto px-4 flex items-center justify-between text-sm text-gray-400">
-          <p>Voice Dashboard v1.0</p>
-          <p>Powered by Next.js + FastAPI</p>
-        </div>
-      </footer>
+          </>
+        )}
+      </div>
     </div>
   );
 }
