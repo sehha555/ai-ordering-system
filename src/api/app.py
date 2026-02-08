@@ -459,12 +459,6 @@ async def voice_dialogue(
             tmp_path = tmp.name
         debug(f"已保存到: {tmp_path}")
 
-        # 保存一份到桌面用於調試
-        debug_file = "C:/Users/User/Desktop/debug_recording.webm"
-        with open(debug_file, "wb") as f:
-            f.write(content)
-        debug(f"已保存調試檔案到: {debug_file}")
-
         # 如果是 webm 格式，用 ffmpeg 轉換為 wav
         if ext.lower() == ".webm":
             wav_path = tmp_path.replace(".webm", ".wav")
@@ -666,3 +660,106 @@ async def tts_play(
         media_type="audio/mpeg",
         filename="response.mp3"
     )
+
+
+# ============================================================================
+# 結帳 API
+# ============================================================================
+
+class CheckoutRequest(BaseModel):
+    """結帳請求"""
+    session_id: str
+    dine_type: str  # "dine-in" | "take-out"
+    payment_method: str  # "cash" | "mobile"
+
+
+@app.post("/api/checkout")
+async def checkout(request: CheckoutRequest):
+    """
+    處理結帳請求
+    - 從 session_store 讀取購物車
+    - 寫入訂單到 orders.db
+    - 取餐號碼：每日遞增，最少兩位補零
+    - 儲存對話紀錄（SQLite + JSON 檔）
+    - 清空 session 的 llm_history 和購物車
+    """
+    import sys
+
+    def debug(msg):
+        print(f"[CHECKOUT] {msg}", file=sys.stderr, flush=True)
+
+    try:
+        session_id = request.session_id
+        dine_type = request.dine_type
+        payment_method = request.payment_method
+
+        debug(f"開始結帳: session_id={session_id}, dine_type={dine_type}, payment={payment_method}")
+
+        # 1. 從 session_store 讀取購物車
+        session = _session_store.get(session_id)
+        cart = session.get("cart", [])
+        if not cart:
+            raise HTTPException(status_code=400, detail="購物車是空的，無法結帳")
+        llm_history = session.get("llm_history", [])
+
+        debug(f"購物車: {len(cart)} 項")
+
+        # 2. 計算總價
+        total_price = 0
+        for item in cart:
+            qty = int(item.get("quantity", 1) or 1)
+            price_info = _dialogue_manager.get_price_info(item)
+            if price_info and price_info.get("status") == "success":
+                item_total = _dialogue_manager.extract_total_from_price_info(price_info, qty)
+                total_price += item_total
+
+        debug(f"總計: ${total_price}")
+
+        # 3. 生成取餐號碼
+        order_number = order_repo.get_next_order_number()
+        debug(f"取餐號碼: {order_number}")
+
+        # 4. 建立訂單
+        from datetime import datetime
+        order_id = f"order-{session_id}-{datetime.now().timestamp()}"
+
+        order_payload = {
+            "order_id": order_id,
+            "session_id": session_id,
+            "order_number": order_number,
+            "dine_type": dine_type,
+            "payment_method": payment_method,
+            "items": cart,
+            "total_price": total_price,
+            "status": "submitted",
+            "created_at": datetime.now().isoformat()
+        }
+
+        # 5. 寫入訂單
+        order_repo.save_order(order_payload, session_id)
+        debug(f"訂單已保存: {order_id}")
+
+        # 6. 儲存對話紀錄
+        order_repo.save_conversation_log(session_id, order_number, llm_history)
+        order_repo.save_conversation_log_json(session_id, order_number, cart, total_price, dine_type, llm_history)
+        debug(f"對話紀錄已保存")
+
+        # 7. 清空 session（llm_history 和購物車）
+        session["llm_history"] = []
+        session["cart"] = []
+        debug(f"Session 已清除")
+
+        return {
+            "status": "ok",
+            "order_number": order_number,
+            "order_id": order_id,
+            "total": total_price,
+            "dine_type": dine_type,
+            "payment_method": payment_method
+        }
+
+    except Exception as e:
+        import traceback
+        debug(f"異常: {e}")
+        debug(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
