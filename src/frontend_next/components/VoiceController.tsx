@@ -9,7 +9,7 @@ const VAD_THRESHOLD = 15;
 const SILENCE_DURATION = 1500;
 
 export default function VoiceController() {
-  const { status, setStatus, setCart, setTranscript, vadEnabled, setVadEnabled } = useStore();
+  const { status, setStatus, setCart, setTranscript, vadEnabled, setVadEnabled, sessionId } = useStore();
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -243,6 +243,7 @@ export default function VoiceController() {
 
     const formData = new FormData();
     formData.append('file', audioBlob, 'recording.webm');
+    formData.append('session_id', sessionId);
 
     try {
       setStatus('processing');

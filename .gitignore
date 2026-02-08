@@ -22,5 +22,15 @@ Thumbs.db
 # Database
 *.db
 
-# Claude Code
+# Conversation logs
+logs/
+
+# Agent / Editor configs
+.agent/
+.agents/
+.cursor/
 .claude/settings.local.json
+.claude/skills/
+claude.md
+nul
+IMPLEMENTATION_BLUEPRINT.md

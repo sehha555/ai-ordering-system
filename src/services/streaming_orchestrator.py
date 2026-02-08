@@ -5,12 +5,17 @@ from typing import AsyncIterator, Dict, Any
 
 
 class StreamingOrchestrator:
-    def __init__(self, asr_service, dialogue_manager, tts_service):
+    def __init__(self, asr_service, dialogue_manager, tts_service, session_id: str = None):
         self.asr = asr_service
         self.dm = dialogue_manager
         self.tts = tts_service
+        self.session_id = session_id
 
-    async def process_audio_stream(self, audio_bytes: bytes) -> AsyncIterator[Dict[str, Any]]:
+    async def process_audio_stream(self, audio_bytes: bytes, session_id: str = None) -> AsyncIterator[Dict[str, Any]]:
+        # 使用傳入的 session_id 或使用初始化時的 session_id
+        if session_id:
+            self.session_id = session_id
+
         # 1. Thinking
         yield {"event": "thinking", "data": {}}
 
