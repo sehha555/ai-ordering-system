@@ -26,7 +26,19 @@ class OrderRepository:
                     session_id TEXT NOT NULL,
                     items_json TEXT NOT NULL,
                     total_price INTEGER NOT NULL,
-                    order_payload_json TEXT NOT NULL
+                    order_payload_json TEXT NOT NULL,
+                    order_number TEXT,
+                    dine_type TEXT,
+                    payment_method TEXT
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS conversation_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    order_number TEXT,
+                    messages TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
             conn.commit()
@@ -80,6 +92,62 @@ class OrderRepository:
             return [json.loads(r["order_payload_json"]) for r in rows]
         finally:
             conn.close()
+
+    def get_next_order_number(self) -> str:
+        """
+        獲取今天的下一個取餐號碼
+        規則：每日 00:00 重置回 01，最少兩位補零（01, 02, ... 99, 100）
+        使用 BEGIN IMMEDIATE 避免競態條件
+        """
+        today = datetime.now().strftime("%Y-%m-%d")
+        conn = self._get_connection()
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("""
+                SELECT COUNT(*) as cnt FROM orders WHERE created_at LIKE ?
+            """, (f"{today}%",)).fetchone()
+
+            next_num = (row["cnt"] or 0) + 1
+            conn.commit()
+            return f"{next_num:02d}"
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def save_conversation_log(self, session_id: str, order_number: str, messages: List[Dict[str, Any]]):
+        """保存對話紀錄到 SQLite"""
+        conn = self._get_connection()
+        try:
+            messages_json = json.dumps(messages, ensure_ascii=False)
+            conn.execute("""
+                INSERT INTO conversation_logs (session_id, order_number, messages)
+                VALUES (?, ?, ?)
+            """, (session_id, order_number, messages_json))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def save_conversation_log_json(self, session_id: str, order_number: str, cart: List[Dict], total: int, dine_type: str, messages: List[Dict[str, Any]]):
+        """保存對話紀錄為 JSON 檔案"""
+        today = datetime.now().strftime("%Y-%m-%d")
+        log_dir = os.path.join("logs", today)
+        os.makedirs(log_dir, exist_ok=True)
+
+        log_data = {
+            "session_id": session_id,
+            "order_number": order_number,
+            "cart": cart,
+            "total": total,
+            "dine_type": dine_type,
+            "messages": messages,
+            "created_at": datetime.now().isoformat()
+        }
+
+        log_file = os.path.join(log_dir, f"{session_id}.json")
+        with open(log_file, "w", encoding="utf-8") as f:
+            json.dump(log_data, f, ensure_ascii=False, indent=2)
 
 # 全域實例
 order_repo = OrderRepository()
