@@ -1,9 +1,10 @@
 # src/api/voice_router.py
-from fastapi import APIRouter, UploadFile, File, Depends
+from fastapi import APIRouter, UploadFile, File, Depends, Form
 from fastapi.responses import StreamingResponse
 from fastapi.security.api_key import APIKeyHeader
 import json
 import os
+import sys
 
 from src.services.streaming_orchestrator import StreamingOrchestrator
 
@@ -19,9 +20,9 @@ async def get_api_key_optional(api_key: str = Depends(api_key_header)):
     return api_key
 
 
-async def event_generator(orchestrator: StreamingOrchestrator, audio_bytes: bytes):
+async def event_generator(orchestrator: StreamingOrchestrator, audio_bytes: bytes, session_id: str):
     """將 orchestrator 事件轉換為 SSE 格式"""
-    async for event in orchestrator.process_audio_stream(audio_bytes):
+    async for event in orchestrator.process_audio_stream(audio_bytes, session_id=session_id):
         # Format as SSE
         yield f"event: {event['event']}\ndata: {json.dumps(event['data'], ensure_ascii=False)}\n\n"
 
@@ -29,22 +30,27 @@ async def event_generator(orchestrator: StreamingOrchestrator, audio_bytes: byte
 @router.post("/voice-chat")
 async def voice_chat(
     file: UploadFile = File(...),
+    session_id: str = Form(...),
     api_key: str = Depends(get_api_key_optional)
 ):
     """
     語音對話 SSE 端點
 
-    接收音訊檔案，返回 Server-Sent Events 串流：
+    接收音訊檔案 + session_id，返回 Server-Sent Events 串流：
     - event: thinking     - 開始處理
     - event: transcription - ASR 轉錄結果
     - event: cart_update  - 購物車更新
     - event: audio_chunk  - TTS 音訊片段 (base64)
     """
+    def debug(msg):
+        print(f"[VOICE] {msg}", file=sys.stderr, flush=True)
+
+    debug(f"收到語音請求: session_id={session_id}")
     audio_bytes = await file.read()
 
     # 取得服務實例（從 app.py 導入）
     # 這裡使用延遲導入避免循環依賴
-    from src.api.app import _asr_service, _dialogue_manager, _tts_service
+    from src.api.app import _asr_service, _dialogue_manager, _tts_service, _session_store, _llm_caller, _tool_registry, SYSTEM_PROMPT
     from src.services.tts_implementations import EdgeTTSModel
 
     # 建立串流 TTS 實例
@@ -56,47 +62,111 @@ async def voice_chat(
             self._asr = asr_service
 
         async def transcribe(self, audio_bytes: bytes) -> str:
+            import asyncio
             import tempfile
-            import subprocess
 
-            # 保存音訊到臨時檔案
             with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp:
                 tmp.write(audio_bytes)
                 tmp_path = tmp.name
 
+            wav_path = tmp_path.replace(".webm", ".wav")
             try:
-                # 轉換為 WAV
-                wav_path = tmp_path.replace(".webm", ".wav")
-                subprocess.run([
+                proc = await asyncio.create_subprocess_exec(
                     "ffmpeg", "-y", "-i", tmp_path,
-                    "-ar", "16000", "-ac", "1", "-f", "wav", wav_path
-                ], capture_output=True, check=True)
-                os.unlink(tmp_path)
+                    "-ar", "16000", "-ac", "1", "-f", "wav", wav_path,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                _, stderr = await proc.communicate()
+                if proc.returncode != 0:
+                    raise RuntimeError(f"ffmpeg failed: {stderr.decode()[:200]}")
 
-                # 執行 ASR
+                os.unlink(tmp_path)
                 result = self._asr.transcribe(wav_path)
                 return result.get("text", "")
             finally:
-                if os.path.exists(wav_path):
-                    os.unlink(wav_path)
+                for p in [tmp_path, wav_path]:
+                    if os.path.exists(p):
+                        os.unlink(p)
 
-    # 建立 DM 適配器
+    # 建立 DM 適配器 - 整合真正的 LLM
     class DMAdapter:
-        def __init__(self, dm):
-            self._dm = dm
+        def __init__(self, session_id: str):
+            self._session_id = session_id
 
         def process_input(self, text: str):
-            # 簡化版本：直接返回確認訊息
-            # 完整版本需要整合 LLM
-            return (f"好的，收到：{text}", {"cart": [], "order_payload": {"total_price": 0}})
+            """
+            使用 LLM + ToolRegistry 處理用戶輸入
+            返回 (回應文字, 購物車快照)
+            """
+            try:
+                # 設置當前會話
+                _tool_registry.set_session_id(self._session_id)
+
+                # 確保會話存在
+                session = _session_store.get(self._session_id)
+                session.setdefault("llm_history", [])
+
+                debug(f"LLM 處理: '{text}', 當前購物車: {len(session.get('cart', []))} 項")
+
+                # 調用 LLM
+                result = _llm_caller.run_turn(
+                    system_prompt=SYSTEM_PROMPT,
+                    user_text=text,
+                    history=session["llm_history"],
+                    tools_schema=_tool_registry.get_tools_schema(),
+                    tool_map=_tool_registry.get_tool_map(),
+                    allowed_args=_tool_registry.get_allowed_args(),
+                )
+
+                if result.get("ok"):
+                    # 更新歷史
+                    session["llm_history"] = result.get("history", [])
+                    response_text = result.get("assistant_text", "")
+                    if not response_text:
+                        response_text = "好的，還需要什麼嗎？"
+
+                    # 讀取更新後的購物車
+                    cart = session.get("cart", [])
+                    total_price = 0
+
+                    # 計算總價
+                    for item in cart:
+                        qty = int(item.get("quantity", 1) or 1)
+                        price_info = _dialogue_manager.get_price_info(item)
+                        if price_info and price_info.get("status") == "success":
+                            item_total = _dialogue_manager.extract_total_from_price_info(price_info, qty)
+                            total_price += item_total
+
+                    debug(f"LLM 回應: '{response_text}', 購物車已更新: {len(cart)} 項, 總計: ${total_price}")
+
+                    return (response_text, {
+                        "cart": cart,
+                        "order_payload": {"total_price": total_price}
+                    })
+                else:
+                    debug(f"LLM 錯誤: {result.get('error')}")
+                    return ("抱歉，系統暫時無法處理，請稍後再試。", {
+                        "cart": [],
+                        "order_payload": {"total_price": 0}
+                    })
+
+            except Exception as e:
+                debug(f"DMAdapter 異常: {e}")
+                import traceback
+                debug(traceback.format_exc())
+                return (f"錯誤: {str(e)}", {
+                    "cart": [],
+                    "order_payload": {"total_price": 0}
+                })
 
     asr_adapter = ASRAdapter(_asr_service)
-    dm_adapter = DMAdapter(_dialogue_manager)
+    dm_adapter = DMAdapter(session_id)
 
-    orchestrator = StreamingOrchestrator(asr_adapter, dm_adapter, streaming_tts)
+    orchestrator = StreamingOrchestrator(asr_adapter, dm_adapter, streaming_tts, session_id=session_id)
 
     return StreamingResponse(
-        event_generator(orchestrator, audio_bytes),
+        event_generator(orchestrator, audio_bytes, session_id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
