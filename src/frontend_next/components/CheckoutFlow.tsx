@@ -1,6 +1,7 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
+import { useState } from 'react';
 import { useStore } from '../store/useStore';
 
 const stepVariants = {
@@ -17,12 +18,16 @@ export default function CheckoutFlow() {
     dineType,
     paymentMethod,
     orderNumber,
+    sessionId,
     setCheckoutStep,
     setDineType,
     setPaymentMethod,
     setOrderNumber,
     resetSession,
   } = useStore();
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Step 1: Select dine type
   const handleDineType = (type: 'dine-in' | 'take-out') => {
@@ -36,11 +41,49 @@ export default function CheckoutFlow() {
     setCheckoutStep(3);
   };
 
-  // Step 3: Confirm order
+  // Step 3: Confirm order - call backend API
   const handleConfirm = async () => {
-    const num = String(Math.floor(Math.random() * 100) + 1).padStart(2, '0');
-    setOrderNumber(num);
-    setCheckoutStep(4);
+    if (!dineType || !paymentMethod) {
+      setError('請選擇用餐方式和付款方式');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          session_id: sessionId,
+          dine_type: dineType,
+          payment_method: paymentMethod,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || '結帳失敗');
+      }
+
+      const data = await response.json();
+
+      if (data.status === 'ok') {
+        setOrderNumber(data.order_number);
+        setCheckoutStep(4);
+      } else {
+        throw new Error('結帳失敗');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '結帳失敗，請稍後重試';
+      setError(message);
+      console.error('Checkout error:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Step 4: New order
@@ -218,6 +261,15 @@ export default function CheckoutFlow() {
                 確認訂單
               </h2>
 
+              {/* Error message */}
+              {error && (
+                <div
+                  className="rounded-xl p-3 mb-4 text-sm text-white bg-red-500 text-center"
+                >
+                  {error}
+                </div>
+              )}
+
               {/* Order summary */}
               <div
                 className="rounded-xl p-4 mb-4 max-h-48 overflow-y-auto"
@@ -256,12 +308,13 @@ export default function CheckoutFlow() {
 
               <button
                 onClick={handleConfirm}
-                className="w-full py-4 rounded-xl font-semibold text-lg text-white transition-all hover:-translate-y-0.5 hover:shadow-lg"
+                disabled={isSubmitting}
+                className="w-full py-4 rounded-xl font-semibold text-lg text-white transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-70 disabled:cursor-not-allowed"
                 style={{
                   background: 'linear-gradient(135deg, #729DAD 0%, #5a8494 100%)',
                 }}
               >
-                確認送出
+                {isSubmitting ? '處理中...' : '確認送出'}
               </button>
             </motion.div>
           )}
