@@ -9,11 +9,25 @@ export interface CartItem {
 
 export type AppStatus = 'idle' | 'listening' | 'processing' | 'speaking';
 
-export type CheckoutStep = 0 | 1 | 2 | 3 | 4;
-// 0 = not in checkout, 1 = dine type, 2 = payment, 3 = confirm, 4 = complete
+export type CheckoutStep = 0 | 1 | 2;
+// 0 = 正常（未結帳）, 1 = 手動結帳頁面（一頁式 fallback）, 2 = 完成畫面
 
 export type DineType = 'dine-in' | 'take-out' | null;
 export type PaymentMethod = 'cash' | 'mobile' | null;
+
+export interface OrderResult {
+  order_number: string;
+  total: number;
+  item_count: number;
+  items_display: Array<{
+    name: string;
+    quantity: number;
+    unit_price: number;
+    subtotal: number;
+  }>;
+  dine_type: string;
+  payment_method: string;
+}
 
 export interface MenuItem {
   name: string;
@@ -27,36 +41,32 @@ export interface MenuCategory {
 }
 
 export interface AppState {
-  // Voice & ordering
+  // 語音和訂購
   status: AppStatus;
   cart: CartItem[];
   total: number;
   transcript: string;
   sessionId: string;
 
-  // Checkout
+  // 結帳
   checkoutStep: CheckoutStep;
-  dineType: DineType;
-  paymentMethod: PaymentMethod;
-  orderNumber: string | null;
+  orderResult: OrderResult | null;
 
-  // VAD mode
+  // VAD 模式
   vadEnabled: boolean;
 
-  // Actions - voice & ordering
+  // Actions - 語音和訂購
   setStatus: (s: AppStatus) => void;
   setCart: (items: CartItem[], total: number) => void;
   setTranscript: (t: string) => void;
   clearCart: () => void;
 
-  // Actions - checkout
+  // Actions - 結帳
   setCheckoutStep: (step: CheckoutStep) => void;
-  setDineType: (type: DineType) => void;
-  setPaymentMethod: (method: PaymentMethod) => void;
-  setOrderNumber: (num: string) => void;
+  setOrderResult: (result: OrderResult) => void;
   resetCheckout: () => void;
 
-  // Actions - session
+  // Actions - 工作階段
   resetSession: () => void;
   setVadEnabled: (enabled: boolean) => void;
 }

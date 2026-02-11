@@ -8,9 +8,7 @@ beforeEach(() => {
     total: 0,
     transcript: '',
     checkoutStep: 0,
-    dineType: null,
-    paymentMethod: null,
-    orderNumber: null,
+    orderResult: null,
     vadEnabled: true,
   });
 });
@@ -63,34 +61,45 @@ describe('useStore', () => {
 
   describe('當進行結帳流程時', () => {
     it('setCheckoutStep 應更新步驟', () => {
-      useStore.getState().setCheckoutStep(2);
-      expect(useStore.getState().checkoutStep).toBe(2);
+      useStore.getState().setCheckoutStep(1);
+      expect(useStore.getState().checkoutStep).toBe(1);
     });
 
-    it('setDineType 應設定用餐方式', () => {
-      useStore.getState().setDineType('dine-in');
-      expect(useStore.getState().dineType).toBe('dine-in');
+    it('setOrderResult 應設定訂單結果並自動跳到 step 2', () => {
+      const mockResult = {
+        order_number: '03',
+        total: 150,
+        item_count: 3,
+        items_display: [
+          { name: '紫米傳統加辣', quantity: 1, unit_price: 45, subtotal: 45 },
+        ],
+        dine_type: 'take-out',
+        payment_method: 'cash',
+      };
+      useStore.getState().setOrderResult(mockResult);
+
+      const state = useStore.getState();
+      expect(state.orderResult).toEqual(mockResult);
+      expect(state.checkoutStep).toBe(2);
     });
 
-    it('setPaymentMethod 應設定付款方式', () => {
-      useStore.getState().setPaymentMethod('cash');
-      expect(useStore.getState().paymentMethod).toBe('cash');
-    });
-
-    it('resetCheckout 應重置所有結帳狀態但保留購物車', () => {
+    it('resetCheckout 應重置結帳狀態但保留購物車', () => {
       const items = [{ name: '飯糰', details: '', price: 45, quantity: 1 }];
       useStore.getState().setCart(items, 45);
-      useStore.getState().setCheckoutStep(3);
-      useStore.getState().setDineType('dine-in');
-      useStore.getState().setPaymentMethod('cash');
+      useStore.getState().setOrderResult({
+        order_number: '01',
+        total: 45,
+        item_count: 1,
+        items_display: [],
+        dine_type: 'dine-in',
+        payment_method: 'cash',
+      });
 
       useStore.getState().resetCheckout();
 
       const state = useStore.getState();
       expect(state.checkoutStep).toBe(0);
-      expect(state.dineType).toBeNull();
-      expect(state.paymentMethod).toBeNull();
-      expect(state.orderNumber).toBeNull();
+      expect(state.orderResult).toBeNull();
       // 購物車應保留
       expect(state.cart).toEqual(items);
       expect(state.total).toBe(45);
@@ -105,13 +114,14 @@ describe('useStore', () => {
         [{ name: '飯糰', details: '', price: 45, quantity: 1 }],
         45
       );
-      useStore.getState().setCheckoutStep(3);
+      useStore.getState().setCheckoutStep(1);
       useStore.getState().resetSession();
 
       const state = useStore.getState();
       expect(state.cart).toEqual([]);
       expect(state.total).toBe(0);
       expect(state.checkoutStep).toBe(0);
+      expect(state.orderResult).toBeNull();
       expect(state.status).toBe('idle');
       expect(state.sessionId).not.toBe(oldSessionId);
     });

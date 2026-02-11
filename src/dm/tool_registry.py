@@ -484,75 +484,98 @@ class ToolRegistry:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
-    def checkout(self) -> Dict[str, Any]:
+    def finalize_order(
+        self,
+        dine_type: str,
+        payment_method: str,
+    ) -> Dict[str, Any]:
         """
-        準備結帳
-
-        Returns:
-            結帳摘要
-        """
-        try:
-            session = self.get_current_session()
-
-            if session.get("pending_frames"):
-                pending = session["pending_frames"][0]
-                return {
-                    "ok": False,
-                    "message": "還有未補完的品項資訊，請先完成",
-                    "pending_item": pending.get("itemtype"),
-                }
-
-            if not session["cart"]:
-                return {"ok": False, "message": "購物車為空，無法結帳"}
-
-            # 生成結帳摘要
-            summary = self.dm.get_order_summary(self._session_id)
-            total = self.dm._calculate_cart_total(session)
-
-            # 標記狀態為確認中
-            session["status"] = "CONFIRMING_CHECKOUT"
-
-            return {
-                "ok": True,
-                "message": f"{summary}。確定要送出訂單嗎？",
-                "total_price": total,
-                "requires_confirmation": True,
-            }
-
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
-
-    def confirm_order(self, confirmed: bool = True) -> Dict[str, Any]:
-        """
-        確認並提交訂單
+        完成結帳 — 由 LLM 收集完用餐方式和付款方式後呼叫
 
         Args:
-            confirmed: 是否確認送出訂單
-
-        Returns:
-            提交結果
+            dine_type: 用餐方式 (dine-in / take-out)
+            payment_method: 付款方式 (cash / mobile)
         """
         try:
             session = self.get_current_session()
+            cart = session.get("cart", [])
 
-            if not confirmed:
-                session["status"] = "OPEN"
-                return {
-                    "ok": True,
-                    "message": "已取消訂單提交",
-                }
+            if not cart:
+                return {"ok": False, "message": "購物車為空，無法結帳"}
 
-            # 提交訂單
-            result_msg = self.dm._submit_order(session)
+            # 正規化 dine_type
+            dine_type_map = {"內用": "dine-in", "外帶": "take-out", "dine-in": "dine-in", "take-out": "take-out"}
+            resolved_dine = dine_type_map.get(dine_type, dine_type)
+
+            # 正規化 payment_method
+            payment_map = {"現金": "cash", "行動支付": "mobile", "cash": "cash", "mobile": "mobile"}
+            resolved_payment = payment_map.get(payment_method, payment_method)
+
+            # 計算總價（複用現有 _calculate_cart_total）
+            total_price = self.dm._calculate_cart_total(session)
+
+            # 生成取餐號碼（複用 order_repo）
+            from src.repository.order_repository import order_repo
+            order_number = order_repo.get_next_order_number()
+
+            # 建立訂單 payload
+            from datetime import datetime
+            order_id = f"order-{self._session_id}-{datetime.now().timestamp()}"
+
+            # 構建品項清單（給前端用）
+            items_payload = []
+            for item in cart:
+                qty = int(item.get("quantity", 1) or 1)
+                pi = self.dm._get_price_info(item)
+                item_total = self.dm._extract_total_from_pi(pi, qty)
+                unit_price = item_total // qty if qty > 0 else 0
+                items_payload.append({
+                    "name": self.dm._format_item(item),
+                    "quantity": qty,
+                    "unit_price": unit_price,
+                    "subtotal": item_total,
+                })
+
+            order_payload = {
+                "order_id": order_id,
+                "session_id": self._session_id,
+                "order_number": order_number,
+                "dine_type": resolved_dine,
+                "payment_method": resolved_payment,
+                "items": cart,
+                "items_display": items_payload,
+                "total_price": total_price,
+                "status": "submitted",
+                "created_at": datetime.now().isoformat(),
+            }
+
+            # 寫入 DB
+            order_repo.save_order(order_payload, self._session_id)
+
+            # 儲存對話紀錄
+            llm_history = session.get("llm_history", [])
+            order_repo.save_conversation_log(self._session_id, order_number, llm_history)
+            order_repo.save_conversation_log_json(
+                self._session_id, order_number, cart, total_price, resolved_dine, llm_history
+            )
+
+            # 標記 session 完成
+            session["status"] = "SUBMITTED"
+            session["order_payload"] = order_payload
 
             return {
                 "ok": True,
-                "message": result_msg,
-                "order_id": session.get("order_payload", {}).get("order_id"),
+                "order_number": order_number,
+                "total": total_price,
+                "item_count": len(cart),
+                "items_display": items_payload,
+                "dine_type": resolved_dine,
+                "payment_method": resolved_payment,
             }
 
         except Exception as e:
             return {"ok": False, "error": str(e)}
+
 
     # ============ Schema 和映射 ============
 
@@ -732,28 +755,23 @@ class ToolRegistry:
             {
                 "type": "function",
                 "function": {
-                    "name": "checkout",
-                    "description": "準備結帳，生成訂單摘要並等待確認",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "confirm_order",
-                    "description": "確認並提交訂單，或取消訂單提交",
+                    "name": "finalize_order",
+                    "description": "完成結帳並送出訂單。在確認客人點完餐、問完內用外帶、問完付款方式後才能調用。",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "confirmed": {
-                                "type": "boolean",
-                                "description": "是否確認送出訂單",
-                                "default": True,
+                            "dine_type": {
+                                "type": "string",
+                                "enum": ["dine-in", "take-out", "內用", "外帶"],
+                                "description": "用餐方式：內用或外帶",
+                            },
+                            "payment_method": {
+                                "type": "string",
+                                "enum": ["cash", "mobile", "現金", "行動支付"],
+                                "description": "付款方式：現金或行動支付",
                             },
                         },
+                        "required": ["dine_type", "payment_method"],
                     },
                 },
             },
@@ -772,8 +790,7 @@ class ToolRegistry:
             "get_cart_summary": self.get_cart_summary,
             "query_menu": self.query_menu,
             "get_price": self.get_price,
-            "checkout": self.checkout,
-            "confirm_order": self.confirm_order,
+            "finalize_order": self.finalize_order,
         }
 
     def get_allowed_args(self) -> Dict[str, Set[str]]:
@@ -810,6 +827,5 @@ class ToolRegistry:
                 "large",
                 "extra_egg",
             },
-            "checkout": set(),
-            "confirm_order": {"confirmed"},
+            "finalize_order": {"dine_type", "payment_method"},
         }

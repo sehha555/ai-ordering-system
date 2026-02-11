@@ -140,9 +140,20 @@ async def voice_chat(
 
                     debug(f"LLM 回應: '{response_text}', 購物車已更新: {len(cart)} 項, 總計: ${total_price}")
 
+                    # 檢查是否有 finalize_order 結果
+                    finalize_result = None
+                    for trace in result.get("tool_trace", []):
+                        tool_call = trace.get("tool_call", {})
+                        if tool_call.get("function", {}).get("name") == "finalize_order":
+                            exec_result = trace.get("exec", {})
+                            if exec_result.get("ok"):
+                                finalize_result = exec_result
+                                break
+
                     return (response_text, {
                         "cart": cart,
-                        "order_payload": {"total_price": total_price}
+                        "order_payload": {"total_price": total_price},
+                        "finalize_result": finalize_result,
                     })
                 else:
                     debug(f"LLM 錯誤: {result.get('error')}")

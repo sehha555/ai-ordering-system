@@ -31,6 +31,11 @@ class StreamingOrchestrator:
         total = context_snapshot.get("order_payload", {}).get("total_price", 0)
         yield {"event": "cart_update", "data": {"items": cart, "total": total}}
 
+        # 4.5 Order Complete（如果有 finalize_order 結果）
+        finalize_result = context_snapshot.get("finalize_result")
+        if finalize_result:
+            yield {"event": "order_complete", "data": finalize_result}
+
         # 5. TTS Streaming
         async for chunk in self.tts.run_stream(response_text):
             b64_audio = base64.b64encode(chunk).decode('utf-8')

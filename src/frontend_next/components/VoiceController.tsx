@@ -333,6 +333,12 @@ export default function VoiceController() {
           setCart(cartData.items || [], cartData.total || 0);
           break;
         }
+        case 'order_complete': {
+          // 當 AI 完成訂單流程時，設定訂單結果
+          const result = JSON.parse(dataStr);
+          useStore.getState().setOrderResult(result);
+          break;
+        }
         case 'audio_chunk': {
           const audioData = JSON.parse(dataStr);
           audioQueueRef.current.push(audioData);
