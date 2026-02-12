@@ -73,9 +73,9 @@ if os.path.isdir(_frontend_dir):
 # 初始化服務
 _session_store = InMemorySessionStore()
 _llm_caller = LLMToolCaller(
-    base_url="http://127.0.0.1:1234/v1/chat/completions",
-    model="qwen2.5-14b-instruct-1m",
-    timeout=120,  # 增加超時時間
+    base_url=os.getenv("LLM_BASE_URL", "http://127.0.0.1:1234/v1/chat/completions"),
+    model=os.getenv("LLM_MODEL", "qwen2.5-14b-instruct-1m"),
+    timeout=int(os.getenv("LLM_TIMEOUT", "120")),
 )
 _dialogue_manager = DialogueManager(llm=_llm_caller, store=_session_store)
 _tool_registry = ToolRegistry(_dialogue_manager, _session_store)

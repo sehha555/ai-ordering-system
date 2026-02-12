@@ -31,6 +31,10 @@ export default function CheckoutFlow() {
 
   // 手動結帳 — 送出訂單到後端
   const handleManualSubmit = async () => {
+    if (cart.length === 0) {
+      setError('購物車是空的，請先點餐');
+      return;
+    }
     if (!selectedDine || !selectedPayment) {
       setError('請選擇用餐方式和付款方式');
       return;
@@ -113,6 +117,14 @@ export default function CheckoutFlow() {
               </div>
             )}
 
+            {/* 空購物車提示 */}
+            {cart.length === 0 && (
+              <div className="rounded-xl p-4 mb-4 text-center" style={{ backgroundColor: '#fff3cd', color: '#856404' }}>
+                <p className="font-medium">購物車是空的</p>
+                <p className="text-sm mt-1">請先點餐再結帳</p>
+              </div>
+            )}
+
             {/* 用餐方式 */}
             <div className="mb-6">
               <p className="text-sm font-medium mb-3" style={{ color: '#5a6b70' }}>用餐方式</p>
@@ -181,7 +193,7 @@ export default function CheckoutFlow() {
             {/* 確認送出按鈕 */}
             <button
               onClick={handleManualSubmit}
-              disabled={isSubmitting || !selectedDine || !selectedPayment}
+              disabled={isSubmitting || cart.length === 0 || !selectedDine || !selectedPayment}
               className="w-full py-4 rounded-xl font-semibold text-lg text-white transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
               style={{
                 background: 'linear-gradient(135deg, #729DAD 0%, #5a8494 100%)',
