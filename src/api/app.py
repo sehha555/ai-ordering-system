@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import uuid
 from fastapi import FastAPI, HTTPException, Security, Depends, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security.api_key import APIKeyHeader
@@ -243,12 +244,12 @@ async def get_cart_summary(
             qty = int(item.get("quantity", 1) or 1)
 
             # 格式化品項名稱
-            name = _dialogue_manager.format_item(item)
+            name = _dialogue_manager._format_item(item)
 
             # 計算價格
-            price_info = _dialogue_manager.get_price_info(item)
+            price_info = _dialogue_manager._get_price_info(item)
             if price_info and price_info.get("status") == "success":
-                item_total = _dialogue_manager.extract_total_from_price_info(price_info, qty)
+                item_total = _dialogue_manager._extract_total_from_pi(price_info, qty)
                 total_price += item_total
                 price_str = f"${item_total}"
             else:
@@ -708,9 +709,9 @@ async def checkout(request: CheckoutRequest):
         total_price = 0
         for item in cart:
             qty = int(item.get("quantity", 1) or 1)
-            price_info = _dialogue_manager.get_price_info(item)
+            price_info = _dialogue_manager._get_price_info(item)
             if price_info and price_info.get("status") == "success":
-                item_total = _dialogue_manager.extract_total_from_price_info(price_info, qty)
+                item_total = _dialogue_manager._extract_total_from_pi(price_info, qty)
                 total_price += item_total
 
         debug(f"總計: ${total_price}")
@@ -721,7 +722,8 @@ async def checkout(request: CheckoutRequest):
 
         # 4. 建立訂單
         from datetime import datetime
-        order_id = f"order-{session_id}-{datetime.now().timestamp()}"
+        # order_id 必須只包含大寫字母、數字和連字符
+        order_id = f"ORD-{datetime.now().strftime('%m%d')}-{str(uuid.uuid4())[:8].upper()}"
 
         order_payload = {
             "order_id": order_id,
