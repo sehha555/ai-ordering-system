@@ -1,0 +1,212 @@
+[
+  {
+    "id": "order_riceball_01_f",
+    "audio_path": "benchmarks/test_data/asr/order_riceball_01_f.mp3",
+    "ground_truth": "我要一個鮪魚飯糰",
+    "category": "基本點餐",
+    "voice": "zh-TW-HsiaoChenNeural"
+  },
+  {
+    "id": "order_riceball_01_m",
+    "audio_path": "benchmarks/test_data/asr/order_riceball_01_m.mp3",
+    "ground_truth": "我要一個鮪魚飯糰",
+    "category": "基本點餐",
+    "voice": "zh-TW-YunJheNeural"
+  },
+  {
+    "id": "order_riceball_02_f",
+    "audio_path": "benchmarks/test_data/asr/order_riceball_02_f.mp3",
+    "ground_truth": "給我一個玉米飯糰",
+    "category": "基本點餐",
+    "voice": "zh-TW-HsiaoChenNeural"
+  },
+  {
+    "id": "order_riceball_02_m",
+    "audio_path": "benchmarks/test_data/asr/order_riceball_02_m.mp3",
+    "ground_truth": "給我一個玉米飯糰",
+    "category": "基本點餐",
+    "voice": "zh-TW-YunJheNeural"
+  },
+  {
+    "id": "order_egg_pancake_01_f",
+    "audio_path": "benchmarks/test_data/asr/order_egg_pancake_01_f.mp3",
+    "ground_truth": "一個起司蛋餅",
+    "category": "基本點餐",
+    "voice": "zh-TW-HsiaoChenNeural"
+  },
+  {
+    "id": "order_egg_pancake_01_m",
+    "audio_path": "benchmarks/test_data/asr/order_egg_pancake_01_m.mp3",
+    "ground_truth": "一個起司蛋餅",
+    "category": "基本點餐",
+    "voice": "zh-TW-YunJheNeural"
+  },
+  {
+    "id": "order_combo_01_f",
+    "audio_path": "benchmarks/test_data/asr/order_combo_01_f.mp3",
+    "ground_truth": "一個起司蛋餅加一杯大冰紅茶",
+    "category": "複合點餐",
+    "voice": "zh-TW-HsiaoChenNeural"
+  },
+  {
+    "id": "order_combo_01_m",
+    "audio_path": "benchmarks/test_data/asr/order_combo_01_m.mp3",
+    "ground_truth": "一個起司蛋餅加一杯大冰紅茶",
+    "category": "複合點餐",
+    "voice": "zh-TW-YunJheNeural"
+  },
+  {
+    "id": "order_combo_02_f",
+    "audio_path": "benchmarks/test_data/asr/order_combo_02_f.mp3",
+    "ground_truth": "我要一個鮪魚飯糰還有一份薯餅",
+    "category": "複合點餐",
+    "voice": "zh-TW-HsiaoChenNeural"
+  },
+  {
+    "id": "order_combo_02_m",
+    "audio_path": "benchmarks/test_data/asr/order_combo_02_m.mp3",
+    "ground_truth": "我要一個鮪魚飯糰還有一份薯餅",
+    "category": "複合點餐",
+    "voice": "zh-TW-YunJheNeural"
+  },
+  {
+    "id": "order_drink_01_f",
+    "audio_path": "benchmarks/test_data/asr/order_drink_01_f.mp3",
+    "ground_truth": "一杯大冰紅茶",
+    "category": "基本點餐",
+    "voice": "zh-TW-HsiaoChenNeural"
+  },
+  {
+    "id": "order_drink_01_m",
+    "audio_path": "benchmarks/test_data/asr/order_drink_01_m.mp3",
+    "ground_truth": "一杯大冰紅茶",
+    "category": "基本點餐",
+    "voice": "zh-TW-YunJheNeural"
+  },
+  {
+    "id": "order_drink_02_f",
+    "audio_path": "benchmarks/test_data/asr/order_drink_02_f.mp3",
+    "ground_truth": "兩杯溫豆漿",
+    "category": "數量",
+    "voice": "zh-TW-HsiaoChenNeural"
+  },
+  {
+    "id": "order_drink_02_m",
+    "audio_path": "benchmarks/test_data/asr/order_drink_02_m.mp3",
+    "ground_truth": "兩杯溫豆漿",
+    "category": "數量",
+    "voice": "zh-TW-YunJheNeural"
+  },
+  {
+    "id": "modify_01_f",
+    "audio_path": "benchmarks/test_data/asr/modify_01_f.mp3",
+    "ground_truth": "飯糰換成玉米口味",
+    "category": "修改",
+    "voice": "zh-TW-HsiaoChenNeural"
+  },
+  {
+    "id": "modify_01_m",
+    "audio_path": "benchmarks/test_data/asr/modify_01_m.mp3",
+    "ground_truth": "飯糰換成玉米口味",
+    "category": "修改",
+    "voice": "zh-TW-YunJheNeural"
+  },
+  {
+    "id": "modify_02_f",
+    "audio_path": "benchmarks/test_data/asr/modify_02_f.mp3",
+    "ground_truth": "紅茶改兩杯",
+    "category": "修改",
+    "voice": "zh-TW-HsiaoChenNeural"
+  },
+  {
+    "id": "modify_02_m",
+    "audio_path": "benchmarks/test_data/asr/modify_02_m.mp3",
+    "ground_truth": "紅茶改兩杯",
+    "category": "修改",
+    "voice": "zh-TW-YunJheNeural"
+  },
+  {
+    "id": "query_01_f",
+    "audio_path": "benchmarks/test_data/asr/query_01_f.mp3",
+    "ground_truth": "你們有賣什麼飲料",
+    "category": "查詢",
+    "voice": "zh-TW-HsiaoChenNeural"
+  },
+  {
+    "id": "query_01_m",
+    "audio_path": "benchmarks/test_data/asr/query_01_m.mp3",
+    "ground_truth": "你們有賣什麼飲料",
+    "category": "查詢",
+    "voice": "zh-TW-YunJheNeural"
+  },
+  {
+    "id": "query_02_f",
+    "audio_path": "benchmarks/test_data/asr/query_02_f.mp3",
+    "ground_truth": "有什麼套餐可以選",
+    "category": "查詢",
+    "voice": "zh-TW-HsiaoChenNeural"
+  },
+  {
+    "id": "query_02_m",
+    "audio_path": "benchmarks/test_data/asr/query_02_m.mp3",
+    "ground_truth": "有什麼套餐可以選",
+    "category": "查詢",
+    "voice": "zh-TW-YunJheNeural"
+  },
+  {
+    "id": "checkout_01_f",
+    "audio_path": "benchmarks/test_data/asr/checkout_01_f.mp3",
+    "ground_truth": "好就這樣幫我結帳",
+    "category": "結帳",
+    "voice": "zh-TW-HsiaoChenNeural"
+  },
+  {
+    "id": "checkout_01_m",
+    "audio_path": "benchmarks/test_data/asr/checkout_01_m.mp3",
+    "ground_truth": "好就這樣幫我結帳",
+    "category": "結帳",
+    "voice": "zh-TW-YunJheNeural"
+  },
+  {
+    "id": "checkout_02_f",
+    "audio_path": "benchmarks/test_data/asr/checkout_02_f.mp3",
+    "ground_truth": "沒有了可以結帳了",
+    "category": "結帳",
+    "voice": "zh-TW-HsiaoChenNeural"
+  },
+  {
+    "id": "checkout_02_m",
+    "audio_path": "benchmarks/test_data/asr/checkout_02_m.mp3",
+    "ground_truth": "沒有了可以結帳了",
+    "category": "結帳",
+    "voice": "zh-TW-YunJheNeural"
+  },
+  {
+    "id": "greeting_01_f",
+    "audio_path": "benchmarks/test_data/asr/greeting_01_f.mp3",
+    "ground_truth": "你好我想點餐",
+    "category": "招呼",
+    "voice": "zh-TW-HsiaoChenNeural"
+  },
+  {
+    "id": "greeting_01_m",
+    "audio_path": "benchmarks/test_data/asr/greeting_01_m.mp3",
+    "ground_truth": "你好我想點餐",
+    "category": "招呼",
+    "voice": "zh-TW-YunJheNeural"
+  },
+  {
+    "id": "cancel_01_f",
+    "audio_path": "benchmarks/test_data/asr/cancel_01_f.mp3",
+    "ground_truth": "蛋餅不要了幫我取消",
+    "category": "取消",
+    "voice": "zh-TW-HsiaoChenNeural"
+  },
+  {
+    "id": "cancel_01_m",
+    "audio_path": "benchmarks/test_data/asr/cancel_01_m.mp3",
+    "ground_truth": "蛋餅不要了幫我取消",
+    "category": "取消",
+    "voice": "zh-TW-YunJheNeural"
+  }
+]

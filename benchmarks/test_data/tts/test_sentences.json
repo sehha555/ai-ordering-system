@@ -1,0 +1,8 @@
+[
+  {"id": "greeting", "text": "歡迎光臨源飯糰！請問今天想吃什麼呢？", "category": "招呼"},
+  {"id": "confirm_order", "text": "好的，幫您點了一個鮪魚飯糰和一杯大冰紅茶，總共七十五元。", "category": "確認"},
+  {"id": "recommend", "text": "我們今天有特價套餐，蛋餅加紅茶只要五十元，要不要試試看？", "category": "推薦"},
+  {"id": "checkout", "text": "您的取餐號碼是 A零三七，請稍等一下喔！", "category": "結帳"},
+  {"id": "long_response", "text": "好的，我幫您確認一下訂單內容：一個鮪魚飯糰、一個起司蛋餅、一杯大冰紅茶、還有一份薯餅。總共是一百三十五元，內用對嗎？", "category": "長句"},
+  {"id": "error_handling", "text": "抱歉，我沒有聽清楚，可以再說一次嗎？", "category": "錯誤處理"}
+]

@@ -1,0 +1,71 @@
+# 模型 Benchmark 配置
+# 新增模型只需在對應類別加一個條目
+
+asr:
+  models:
+    - id: qwen3-asr-turbo
+      name: "Qwen3-ASR Turbo"
+      adapter: qwen3
+      params:
+        model_size: turbo
+        language: zh
+    - id: sensevoice
+      name: "SenseVoice"
+      adapter: sensevoice
+      params:
+        model_size: small
+        language: zh
+  metrics: [cer, latency, success_rate]
+
+tts:
+  models:
+    - id: edge-tts-tw
+      name: "Edge TTS (台灣女聲)"
+      adapter: edge_tts
+      params:
+        voice: "zh-TW-HsiaoChenNeural"
+    - id: cosyvoice2
+      name: "CosyVoice 2"
+      adapter: cosyvoice2
+      params:
+        model_path: null  # 需設定
+    - id: elevenlabs-v3
+      name: "ElevenLabs v3"
+      adapter: elevenlabs
+      params:
+        api_key_env: ELEVENLABS_API_KEY
+        model_id: eleven_multilingual_v2
+        voice_id: null  # 需設定
+  metrics: [first_byte_latency, rtf, audio_quality]
+
+llm:
+  models:
+    - id: qwen25-14b
+      name: "Qwen2.5-14B-Instruct"
+      adapter: openai_compatible
+      params:
+        base_url: "http://127.0.0.1:1234/v1"
+        model: "qwen2.5-14b-instruct-1m"
+        temperature: 0.0
+    - id: qwen3-30b-a3b
+      name: "Qwen3-30B-A3B"
+      adapter: openai_compatible
+      params:
+        base_url: "http://127.0.0.1:1234/v1"
+        model: "qwen3-30b-a3b"
+        temperature: 0.0
+  metrics: [tool_call_accuracy, response_latency, scenario_pass_rate]
+
+e2e:
+  models:
+    - id: qwen25-omni-7b
+      name: "Qwen2.5-Omni-7B"
+      adapter: qwen_omni
+      params:
+        model_path: null  # 需設定
+  metrics: [e2e_latency, accuracy, audio_quality]
+
+benchmark:
+  repeat: 3        # 每個測試案例跑幾次取平均
+  timeout: 60      # 單次測試超時秒數
+  output_dir: reports

@@ -1,0 +1,47 @@
+[
+  {
+    "id": "basic_order",
+    "description": "基本點餐",
+    "messages": [{"role": "user", "content": "我要一個鮪魚飯糰"}],
+    "expected_tools": ["add_riceball"],
+    "expected_response_contains": ["鮪魚", "飯糰"]
+  },
+  {
+    "id": "combo_order",
+    "description": "套餐點餐",
+    "messages": [{"role": "user", "content": "有什麼套餐可以選？"}],
+    "expected_tools": ["query_combo"],
+    "expected_response_contains": ["套餐"]
+  },
+  {
+    "id": "multi_item",
+    "description": "多品項點餐",
+    "messages": [{"role": "user", "content": "一個起司蛋餅加一杯大冰紅茶"}],
+    "expected_tools": ["add_egg_pancake", "add_drink"],
+    "expected_response_contains": ["蛋餅", "紅茶"]
+  },
+  {
+    "id": "modify_order",
+    "description": "修改訂單",
+    "messages": [
+      {"role": "assistant", "content": "好的，已幫您加了一個鮪魚飯糰。還需要什麼嗎？"},
+      {"role": "user", "content": "飯糰改成玉米口味的"}
+    ],
+    "expected_tools": ["add_riceball"],
+    "expected_response_contains": ["玉米"]
+  },
+  {
+    "id": "query_menu",
+    "description": "查詢菜單",
+    "messages": [{"role": "user", "content": "你們有賣什麼飲料？"}],
+    "expected_tools": ["query_drink"],
+    "expected_response_contains": ["飲料"]
+  },
+  {
+    "id": "checkout_flow",
+    "description": "結帳流程",
+    "messages": [{"role": "user", "content": "好了就這樣，幫我結帳"}],
+    "expected_tools": ["finalize_order"],
+    "expected_response_contains": ["結帳", "取餐"]
+  }
+]
