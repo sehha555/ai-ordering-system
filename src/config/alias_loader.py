@@ -1,6 +1,7 @@
 import json
 import os
 from typing import Any, Dict
+from loguru import logger
 
 def load_combo_aliases(file_path: str = None) -> Dict[str, Any]:
     """
@@ -17,8 +18,8 @@ def load_combo_aliases(file_path: str = None) -> Dict[str, Any]:
         with open(file_path, "r", encoding="utf-8-sig") as f:
             return json.load(f)
     except FileNotFoundError:
-        print(f"Warning: Alias config file not found at {file_path}")
+        logger.warning("Alias config file not found at {}", file_path)
         return {}
     except json.JSONDecodeError as e:
-        print(f"Error decoding alias config file: {e}")
+        logger.error("Error decoding alias config file: {}", e)
         return {}

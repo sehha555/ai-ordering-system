@@ -1,11 +1,9 @@
 # src/services/asr_service.py
 """ASR Service - 語音辨識服務 (使用 Qwen3-ASR)"""
 
-import logging
+from loguru import logger
 import os
 from typing import Optional
-
-logger = logging.getLogger(__name__)
 
 
 class ASRService:
@@ -97,8 +95,7 @@ class ASRService:
                     "confidence": 0.0
                 }
 
-            import sys
-            print(f"[ASR] 開始轉錄: {audio_path}", file=sys.stderr, flush=True)
+            logger.info("[ASR] 開始轉錄: {}", audio_path)
 
             # 轉換語言代碼為 Qwen3 格式
             lang_code = language or self.language
@@ -116,8 +113,8 @@ class ASRService:
                 full_text = result.text.strip() if result.text else ""
                 detected_language = result.language if hasattr(result, 'language') else qwen_language
 
-                print(f"[ASR] 轉錄完成: '{full_text}'", file=sys.stderr, flush=True)
-                print(f"[ASR] 檢測語言: {detected_language}", file=sys.stderr, flush=True)
+                logger.info("[ASR] 轉錄完成: '{}'", full_text)
+                logger.info("[ASR] 檢測語言: {}", detected_language)
 
                 if not full_text:
                     return {
@@ -152,10 +149,7 @@ class ASRService:
                 }
 
         except Exception as e:
-            import sys
-            import traceback
-            print(f"[ASR] 轉錄失敗: {e}", file=sys.stderr, flush=True)
-            traceback.print_exc()
+            logger.exception("[ASR] 轉錄失敗")
             return {
                 "text": "",
                 "error": str(e),

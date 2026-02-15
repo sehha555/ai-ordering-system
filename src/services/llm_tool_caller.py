@@ -3,6 +3,9 @@ from typing import Any, Dict, List, Callable, Optional
 
 import requests
 
+from loguru import logger
+from src.config.logging_config import PerfTimer
+
 
 class LLMToolCaller:
     def __init__(
@@ -95,6 +98,8 @@ class LLMToolCaller:
         一個「回合」：允許 0~N 次工具呼叫，最後產出給使用者的回覆文字。
         history 由外部保存（你可以存在 SessionManager / in-memory / Redis）。
         """
+        logger.info("[LLM] 開始 run_turn: '{}'", user_text)
+
         messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
         messages.extend(history)
         messages.append({"role": "user", "content": user_text})
@@ -102,12 +107,13 @@ class LLMToolCaller:
         last_tool_trace: List[Dict[str, Any]] = []
 
         for _ in range(self.max_steps):
-            resp = self.call_llm(
-                messages=messages,
-                tools_schema=tools_schema,
-                tool_choice="auto",  # 關鍵：不要每句都 required
-                temperature=0.0,
-            )
+            with PerfTimer("llm_api_call"):
+                resp = self.call_llm(
+                    messages=messages,
+                    tools_schema=tools_schema,
+                    tool_choice="auto",  # 關鍵：不要每句都 required
+                    temperature=0.0,
+                )
             msg = resp["choices"][0]["message"]
             tool_call = self.pick_first_tool_call(resp)
 
@@ -116,6 +122,7 @@ class LLMToolCaller:
                 assistant_text = msg.get("content") or ""
                 new_history = history + [{"role": "user", "content": user_text},
                                         {"role": "assistant", "content": assistant_text}]
+                logger.info("[LLM] run_turn 完成, tool_calls={}", len(last_tool_trace))
                 return {
                     "ok": True,
                     "assistant_text": assistant_text,
@@ -136,6 +143,7 @@ class LLMToolCaller:
                 tool_map=tool_map,
                 allowed_args=allowed_args,
             )
+            logger.info("[LLM] tool_call: {} → ok={}", tool_call.get("function", {}).get("name"), exec_result.get("ok"))
             last_tool_trace.append({"tool_call": tool_call, "exec": exec_result})
 
             # 3) 把工具輸出回灌給模型（role=tool）
@@ -146,5 +154,6 @@ class LLMToolCaller:
                 "content": json.dumps(exec_result, ensure_ascii=False),
             })
 
+        logger.warning("[LLM] run_turn 超過最大步數 {}", self.max_steps)
         return {"ok": False, "error": "max_steps_exceeded", "history": history, "tool_trace": last_tool_trace}
 

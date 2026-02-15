@@ -4,7 +4,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.security.api_key import APIKeyHeader
 import json
 import os
-import sys
+from loguru import logger
 
 from src.services.streaming_orchestrator import StreamingOrchestrator
 
@@ -42,10 +42,7 @@ async def voice_chat(
     - event: cart_update  - 購物車更新
     - event: audio_chunk  - TTS 音訊片段 (base64)
     """
-    def debug(msg):
-        print(f"[VOICE] {msg}", file=sys.stderr, flush=True)
-
-    debug(f"收到語音請求: session_id={session_id}")
+    logger.info("[VOICE] 收到語音請求: session_id={}", session_id)
     audio_bytes = await file.read()
 
     # 取得服務實例（從 app.py 導入）
@@ -107,7 +104,7 @@ async def voice_chat(
                 session = _session_store.get(self._session_id)
                 session.setdefault("llm_history", [])
 
-                debug(f"LLM 處理: '{text}', 當前購物車: {len(session.get('cart', []))} 項")
+                logger.info("[VOICE] LLM 處理: '{}', 當前購物車: {} 項", text, len(session.get('cart', [])))
 
                 # 調用 LLM
                 result = _llm_caller.run_turn(
@@ -138,7 +135,7 @@ async def voice_chat(
                             item_total = _dialogue_manager.extract_total_from_price_info(price_info, qty)
                             total_price += item_total
 
-                    debug(f"LLM 回應: '{response_text}', 購物車已更新: {len(cart)} 項, 總計: ${total_price}")
+                    logger.info("[VOICE] LLM 回應: '{}', 購物車: {} 項, 總計: ${}", response_text, len(cart), total_price)
 
                     # 檢查是否有 finalize_order 結果
                     finalize_result = None
@@ -156,16 +153,14 @@ async def voice_chat(
                         "finalize_result": finalize_result,
                     })
                 else:
-                    debug(f"LLM 錯誤: {result.get('error')}")
+                    logger.error("[VOICE] LLM 錯誤: {}", result.get('error'))
                     return ("抱歉，系統暫時無法處理，請稍後再試。", {
                         "cart": [],
                         "order_payload": {"total_price": 0}
                     })
 
             except Exception as e:
-                debug(f"DMAdapter 異常: {e}")
-                import traceback
-                debug(traceback.format_exc())
+                logger.exception("[VOICE] DMAdapter 異常")
                 return (f"錯誤: {str(e)}", {
                     "cart": [],
                     "order_payload": {"total_price": 0}

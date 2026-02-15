@@ -2,12 +2,10 @@
 """TTS Service - 文字轉語音服務 (使用 Edge TTS)"""
 
 import asyncio
-import logging
+from loguru import logger
 import os
 import tempfile
 from typing import Optional
-
-logger = logging.getLogger(__name__)
 
 
 class TTSService:

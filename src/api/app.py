@@ -9,6 +9,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from typing import List, Optional
 from pydantic import BaseModel
+from loguru import logger
+from src.config.logging_config import setup_logging, PerfTimer
 from src.repository.order_repository import order_repo
 from src.dm.dialogue_manager import DialogueManager
 from src.dm.session_store import InMemorySessionStore
@@ -16,6 +18,9 @@ from src.services.asr_service import ASRService
 from src.services.tts_service import TTSService
 from src.services.llm_tool_caller import LLMToolCaller
 from src.dm.tool_registry import ToolRegistry
+
+# 初始化日誌系統
+setup_logging()
 
 # ============================================================================
 # 載入店家設定
@@ -284,16 +289,11 @@ async def text_dialogue(request: TextDialogueRequest, api_key: str = Depends(get
     文本對話端點（文字輸入，文字輸出）
     使用 LLM + Function Calling 處理點餐邏輯
     """
-    import sys
-
-    def debug(msg):
-        print(f"[TEXT] {msg}", file=sys.stderr, flush=True)
-
     try:
         session_id = request.session_id
         user_text = request.text
 
-        debug(f"收到文字: '{user_text}'")
+        logger.info("[TEXT] 收到文字: '{}'", user_text)
 
         # 設置當前會話
         _tool_registry.set_session_id(session_id)
@@ -317,14 +317,14 @@ async def text_dialogue(request: TextDialogueRequest, api_key: str = Depends(get
             response_text = result.get("assistant_text", "")
             if not response_text:
                 response_text = "好的，還需要什麼嗎？"
-            debug(f"LLM 回應: '{response_text}'")
+            logger.info("[TEXT] LLM 回應: '{}'", response_text)
             return TextDialogueResponse(
                 session_id=session_id,
                 response=response_text,
                 status="ok"
             )
         else:
-            debug(f"LLM 錯誤: {result.get('error')}")
+            logger.error("[TEXT] LLM 錯誤: {}", result.get('error'))
             return TextDialogueResponse(
                 session_id=session_id,
                 response="抱歉，系統暫時無法處理，請稍後再試。",
@@ -332,8 +332,7 @@ async def text_dialogue(request: TextDialogueRequest, api_key: str = Depends(get
             )
 
     except Exception as e:
-        import traceback
-        debug(f"異常: {e}\n{traceback.format_exc()}")
+        logger.exception("[TEXT] 異常")
         return TextDialogueResponse(
             session_id=request.session_id,
             response=f"錯誤: {str(e)}",
@@ -352,16 +351,11 @@ async def llm_dialogue(request: TextDialogueRequest, api_key: str = Depends(get_
           -H "Content-Type: application/json" \
           -d '{"session_id": "user123", "text": "我要一個紫米傳統飯糰"}'
     """
-    import sys
-
-    def debug(msg):
-        print(f"[LLM] {msg}", file=sys.stderr, flush=True)
-
     try:
         session_id = request.session_id
         user_text = request.text
 
-        debug(f"收到請求: session={session_id}, text={user_text}")
+        logger.info("[LLM] 收到請求: session={}, text={}", session_id, user_text)
 
         # 設置當前會話
         _tool_registry.set_session_id(session_id)
@@ -380,7 +374,7 @@ async def llm_dialogue(request: TextDialogueRequest, api_key: str = Depends(get_
             allowed_args=_tool_registry.get_allowed_args(),
         )
 
-        debug(f"LLM 結果: ok={result.get('ok')}, tool_trace={len(result.get('tool_trace', []))} calls")
+        logger.info("[LLM] 結果: ok={}, tool_trace={} calls", result.get('ok'), len(result.get('tool_trace', [])))
 
         if result.get("ok"):
             # 更新歷史
@@ -406,8 +400,7 @@ async def llm_dialogue(request: TextDialogueRequest, api_key: str = Depends(get_
             }
 
     except Exception as e:
-        import traceback
-        debug(f"異常: {e}\n{traceback.format_exc()}")
+        logger.exception("[LLM] 異常")
         return {
             "session_id": request.session_id,
             "response": f"錯誤: {str(e)}",
@@ -426,16 +419,10 @@ async def voice_dialogue(
     """
     import tempfile
     import subprocess
-    import sys
-
-    def debug(msg):
-        print(f"[DEBUG] {msg}", file=sys.stderr, flush=True)
 
     try:
-        debug(f"=== 開始處理語音請求 ===")
-        debug(f"session_id: {session_id}")
-        debug(f"audio_file.filename: {audio_file.filename}")
-        debug(f"audio_file.content_type: {audio_file.content_type}")
+        logger.info("[VOICE] === 開始處理語音請求 ===")
+        logger.info("[VOICE] session_id: {}, filename: {}, content_type: {}", session_id, audio_file.filename, audio_file.content_type)
 
         # 從檔名取得副檔名
         ext = ".webm"
@@ -443,10 +430,10 @@ async def voice_dialogue(
             ext = "." + audio_file.filename.split(".")[-1] if "." in audio_file.filename else ".webm"
 
         content = await audio_file.read()
-        debug(f"收到音訊大小: {len(content)} bytes, 副檔名: {ext}")
+        logger.info("[VOICE] 收到音訊大小: {} bytes, 副檔名: {}", len(content), ext)
 
         if len(content) < 1000:
-            debug(f"警告: 音訊檔案太小，可能是空的或錄音失敗")
+            logger.warning("[VOICE] 音訊檔案太小，可能是空的或錄音失敗")
             return {
                 "session_id": session_id,
                 "status": "error",
@@ -458,24 +445,22 @@ async def voice_dialogue(
         with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
             tmp.write(content)
             tmp_path = tmp.name
-        debug(f"已保存到: {tmp_path}")
+        logger.debug("[VOICE] 已保存到: {}", tmp_path)
 
         # 如果是 webm 格式，用 ffmpeg 轉換為 wav
         if ext.lower() == ".webm":
             wav_path = tmp_path.replace(".webm", ".wav")
-            debug(f"開始 ffmpeg 轉換: {tmp_path} -> {wav_path}")
+            logger.debug("[VOICE] 開始 ffmpeg 轉換: {} -> {}", tmp_path, wav_path)
             try:
                 result = subprocess.run([
                     "ffmpeg", "-y", "-i", tmp_path,
                     "-ar", "16000", "-ac", "1", "-f", "wav", wav_path
                 ], capture_output=True, check=True)
-                debug(f"ffmpeg 轉換成功")
-                debug(f"刪除原始檔案: {tmp_path}")
+                logger.debug("[VOICE] ffmpeg 轉換成功")
                 os.unlink(tmp_path)
                 tmp_path = wav_path
-                debug(f"更新路徑為: {tmp_path}")
             except subprocess.CalledProcessError as e:
-                debug(f"ffmpeg 轉換失敗: {e.stderr.decode()}")
+                logger.error("[VOICE] ffmpeg 轉換失敗: {}", e.stderr.decode())
                 return {
                     "session_id": session_id,
                     "status": "error",
@@ -485,16 +470,14 @@ async def voice_dialogue(
                 }
 
         # 檢查轉換後的檔案
-        debug(f"準備檢查檔案: {tmp_path}")
-        debug(f"檔案是否存在: {os.path.exists(tmp_path)}")
         wav_size = os.path.getsize(tmp_path)
-        debug(f"WAV 檔案大小: {wav_size} bytes")
+        logger.debug("[VOICE] WAV 檔案大小: {} bytes", wav_size)
 
         try:
             # 使用 ASR 將語音轉為文字
-            debug(f"開始 ASR 轉錄...")
+            logger.info("[VOICE] 開始 ASR 轉錄...")
             asr_result = _asr_service.transcribe(tmp_path)
-            debug(f"ASR 結果: {asr_result}")
+            logger.info("[VOICE] ASR 結果: {}", asr_result)
 
             if asr_result.get("error"):
                 return {
@@ -506,7 +489,7 @@ async def voice_dialogue(
                 }
 
             user_text = asr_result.get("text", "")
-            debug(f"識別到的文字: '{user_text}'")
+            logger.info("[VOICE] 識別到的文字: '{}'", user_text)
 
             if not user_text:
                 return {
@@ -518,7 +501,7 @@ async def voice_dialogue(
                 }
 
             # 調用 LLM 對話
-            debug(f"調用 LLM 處理: '{user_text}'")
+            logger.info("[VOICE] 調用 LLM 處理: '{}'", user_text)
             _tool_registry.set_session_id(session_id)
 
             # 確保會話存在
@@ -539,9 +522,9 @@ async def voice_dialogue(
                 dialogue_response = llm_result.get("assistant_text", "")
                 if not dialogue_response:
                     dialogue_response = "好的，還需要什麼嗎？"
-                debug(f"LLM 回應: '{dialogue_response}'")
+                logger.info("[VOICE] LLM 回應: '{}'", dialogue_response)
             else:
-                debug(f"LLM 錯誤: {llm_result.get('error')}")
+                logger.error("[VOICE] LLM 錯誤: {}", llm_result.get('error'))
                 dialogue_response = "抱歉，系統暫時無法處理，請稍後再試。"
 
             # 使用 TTS 將回應轉為語音
@@ -561,9 +544,7 @@ async def voice_dialogue(
                 os.unlink(tmp_path)
 
     except Exception as e:
-        import traceback
-        debug(f"!!! 發生異常: {type(e).__name__}: {e}")
-        debug(f"異常追蹤:\n{traceback.format_exc()}")
+        logger.exception("[VOICE] 語音對話異常")
         return {
             "session_id": session_id,
             "status": "error",
@@ -684,17 +665,12 @@ async def checkout(request: CheckoutRequest):
     - 儲存對話紀錄（SQLite + JSON 檔）
     - 清空 session 的 llm_history 和購物車
     """
-    import sys
-
-    def debug(msg):
-        print(f"[CHECKOUT] {msg}", file=sys.stderr, flush=True)
-
     try:
         session_id = request.session_id
         dine_type = request.dine_type
         payment_method = request.payment_method
 
-        debug(f"開始結帳: session_id={session_id}, dine_type={dine_type}, payment={payment_method}")
+        logger.info("[CHECKOUT] 開始結帳: session_id={}, dine_type={}, payment={}", session_id, dine_type, payment_method)
 
         # 1. 從 session_store 讀取購物車
         session = _session_store.get(session_id)
@@ -703,7 +679,7 @@ async def checkout(request: CheckoutRequest):
             raise HTTPException(status_code=400, detail="購物車是空的，無法結帳")
         llm_history = session.get("llm_history", [])
 
-        debug(f"購物車: {len(cart)} 項")
+        logger.info("[CHECKOUT] 購物車: {} 項", len(cart))
 
         # 2. 計算總價
         total_price = 0
@@ -714,11 +690,11 @@ async def checkout(request: CheckoutRequest):
                 item_total = _dialogue_manager._extract_total_from_pi(price_info, qty)
                 total_price += item_total
 
-        debug(f"總計: ${total_price}")
+        logger.info("[CHECKOUT] 總計: ${}", total_price)
 
         # 3. 生成取餐號碼
         order_number = order_repo.get_next_order_number()
-        debug(f"取餐號碼: {order_number}")
+        logger.info("[CHECKOUT] 取餐號碼: {}", order_number)
 
         # 4. 建立訂單
         from datetime import datetime
@@ -739,17 +715,17 @@ async def checkout(request: CheckoutRequest):
 
         # 5. 寫入訂單
         order_repo.save_order(order_payload, session_id)
-        debug(f"訂單已保存: {order_id}")
+        logger.info("[CHECKOUT] 訂單已保存: {}", order_id)
 
         # 6. 儲存對話紀錄
         order_repo.save_conversation_log(session_id, order_number, llm_history)
         order_repo.save_conversation_log_json(session_id, order_number, cart, total_price, dine_type, llm_history)
-        debug(f"對話紀錄已保存")
+        logger.info("[CHECKOUT] 對話紀錄已保存")
 
         # 7. 清空 session（llm_history 和購物車）
         session["llm_history"] = []
         session["cart"] = []
-        debug(f"Session 已清除")
+        logger.debug("[CHECKOUT] Session 已清除")
 
         return {
             "status": "ok",
@@ -761,7 +737,5 @@ async def checkout(request: CheckoutRequest):
         }
 
     except Exception as e:
-        import traceback
-        debug(f"異常: {e}")
-        debug(traceback.format_exc())
+        logger.exception("[CHECKOUT] 結帳異常")
         raise HTTPException(status_code=500, detail=str(e))
