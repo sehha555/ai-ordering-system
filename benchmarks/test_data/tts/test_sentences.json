@@ -4,5 +4,19 @@
   {"id": "recommend", "text": "我們今天有特價套餐，蛋餅加紅茶只要五十元，要不要試試看？", "category": "推薦"},
   {"id": "checkout", "text": "您的取餐號碼是 A零三七，請稍等一下喔！", "category": "結帳"},
   {"id": "long_response", "text": "好的，我幫您確認一下訂單內容：一個鮪魚飯糰、一個起司蛋餅、一杯大冰紅茶、還有一份薯餅。總共是一百三十五元，內用對嗎？", "category": "長句"},
-  {"id": "error_handling", "text": "抱歉，我沒有聽清楚，可以再說一次嗎？", "category": "錯誤處理"}
+  {"id": "error_handling", "text": "抱歉，我沒有聽清楚，可以再說一次嗎？", "category": "錯誤處理"},
+  {"id": "short_confirm", "text": "好的！", "category": "短句"},
+  {"id": "short_question", "text": "要加蛋嗎？", "category": "短句"},
+  {"id": "ask_flavor", "text": "請問飯糰要什麼口味呢？我們有鮪魚、肉鬆、玉米可以選。", "category": "追問"},
+  {"id": "ask_drink_spec", "text": "紅茶要大杯還是小杯？冰量要正常冰、少冰還是去冰？", "category": "追問"},
+  {"id": "ask_egg_pancake", "text": "蛋餅要什麼口味的呢？有原味、起司、玉米、鮪魚跟培根可以選喔。", "category": "追問"},
+  {"id": "price_number", "text": "一個鮪魚飯糰三十五元，一杯大冰紅茶二十五元，加一份薯餅二十元，總共是八十元。", "category": "數字"},
+  {"id": "order_number", "text": "您的取餐號碼是零一五，大約三到五分鐘就好囉。", "category": "數字"},
+  {"id": "menu_names", "text": "我們的飯糰有鮪魚、肉鬆、玉米、紫米和傳統口味，蛋餅有原味、起司和培根。", "category": "菜單名稱"},
+  {"id": "combo_detail", "text": "A套餐是蛋餅加小杯紅茶五十元，B套餐是飯糰加大杯豆漿六十元。", "category": "菜單名稱"},
+  {"id": "no_item_in_cart", "text": "您的購物車裡目前沒有蛋餅喔，要不要幫您加一個？", "category": "提示"},
+  {"id": "empty_cart_warning", "text": "您的購物車是空的，要先點餐再結帳喔！", "category": "提示"},
+  {"id": "modify_confirm", "text": "好的，已經幫您把鮪魚飯糰換成玉米飯糰了，還需要什麼嗎？", "category": "確認"},
+  {"id": "very_long", "text": "好的，我幫您整理一下目前的訂單：兩個鮪魚飯糰、一個起司蛋餅、一個培根蛋餅、一杯大冰紅茶、一杯小杯溫豆漿、還有兩份薯餅。總共八項，金額是兩百六十五元。請問是內用還是外帶呢？", "category": "超長句"},
+  {"id": "redirect_topic", "text": "不好意思，我是點餐助手，只能幫您處理點餐相關的問題喔。請問想吃點什麼呢？", "category": "引導"}
 ]

@@ -91,7 +91,7 @@ def run_single_benchmark(benchmark_type: str, model_config: dict, test_data: lis
         results["summary"] = compute_asr_metrics(results["test_cases"], test_data)
     elif benchmark_type == "tts":
         from benchmarks.metrics.tts_metrics import compute_tts_metrics
-        results["summary"] = compute_tts_metrics(results["test_cases"])
+        results["summary"] = compute_tts_metrics(results["test_cases"], test_data)
     elif benchmark_type == "llm":
         from benchmarks.metrics.llm_metrics import compute_llm_metrics
         results["summary"] = compute_llm_metrics(results["test_cases"], test_data)

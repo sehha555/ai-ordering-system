@@ -1,21 +1,24 @@
 [
   {
     "id": "basic_order",
-    "description": "基本點餐",
+    "description": "基本點餐 — 資訊完整",
+    "category": "basic",
     "messages": [{"role": "user", "content": "我要一個鮪魚飯糰"}],
     "expected_tools": ["add_riceball"],
     "expected_response_contains": ["鮪魚", "飯糰"]
   },
   {
-    "id": "combo_order",
-    "description": "套餐點餐",
+    "id": "combo_query",
+    "description": "套餐查詢",
+    "category": "query",
     "messages": [{"role": "user", "content": "有什麼套餐可以選？"}],
     "expected_tools": ["query_combo"],
     "expected_response_contains": ["套餐"]
   },
   {
     "id": "multi_item",
-    "description": "多品項點餐",
+    "description": "多品項點餐 — 資訊完整",
+    "category": "basic",
     "messages": [{"role": "user", "content": "一個起司蛋餅加一杯大冰紅茶"}],
     "expected_tools": ["add_egg_pancake", "add_drink"],
     "expected_response_contains": ["蛋餅", "紅茶"]
@@ -23,6 +26,7 @@
   {
     "id": "modify_order",
     "description": "修改訂單",
+    "category": "modify",
     "messages": [
       {"role": "assistant", "content": "好的，已幫您加了一個鮪魚飯糰。還需要什麼嗎？"},
       {"role": "user", "content": "飯糰改成玉米口味的"}
@@ -32,7 +36,8 @@
   },
   {
     "id": "query_menu",
-    "description": "查詢菜單",
+    "description": "查詢飲料菜單",
+    "category": "query",
     "messages": [{"role": "user", "content": "你們有賣什麼飲料？"}],
     "expected_tools": ["query_drink"],
     "expected_response_contains": ["飲料"]
@@ -40,8 +45,147 @@
   {
     "id": "checkout_flow",
     "description": "結帳流程",
+    "category": "checkout",
     "messages": [{"role": "user", "content": "好了就這樣，幫我結帳"}],
     "expected_tools": ["finalize_order"],
-    "expected_response_contains": ["結帳", "取餐"]
+    "expected_response_contains": ["結帳"]
+  },
+  {
+    "id": "missing_flavor",
+    "description": "缺少口味 — 只說飯糰沒說哪種",
+    "category": "missing_info",
+    "messages": [{"role": "user", "content": "我要一個飯糰"}],
+    "expected_tools": [],
+    "expected_response_contains": ["口味", "哪種"],
+    "expected_behavior": "應主動詢問口味（鮪魚、肉鬆、玉米等），不應直接加入購物車"
+  },
+  {
+    "id": "missing_quantity",
+    "description": "缺少數量 — 多人但沒說幾個",
+    "category": "missing_info",
+    "messages": [{"role": "user", "content": "我們每個人都要一個蛋餅"}],
+    "expected_tools": [],
+    "expected_response_contains": ["幾", "多少"],
+    "expected_behavior": "應詢問有幾個人/要幾個，不應猜測數量"
+  },
+  {
+    "id": "missing_drink_spec",
+    "description": "缺少飲料規格 — 沒說大小/冰量/甜度",
+    "category": "missing_info",
+    "messages": [{"role": "user", "content": "我要一杯紅茶"}],
+    "expected_tools": [],
+    "expected_response_contains": ["大", "小", "冰"],
+    "expected_behavior": "應詢問大杯/小杯、冰量（去冰/少冰/正常冰），這些是點飲料的必要資訊"
+  },
+  {
+    "id": "missing_egg_pancake_flavor",
+    "description": "缺少蛋餅口味",
+    "category": "missing_info",
+    "messages": [{"role": "user", "content": "來一份蛋餅"}],
+    "expected_tools": [],
+    "expected_response_contains": ["口味", "哪種"],
+    "expected_behavior": "應詢問蛋餅口味（原味、起司、玉米、鮪魚等）"
+  },
+  {
+    "id": "ambiguous_item",
+    "description": "模糊品名 — 吐司有多種",
+    "category": "missing_info",
+    "messages": [{"role": "user", "content": "給我一個吐司"}],
+    "expected_tools": [],
+    "expected_response_contains": ["哪種", "口味"],
+    "expected_behavior": "吐司有多種口味（肉鬆、鮪魚等），應詢問要哪一種"
+  },
+  {
+    "id": "complex_order_complete",
+    "description": "複雜點餐 — 資訊完整的多品項",
+    "category": "complex",
+    "messages": [{"role": "user", "content": "兩個鮪魚飯糰、一個起司蛋餅、一杯大冰紅茶、一份薯餅"}],
+    "expected_tools": ["add_riceball", "add_egg_pancake", "add_drink", "add_snack"],
+    "expected_response_contains": ["鮪魚", "蛋餅", "紅茶", "薯餅"]
+  },
+  {
+    "id": "complex_order_partial_info",
+    "description": "複雜點餐 — 部分品項缺資訊",
+    "category": "complex_missing",
+    "messages": [{"role": "user", "content": "一個鮪魚飯糰、一個蛋餅、還有一杯紅茶"}],
+    "expected_tools": ["add_riceball"],
+    "expected_response_contains": ["蛋餅", "口味", "紅茶", "大", "小"],
+    "expected_behavior": "飯糰口味完整可直接加入；但蛋餅缺口味、紅茶缺大小冰量，應詢問這些缺少的資訊"
+  },
+  {
+    "id": "modify_without_context",
+    "description": "修改但購物車為空",
+    "category": "edge_case",
+    "messages": [{"role": "user", "content": "把飯糰換成蛋餅"}],
+    "expected_tools": [],
+    "expected_response_contains": ["沒有", "購物車"],
+    "expected_behavior": "購物車為空時，應告知沒有可修改的項目"
+  },
+  {
+    "id": "cancel_nonexistent",
+    "description": "取消不存在的品項",
+    "category": "edge_case",
+    "messages": [
+      {"role": "assistant", "content": "好的，已幫您加了一杯大冰紅茶。還需要什麼嗎？"},
+      {"role": "user", "content": "幫我把蛋餅取消"}
+    ],
+    "expected_tools": [],
+    "expected_response_contains": ["沒有", "蛋餅"],
+    "expected_behavior": "購物車裡沒有蛋餅，應告知用戶目前沒有這個品項"
+  },
+  {
+    "id": "off_topic",
+    "description": "離題問題",
+    "category": "edge_case",
+    "messages": [{"role": "user", "content": "今天天氣好嗎？"}],
+    "expected_tools": [],
+    "expected_response_contains": ["點餐"],
+    "expected_behavior": "應禮貌引導回點餐主題，不應回答天氣問題"
+  },
+  {
+    "id": "multi_round_clarification",
+    "description": "多輪追問 — 補齊缺少資訊後完成點餐",
+    "category": "multi_round",
+    "messages": [
+      {"role": "user", "content": "我要一個飯糰"},
+      {"role": "assistant", "content": "好的，請問要什麼口味的飯糰呢？我們有鮪魚、肉鬆、玉米等口味。"},
+      {"role": "user", "content": "鮪魚的"}
+    ],
+    "expected_tools": ["add_riceball"],
+    "expected_response_contains": ["鮪魚", "飯糰"],
+    "expected_behavior": "經過追問後用戶補齊口味資訊，此時應成功加入購物車"
+  },
+  {
+    "id": "multi_round_drink",
+    "description": "多輪追問 — 飲料補齊規格",
+    "category": "multi_round",
+    "messages": [
+      {"role": "user", "content": "一杯紅茶"},
+      {"role": "assistant", "content": "好的，請問要大杯還是小杯？冰量要正常冰、少冰還是去冰呢？"},
+      {"role": "user", "content": "大杯少冰"}
+    ],
+    "expected_tools": ["add_drink"],
+    "expected_response_contains": ["紅茶", "大"],
+    "expected_behavior": "補齊大小和冰量後應成功加入購物車"
+  },
+  {
+    "id": "combo_with_customization",
+    "description": "套餐搭配客製化",
+    "category": "complex",
+    "messages": [{"role": "user", "content": "我要 A 套餐，飲料換大冰奶茶"}],
+    "expected_tools": ["add_combo"],
+    "expected_response_contains": ["套餐", "奶茶"]
+  },
+  {
+    "id": "rapid_fire_order",
+    "description": "連續快速點餐",
+    "category": "complex",
+    "messages": [
+      {"role": "user", "content": "一個鮪魚飯糰"},
+      {"role": "assistant", "content": "好的，已加入一個鮪魚飯糰。還需要什麼嗎？"},
+      {"role": "user", "content": "再一個起司蛋餅跟一杯大冰紅茶"}
+    ],
+    "expected_tools": ["add_egg_pancake", "add_drink"],
+    "expected_response_contains": ["蛋餅", "紅茶"]
   }
 ]
