@@ -132,7 +132,7 @@ async def voice_chat(
                         qty = int(item.get("quantity", 1) or 1)
                         price_info = _dialogue_manager.get_price_info(item)
                         if price_info and price_info.get("status") == "success":
-                            item_total = _dialogue_manager.extract_total_from_price_info(price_info, qty)
+                            item_total = _dialogue_manager.extract_total(price_info, qty)
                             total_price += item_total
 
                     logger.info("[VOICE] LLM 回應: '{}', 購物車: {} 項, 總計: ${}", response_text, len(cart), total_price)

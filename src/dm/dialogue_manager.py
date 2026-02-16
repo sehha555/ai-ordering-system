@@ -125,8 +125,8 @@ class DialogueManager:
         items_payload = []
         for item in session["cart"]:
             qty = int(item.get("quantity", 1) or 1)
-            pi = self._get_price_info(item)
-            item_total = self._extract_total_from_pi(pi, qty)
+            pi = self.get_price_info(item)
+            item_total = self.extract_total(pi, qty)
             unit_price = item_total // qty if qty > 0 else 0
             
             items_payload.append({
@@ -203,12 +203,12 @@ class DialogueManager:
         total = 0
         for item in session["cart"]:
             qty = int(item.get("quantity", 1) or 1)
-            pi = self._get_price_info(item)
+            pi = self.get_price_info(item)
             if pi and pi.get("status") == "success":
-                total += self._extract_total_from_pi(pi, qty)
+                total += self.extract_total(pi, qty)
         return total
 
-    def _extract_total_from_pi(self, pi: Dict[str, Any], qty: int) -> int:
+    def extract_total(self, pi: Dict[str, Any], qty: int) -> int:
         if not pi: return 0
         if "total_price" in pi and pi["total_price"] is not None:
             return pi["total_price"]
@@ -218,7 +218,7 @@ class DialogueManager:
             return pi["single_price"] * qty
         return 0
 
-    def _get_price_info(self, item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def get_price_info(self, item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         rtype = item.get("itemtype")
         pi = None
         if rtype == "riceball": pi = menu_tool.quote_riceball_price(flavor=item.get("flavor"), large=item.get("large", False), heavy=item.get("heavy", False), extra_egg=item.get("extra_egg", False))
@@ -461,9 +461,9 @@ class DialogueManager:
         items, total = [], 0
         for item in cart:
             qty = int(item.get("quantity", 1) or 1)
-            pi = self._get_price_info(item)
+            pi = self.get_price_info(item)
             if pi and pi.get("status") == "success":
-                total += self._extract_total_from_pi(pi, qty)
+                total += self.extract_total(pi, qty)
                 items.append(self._format_item(item))
             else: return f"品項「{self._format_item(item)}」無法計價：{pi.get('message', '計價失敗') if pi else '計價失敗'}。請洽服務人員再結帳。"
         return f"這樣一共{', '.join(items)}，共 {len(cart)} 個品項，共 {total}元"

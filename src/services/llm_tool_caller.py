@@ -1,10 +1,20 @@
 ﻿import json
+import re
 from typing import Any, Dict, List, Callable, Optional
 
 import requests
 
 from loguru import logger
 from src.config.logging_config import PerfTimer
+
+# Qwen 模型有時把 tool call 輸出到 content 而非 tool_calls 欄位
+_TOOL_CALL_RE = re.compile(
+    r'[<\|im_start\|>]*\s*'           # 可選的 <|im_start|> 前綴
+    r'(?:<tool_call>\s*)?'             # 可選的 <tool_call> 標籤
+    r'(\{["\s]*"?name"?\s*:.*?\})'     # JSON body
+    r'\s*(?:</tool_call>)?',           # 可選的 </tool_call> 標籤
+    re.DOTALL,
+)
 
 
 class LLMToolCaller:
@@ -49,9 +59,43 @@ class LLMToolCaller:
         return self._post(payload)
 
     def pick_first_tool_call(self, resp: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """從 LLM 回應提取第一個 tool call，支援 OpenAI 標準格式和 content fallback。"""
         msg = resp["choices"][0]["message"]
+
+        # 正常路徑：OpenAI 標準 tool_calls 欄位
         tool_calls = msg.get("tool_calls") or []
-        return tool_calls[0] if tool_calls else None
+        if tool_calls:
+            return tool_calls[0]
+
+        # Fallback：從 content 中解析 Qwen 格式的 tool call
+        content = msg.get("content") or ""
+        match = _TOOL_CALL_RE.search(content)
+        if not match:
+            return None
+
+        try:
+            raw = json.loads(match.group(1))
+        except (json.JSONDecodeError, IndexError):
+            return None
+
+        name = raw.get("name")
+        arguments = raw.get("arguments", {})
+        if not name:
+            return None
+
+        # 清理 content 中的 raw tool call 文字，避免外洩給使用者
+        cleaned = content[:match.start()].strip()
+        msg["content"] = cleaned
+
+        logger.info("[LLM] fallback 解析到 tool_call: {}", name)
+        return {
+            "id": "fallback_toolcall_0",
+            "type": "function",
+            "function": {
+                "name": name,
+                "arguments": json.dumps(arguments, ensure_ascii=False),
+            },
+        }
 
     def execute_tool_call(
         self,

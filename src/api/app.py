@@ -252,9 +252,9 @@ async def get_cart_summary(
             name = _dialogue_manager._format_item(item)
 
             # 計算價格
-            price_info = _dialogue_manager._get_price_info(item)
+            price_info = _dialogue_manager.get_price_info(item)
             if price_info and price_info.get("status") == "success":
-                item_total = _dialogue_manager._extract_total_from_pi(price_info, qty)
+                item_total = _dialogue_manager.extract_total(price_info, qty)
                 total_price += item_total
                 price_str = f"${item_total}"
             else:
@@ -685,9 +685,9 @@ async def checkout(request: CheckoutRequest):
         total_price = 0
         for item in cart:
             qty = int(item.get("quantity", 1) or 1)
-            price_info = _dialogue_manager._get_price_info(item)
+            price_info = _dialogue_manager.get_price_info(item)
             if price_info and price_info.get("status") == "success":
-                item_total = _dialogue_manager._extract_total_from_pi(price_info, qty)
+                item_total = _dialogue_manager.extract_total(price_info, qty)
                 total_price += item_total
 
         logger.info("[CHECKOUT] 總計: ${}", total_price)
