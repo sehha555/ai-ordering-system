@@ -55,6 +55,9 @@ export interface AppState {
   // VAD 模式
   vadEnabled: boolean;
 
+  // 網路連線
+  connectionError: string | null;
+
   // Actions - 語音和訂購
   setStatus: (s: AppStatus) => void;
   setCart: (items: CartItem[], total: number) => void;
@@ -69,4 +72,7 @@ export interface AppState {
   // Actions - 工作階段
   resetSession: () => void;
   setVadEnabled: (enabled: boolean) => void;
+
+  // Actions - 網路連線
+  setConnectionError: (error: string | null) => void;
 }

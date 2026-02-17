@@ -5,8 +5,12 @@ import { useStore } from '../store/useStore';
 import AudioVisualizer from './AudioVisualizer';
 
 // VAD 設定
-const VAD_THRESHOLD = 15;
+const VAD_DEFAULT_THRESHOLD = 15;
 const SILENCE_DURATION = 1500;
+const VAD_CALIBRATION_FRAMES = 60; // 約 1 秒的校準幀數
+const VAD_THRESHOLD_MULTIPLIER = 2; // 閾值 = 環境噪音平均值 × 倍數
+const VAD_MIN_THRESHOLD = 10; // 最低閾值
+const MAX_RECORDING_DURATION = 30000; // 最大錄音時長 30 秒
 
 export default function VoiceController() {
   const { status, setStatus, setCart, setTranscript, vadEnabled, setVadEnabled, sessionId } = useStore();
@@ -24,6 +28,8 @@ export default function VoiceController() {
   const isRecordingRef = useRef<boolean>(false);
   const silenceStartRef = useRef<number | null>(null);
   const vadLoopRef = useRef<number>(0);
+  const vadThresholdRef = useRef<number>(VAD_DEFAULT_THRESHOLD);
+  const recordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [volume, setVolume] = useState(0);
 
@@ -62,7 +68,7 @@ export default function VoiceController() {
       const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
       setVolume(avg / 255);
 
-      if (avg > VAD_THRESHOLD) {
+      if (avg > vadThresholdRef.current) {
         silenceStartRef.current = null;
         if (!isRecordingRef.current) {
           startRecordingVAD();
@@ -81,6 +87,39 @@ export default function VoiceController() {
 
     loop();
   }, []);
+
+  // VAD 校準 — 採樣環境噪音並計算自適應閾值
+  const calibrateVAD = useCallback(() => {
+    if (!analyserRef.current) return;
+
+    const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+    let totalAvg = 0;
+    let frameCount = 0;
+
+    const calibrationLoop = () => {
+      if (!analyserRef.current || frameCount >= VAD_CALIBRATION_FRAMES) {
+        // 校準完成，計算閾值
+        const ambientNoise = frameCount > 0 ? totalAvg / frameCount : 0;
+        vadThresholdRef.current = Math.max(
+          ambientNoise * VAD_THRESHOLD_MULTIPLIER,
+          VAD_MIN_THRESHOLD
+        );
+        console.log(`[VAD] 校準完成：環境噪音 ${ambientNoise.toFixed(1)}，閾值 ${vadThresholdRef.current.toFixed(1)}`);
+        // 校準完成後開始 VAD loop
+        startVADLoop();
+        return;
+      }
+
+      analyserRef.current.getByteFrequencyData(dataArray);
+      const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+      totalAvg += avg;
+      frameCount++;
+
+      requestAnimationFrame(calibrationLoop);
+    };
+
+    calibrationLoop();
+  }, [startVADLoop]);
 
   // Start recording in VAD mode
   const startRecordingVAD = useCallback(() => {
@@ -112,10 +151,20 @@ export default function VoiceController() {
 
     mediaRecorderRef.current = recorder;
     recorder.start(200);
+
+    // 最大錄音時長保護
+    recordingTimerRef.current = setTimeout(() => {
+      console.log('[VAD] 達到最大錄音時長，自動停止');
+      stopRecordingVAD();
+    }, MAX_RECORDING_DURATION);
   }, [setStatus]);
 
   // Stop recording in VAD mode
   const stopRecordingVAD = useCallback(() => {
+    if (recordingTimerRef.current) {
+      clearTimeout(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.requestData();
       mediaRecorderRef.current.stop();
@@ -241,19 +290,47 @@ export default function VoiceController() {
       cancelAnimationFrame(vadLoopRef.current);
     }
 
-    const formData = new FormData();
+    let formData = new FormData();
     formData.append('file', audioBlob, 'recording.webm');
     formData.append('session_id', sessionId);
 
     try {
       setStatus('processing');
 
-      const response = await fetch('/api/voice-chat', {
-        method: 'POST',
-        body: formData,
-      });
+      // 離線檢查
+      if (!navigator.onLine) {
+        useStore.getState().setConnectionError('網路已斷線，請檢查連線後再試');
+        setStatus('idle');
+        if (vadEnabled && isListeningRef.current) startVADLoop();
+        return;
+      }
 
-      if (!response.ok) throw new Error('Server error');
+      // 帶重試的 fetch
+      let response: Response | null = null;
+      const maxRetries = 2;
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          response = await fetch('/api/voice-chat', {
+            method: 'POST',
+            body: formData,
+          });
+          if (response.ok) break;
+          throw new Error(`Server error: ${response.status}`);
+        } catch (fetchError) {
+          if (attempt < maxRetries) {
+            const delay = Math.pow(2, attempt) * 1000; // 1s, 2s
+            await new Promise(resolve => setTimeout(resolve, delay));
+            // 重新建立 FormData（因為 body 被消費）
+            formData = new FormData();
+            formData.append('file', audioBlob, 'recording.webm');
+            formData.append('session_id', sessionId);
+          } else {
+            throw fetchError;
+          }
+        }
+      }
+
+      if (!response || !response.ok) throw new Error('Server error after retries');
 
       const reader = response.body?.getReader();
       if (!reader) throw new Error('No response body');
@@ -308,13 +385,14 @@ export default function VoiceController() {
       }
     } catch (error) {
       console.error('Error sending audio:', error);
+      useStore.getState().setConnectionError('語音傳送失敗，請稍後再試');
       setStatus('idle');
       // Resume VAD on error
       if (vadEnabled && isListeningRef.current) {
         startVADLoop();
       }
     }
-  }, [setStatus, playNextAudio, vadEnabled, startVADLoop]);
+  }, [setStatus, playNextAudio, vadEnabled, startVADLoop, sessionId]);
 
   // Handle SSE events
   const handleSSEEvent = useCallback((event: string, dataStr: string) => {
@@ -364,15 +442,18 @@ export default function VoiceController() {
   useEffect(() => {
     if (vadEnabled) {
       initMicrophone().then(() => {
-        startVADLoop();
+        calibrateVAD();
       });
     }
 
     return () => {
       cancelAnimationFrame(vadLoopRef.current);
       isListeningRef.current = false;
+      if (recordingTimerRef.current) {
+        clearTimeout(recordingTimerRef.current);
+      }
     };
-  }, [vadEnabled, initMicrophone, startVADLoop]);
+  }, [vadEnabled, initMicrophone, calibrateVAD]);
 
   // Keyboard shortcuts (only in push-to-talk mode)
   useEffect(() => {

@@ -41,6 +41,11 @@ class OrderRepository:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            # 索引優化：加速日期篩選、狀態查詢、會話查詢
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_orders_session_id ON orders(session_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_convlogs_session_id ON conversation_logs(session_id)")
             conn.commit()
         finally:
             conn.close()

@@ -20,6 +20,9 @@ export const useStore = create<AppState>((set) => ({
   // VAD
   vadEnabled: true,
 
+  // 網路連線
+  connectionError: null,
+
   // Actions - 語音和訂購
   setStatus: (status: AppStatus) => set({ status }),
   setCart: (cart: CartItem[], total: number) => set({ cart, total }),
@@ -45,6 +48,10 @@ export const useStore = create<AppState>((set) => ({
     sessionId: generateSessionId(),
     checkoutStep: 0,
     orderResult: null,
+    connectionError: null,
   }),
   setVadEnabled: (vadEnabled: boolean) => set({ vadEnabled }),
+
+  // Actions - 網路連線
+  setConnectionError: (error: string | null) => set({ connectionError: error }),
 }));
