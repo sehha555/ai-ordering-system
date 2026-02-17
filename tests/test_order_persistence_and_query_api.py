@@ -64,7 +64,11 @@ def test_order_persistence_on_submitted(test_env):
     assert len(orders) == 1
     assert orders[0]["total_price"] == 20
 
-def test_api_security_unauthorized(client):
+def test_api_security_unauthorized(client, monkeypatch):
+    """需設定 API_KEY 才會啟用驗證"""
+    import src.api.app as app_mod
+    monkeypatch.setattr(app_mod, "API_KEY", "test-secret-key")
+
     # Missing header
     response = client.get("/orders")
     assert response.status_code == 401

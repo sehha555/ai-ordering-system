@@ -1,6 +1,6 @@
 // 源飯糰點餐系統 - 大螢幕點餐機前端
 
-const API_KEY = 'yuan-secret-key';
+const API_KEY = ''; // 由環境設定，未設定時後端將停用 API Key 驗證
 let sessionId = 'session-' + Date.now();
 
 // ============================================================================

@@ -207,8 +207,13 @@ def test_list_orders(client, test_env):
     assert len(r.json()["items"]) >= 2
 
 
-def test_unauthorized_access(client):
-    """12. 未授權存取測試"""
+def test_unauthorized_access(client, monkeypatch):
+    """12. 未授權存取測試（需設定 API_KEY 才會啟用驗證）"""
+    import src.api.app as app_mod
+
+    # 設定 API_KEY 以啟用驗證
+    monkeypatch.setattr(app_mod, "API_KEY", "test-secret-key")
+
     # 無 header
     r = client.get("/orders")
     assert r.status_code in (401, 403)
@@ -218,3 +223,6 @@ def test_unauthorized_access(client):
     # /llm/test 也需要 key
     r = client.get("/llm/test")
     assert r.status_code in (401, 403)
+    # 正確 key 應通過
+    r = client.get("/orders", headers={"X-API-Key": "test-secret-key"})
+    assert r.status_code == 200

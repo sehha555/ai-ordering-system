@@ -503,6 +503,19 @@ class ToolRegistry:
             if not cart:
                 return {"ok": False, "message": "購物車為空，無法結帳"}
 
+            # 驗證所有品項都能正確定價
+            unpriceable_items = []
+            for item in cart:
+                pi = self.dm.get_price_info(item)
+                if not pi or pi.get("status") != "success":
+                    unpriceable_items.append(self.dm._format_item(item))
+            if unpriceable_items:
+                return {
+                    "ok": False,
+                    "message": f"以下品項無法計算價格，請確認後重試：{'、'.join(unpriceable_items)}"
+                }
+
+
             # 正規化 dine_type
             dine_type_map = {"內用": "dine-in", "外帶": "take-out", "dine-in": "dine-in", "take-out": "take-out"}
             resolved_dine = dine_type_map.get(dine_type, dine_type)

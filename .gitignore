@@ -24,6 +24,7 @@ Thumbs.db
 
 # Conversation logs
 logs/
+backups/
 
 # Agent / Editor configs
 .agent/

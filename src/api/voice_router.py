@@ -11,7 +11,7 @@ from src.services.streaming_orchestrator import StreamingOrchestrator
 router = APIRouter()
 
 # API Key 驗證
-API_KEY = os.getenv("API_KEY", "yuan-secret-key")
+API_KEY = os.getenv("API_KEY")
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 

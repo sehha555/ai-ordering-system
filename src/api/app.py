@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from loguru import logger
 from src.config.logging_config import setup_logging, PerfTimer
 from src.repository.order_repository import order_repo
+from src.utils.db_backup import backup_database
 from src.dm.dialogue_manager import DialogueManager
 from src.dm.session_store import InMemorySessionStore
 from src.services.asr_service import ASRService
@@ -21,6 +22,9 @@ from src.dm.tool_registry import ToolRegistry
 
 # 初始化日誌系統
 setup_logging()
+
+# 啟動時自動備份資料庫
+backup_database()
 
 # ============================================================================
 # 載入店家設定
@@ -102,10 +106,14 @@ class TextDialogueResponse(BaseModel):
     response: str
     status: str = "ok"
 
-API_KEY = os.getenv("API_KEY", "yuan-secret-key")
-api_key_header = APIKeyHeader(name="X-API-Key")
+API_KEY = os.getenv("API_KEY")
+if not API_KEY:
+    logger.warning("[AUTH] API_KEY 未設定，API Key 驗證已停用（僅限開發環境）")
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 def get_api_key(api_key: str = Security(api_key_header)):
+    if not API_KEY:
+        return "dev"  # 開發模式，跳過驗證
     if api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API Key")
     return api_key
@@ -583,7 +591,7 @@ async def test_asr(api_key: str = Depends(get_api_key)):
     測試 ASR 服務狀態
     """
     return {
-        "service": "ASR (faster-whisper)",
+        "service": "ASR (Qwen3-ASR)",
         "status": "ready" if _asr_service.model else "not_loaded",
         "model": _asr_service.model_name,
         "language": "zh"

@@ -30,6 +30,11 @@ class StreamingOrchestrator:
         logger.info("[PERF] asr_transcribe 耗時 {:.3f}s", time.perf_counter() - asr_start)
         yield {"event": "transcription", "data": {"text": text}}
 
+        if not text:
+            logger.warning("[SSE] ASR 無法識別語音，中止處理")
+            yield {"event": "error", "data": {"message": "無法識別語音內容，請再試一次"}}
+            return
+
         # 3. DM
         dm_start = time.perf_counter()
         response_text, context_snapshot = self.dm.process_input(text)
