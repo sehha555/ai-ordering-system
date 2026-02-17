@@ -352,9 +352,14 @@ class DialogueManager:
                 continue
             if session.get("current_combo_frame") and self._handle_drink_swap(span, session, parsed): continue
             res = order_router.route(span, current_order_has_main=bool(session["cart"]))
+            if res["route_type"] == "greeting":
+                return "你好！歡迎光臨，請問要點什麼呢？"
+            if res["route_type"] == "menu_inquiry":
+                return "我們有飯糰、蛋餅、漢堡、饅頭、吐司、果醬吐司、飲料和小點心，請問想點什麼？"
+            if res["route_type"] == "help":
+                return "您可以直接說想點的品項，例如「一個鮪魚飯糰」或「大杯冰豆漿」，我會幫您加入購物車。"
             if res["route_type"] == "unknown":
-                # 未知路由，返回澄清提示
-                return f"不好意思，我不太明白「{span}」的部分，可以請您再說一次嗎？"
+                return res.get("clarify_question", f"不好意思，我不太明白「{span}」的部分，可以請您再說一次嗎？")
             tool_res = self._call_tool(res["route_type"], span)
             if tool_res.get("error"): return tool_res["error"]
             frame = tool_res.get("frame")

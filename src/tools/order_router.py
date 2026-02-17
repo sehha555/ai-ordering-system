@@ -28,6 +28,11 @@ CLEAR_ALL_KEYWORDS = ["全部取消", "清空購物車", "都不要了", "全部
 REMOVE_INDEX_KEYWORDS = ["刪除第", "取消第", "個不要", "項不要", "刪第"]
 CHECKOUT_KEYWORDS = ["結帳", "送出", "下單", "就這些", "買單", "結案", "沒了"]
 
+# 非點餐意圖關鍵字
+GREETING_KEYWORDS = ["你好", "嗨", "哈囉", "早安", "午安", "晚安", "hello", "hi"]
+MENU_INQUIRY_KEYWORDS = ["菜單", "有什麼", "賣什麼", "有賣", "哪些", "推薦", "價目"]
+HELP_KEYWORDS = ["怎麼點", "怎麼用", "幫我", "教我", "使用"]
+
 
 def normalize_text(text: str) -> str:
     t = text
@@ -103,6 +108,14 @@ def _route(text: str, current_order_has_main: bool = False) -> Dict[str, Any]:
         return {"route_type": "drink", "needs_clarify": False, "note": "hit:drink_keywords"}
 
     # ---- 結束主要品項路由 ----
+
+    # 9. 非點餐意圖
+    if any(kw in t for kw in GREETING_KEYWORDS):
+        return {"route_type": "greeting", "needs_clarify": False, "note": "hit:greeting"}
+    if any(kw in t for kw in MENU_INQUIRY_KEYWORDS):
+        return {"route_type": "menu_inquiry", "needs_clarify": False, "note": "hit:menu_inquiry"}
+    if any(kw in t for kw in HELP_KEYWORDS):
+        return {"route_type": "help", "needs_clarify": False, "note": "hit:help"}
 
     return {
         "route_type": "unknown",

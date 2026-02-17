@@ -44,7 +44,7 @@ class TestDialogueManagerBasic:
         dm = DialogueManager(store=store)
         session_id = "test_session"
         result = dm.handle(session_id, "xyz 不明白的東西")
-        assert "明白" in result or "說一次" in result
+        assert "明白" in result or "說一次" in result or "想點哪一類" in result
 
 
 class TestSessionContextIntegration:
