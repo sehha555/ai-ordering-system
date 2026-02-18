@@ -161,7 +161,7 @@ class ASRService:
 class SenseVoiceService:
     """使用 SenseVoice-Small 的語音辨識服務"""
 
-    def __init__(self, model_id: str = "iic/SenseVoiceSmall", language: str = "zh"):
+    def __init__(self, model_id: str = "FunAudioLLM/SenseVoiceSmall", language: str = "zh", hub: str = "hf"):
         self.model = None
         self.language = language
         self.model_name = model_id
@@ -171,9 +171,10 @@ class SenseVoiceService:
             import torch
 
             device = "cuda" if torch.cuda.is_available() else "cpu"
-            logger.info(f"[ASR] 正在載入 SenseVoice {model_id} ({device})...")
+            logger.info(f"[ASR] 正在載入 SenseVoice {model_id} ({device}, hub={hub})...")
             self.model = AutoModel(
                 model=model_id,
+                hub=hub,
                 trust_remote_code=True,
                 device=device,
             )
@@ -210,7 +211,7 @@ class SenseVoiceService:
 def create_asr_service(backend: str = "sensevoice", **kwargs):
     """工廠函式：依 backend 建立 ASR 服務"""
     if backend == "sensevoice":
-        from src.config.models import SENSEVOICE_MODEL
-        return SenseVoiceService(model_id=SENSEVOICE_MODEL, **kwargs)
+        from src.config.models import SENSEVOICE_MODEL, SENSEVOICE_HUB
+        return SenseVoiceService(model_id=SENSEVOICE_MODEL, hub=SENSEVOICE_HUB, **kwargs)
     else:
         return ASRService(**kwargs)
