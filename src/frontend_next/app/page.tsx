@@ -5,12 +5,14 @@ import VoiceController from '../components/VoiceController';
 import LiveReceipt from '../components/LiveReceipt';
 import MenuDisplay from '../components/MenuDisplay';
 import CheckoutFlow from '../components/CheckoutFlow';
+import Toast from '../components/Toast';
 
 export default function Home() {
   const { checkoutStep } = useStore();
 
   return (
     <div className="h-screen w-screen flex overflow-hidden" style={{ backgroundColor: '#f4f7f8' }}>
+      <Toast />
       {/* 左側：菜單區域 (50%) */}
       <div
         className="w-1/2 flex flex-col"

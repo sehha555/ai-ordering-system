@@ -79,7 +79,8 @@ async def voice_chat(
                     raise RuntimeError(f"ffmpeg failed: {stderr.decode()[:200]}")
 
                 os.unlink(tmp_path)
-                result = self._asr.transcribe(wav_path)
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(None, self._asr.transcribe, wav_path)
                 return result.get("text", "")
             finally:
                 for p in [tmp_path, wav_path]:

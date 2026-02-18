@@ -1,4 +1,5 @@
 # src/services/streaming_orchestrator.py
+import asyncio
 import json
 import base64
 import time
@@ -37,7 +38,8 @@ class StreamingOrchestrator:
 
         # 3. DM
         dm_start = time.perf_counter()
-        response_text, context_snapshot = self.dm.process_input(text)
+        loop = asyncio.get_event_loop()
+        response_text, context_snapshot = await loop.run_in_executor(None, self.dm.process_input, text)
         logger.info("[PERF] dm_process 耗時 {:.3f}s", time.perf_counter() - dm_start)
 
         # 4. Cart Update
@@ -52,9 +54,13 @@ class StreamingOrchestrator:
 
         # 5. TTS Streaming
         tts_start = time.perf_counter()
+        first_chunk = True
         async for chunk in self.tts.run_stream(response_text):
             b64_audio = base64.b64encode(chunk).decode('utf-8')
             yield {"event": "audio_chunk", "data": b64_audio}
+            if first_chunk:
+                logger.info("[PERF] TTFA 首個音訊 {:.3f}s", time.perf_counter() - request_start)
+                first_chunk = False
         logger.info("[PERF] tts_stream 耗時 {:.3f}s", time.perf_counter() - tts_start)
 
         logger.info("[PERF] 端對端 SSE 總耗時 {:.3f}s", time.perf_counter() - request_start)
