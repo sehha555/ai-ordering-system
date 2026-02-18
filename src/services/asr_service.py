@@ -1,5 +1,5 @@
 # src/services/asr_service.py
-"""ASR Service - 語音辨識服務 (使用 Qwen3-ASR)"""
+"""ASR Service - 語音辨識服務 (Qwen3-ASR 或 SenseVoice-Small)"""
 
 from loguru import logger
 import os
@@ -156,3 +156,61 @@ class ASRService:
                 "language": None,
                 "confidence": 0.0
             }
+
+
+class SenseVoiceService:
+    """使用 SenseVoice-Small 的語音辨識服務"""
+
+    def __init__(self, model_id: str = "iic/SenseVoiceSmall", language: str = "zh"):
+        self.model = None
+        self.language = language
+        self.model_name = model_id
+
+        try:
+            from funasr import AutoModel
+            import torch
+
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            logger.info(f"[ASR] 正在載入 SenseVoice {model_id} ({device})...")
+            self.model = AutoModel(
+                model=model_id,
+                trust_remote_code=True,
+                device=device,
+            )
+            logger.info("[ASR] SenseVoice 模型已載入")
+        except ImportError:
+            logger.error("[ASR] 未安裝 funasr，請執行: pip install funasr")
+        except Exception as e:
+            logger.error(f"[ASR] SenseVoice 載入失敗: {e}")
+
+    def transcribe(self, audio_path: str, language: Optional[str] = None) -> dict:
+        if self.model is None:
+            return {"text": "", "error": "SenseVoice 模型未載入", "language": None, "confidence": 0.0}
+
+        if not os.path.exists(audio_path):
+            return {"text": "", "error": f"音訊文件不存在: {audio_path}", "language": None, "confidence": 0.0}
+
+        try:
+            logger.info("[ASR] SenseVoice 開始轉錄: {}", audio_path)
+            res = self.model.generate(
+                input=audio_path,
+                cache={},
+                language=language or self.language,
+                use_itn=True,
+                batch_size_s=60,
+            )
+            text = res[0]["text"].strip() if res else ""
+            logger.info("[ASR] SenseVoice 轉錄完成: '{}'", text)
+            return {"text": text, "language": language or self.language, "confidence": 0.95, "segments": []}
+        except Exception as e:
+            logger.exception("[ASR] SenseVoice 轉錄失敗")
+            return {"text": "", "error": str(e), "language": None, "confidence": 0.0}
+
+
+def create_asr_service(backend: str = "sensevoice", **kwargs):
+    """工廠函式：依 backend 建立 ASR 服務"""
+    if backend == "sensevoice":
+        from src.config.models import SENSEVOICE_MODEL
+        return SenseVoiceService(model_id=SENSEVOICE_MODEL, **kwargs)
+    else:
+        return ASRService(**kwargs)

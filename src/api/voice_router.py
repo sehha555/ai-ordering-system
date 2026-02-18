@@ -48,10 +48,11 @@ async def voice_chat(
     # 取得服務實例（從 app.py 導入）
     # 這裡使用延遲導入避免循環依賴
     from src.api.app import _asr_service, _dialogue_manager, _tts_service, _session_store, _llm_caller, _tool_registry, SYSTEM_PROMPT
-    from src.services.tts_implementations import EdgeTTSModel
+    from src.services.tts_implementations import create_tts_model
+    from src.config.models import TTS_BACKEND
 
-    # 建立串流 TTS 實例
-    streaming_tts = EdgeTTSModel(voice="zh-TW-HsiaoChenNeural")
+    # 建立串流 TTS 實例（依 TTS_BACKEND 選擇）
+    streaming_tts = create_tts_model(TTS_BACKEND)
 
     # 建立 ASR 適配器（將同步方法包裝為異步）
     class ASRAdapter:

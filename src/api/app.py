@@ -16,7 +16,8 @@ from src.utils.db_backup import backup_database
 from src.utils.perf_collector import perf_collector
 from src.dm.dialogue_manager import DialogueManager
 from src.dm.session_store import InMemorySessionStore
-from src.services.asr_service import ASRService
+from src.services.asr_service import ASRService, create_asr_service
+from src.config.models import ASR_BACKEND
 from src.services.tts_service import TTSService
 from src.services.llm_tool_caller import LLMToolCaller
 from src.dm.tool_registry import ToolRegistry
@@ -90,7 +91,7 @@ _llm_caller = LLMToolCaller(
 )
 _dialogue_manager = DialogueManager(llm=_llm_caller, store=_session_store)
 _tool_registry = ToolRegistry(_dialogue_manager, _session_store)
-_asr_service = ASRService(model_size="turbo", language="zh")  # 使用 Qwen3-ASR-Turbo
+_asr_service = create_asr_service(ASR_BACKEND, language="zh")
 _tts_service = TTSService(voice="female", rate="+0%")
 
 
@@ -602,9 +603,9 @@ async def test_asr(api_key: str = Depends(get_api_key)):
     測試 ASR 服務狀態
     """
     return {
-        "service": "ASR (Qwen3-ASR)",
+        "service": f"ASR ({_asr_service.__class__.__name__})",
         "status": "ready" if _asr_service.model else "not_loaded",
-        "model": _asr_service.model_name,
+        "model": getattr(_asr_service, "model_name", "unknown"),
         "language": "zh"
     }
 
