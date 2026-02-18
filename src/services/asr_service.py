@@ -175,8 +175,8 @@ class SenseVoiceService:
             self.model = AutoModel(
                 model=model_id,
                 hub=hub,
-                trust_remote_code=True,
                 device=device,
+                disable_update=True,
             )
             logger.info("[ASR] SenseVoice 模型已載入")
         except ImportError:
