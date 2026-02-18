@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState, useCallback, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../store/useStore';
 import AudioVisualizer from './AudioVisualizer';
 
@@ -13,7 +14,7 @@ const VAD_MIN_THRESHOLD = 10; // 最低閾值
 const MAX_RECORDING_DURATION = 30000; // 最大錄音時長 30 秒
 
 export default function VoiceController() {
-  const { status, setStatus, setCart, setTranscript, vadEnabled, setVadEnabled, sessionId } = useStore();
+  const { status, setStatus, setCart, setTranscript, transcript, vadEnabled, setVadEnabled, sessionId } = useStore();
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -501,6 +502,25 @@ export default function VoiceController() {
             : ''
         }
       </p>
+
+      {/* 識別結果顯示 */}
+      <div className="h-6 flex items-center justify-center overflow-hidden">
+        <AnimatePresence mode="wait">
+          {transcript && (
+            <motion.p
+              key={transcript}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25 }}
+              className="text-xs text-center px-2"
+              style={{ color: '#729DAD' }}
+            >
+              「{transcript}」
+            </motion.p>
+          )}
+        </AnimatePresence>
+      </div>
 
       {/* VAD 模式切換 */}
       <button

@@ -5,6 +5,7 @@ import base64
 import time
 from typing import AsyncIterator, Dict, Any
 from loguru import logger
+from src.utils.perf_collector import perf_collector
 
 
 class StreamingOrchestrator:
@@ -28,7 +29,8 @@ class StreamingOrchestrator:
         # 2. ASR
         asr_start = time.perf_counter()
         text = await self.asr.transcribe(audio_bytes)
-        logger.info("[PERF] asr_transcribe 耗時 {:.3f}s", time.perf_counter() - asr_start)
+        asr_elapsed = time.perf_counter() - asr_start
+        logger.info("[PERF] asr_transcribe 耗時 {:.3f}s", asr_elapsed)
         yield {"event": "transcription", "data": {"text": text}}
 
         if not text:
@@ -40,7 +42,8 @@ class StreamingOrchestrator:
         dm_start = time.perf_counter()
         loop = asyncio.get_event_loop()
         response_text, context_snapshot = await loop.run_in_executor(None, self.dm.process_input, text)
-        logger.info("[PERF] dm_process 耗時 {:.3f}s", time.perf_counter() - dm_start)
+        dm_elapsed = time.perf_counter() - dm_start
+        logger.info("[PERF] dm_process 耗時 {:.3f}s", dm_elapsed)
 
         # 4. Cart Update
         cart = context_snapshot.get("cart", [])
@@ -54,13 +57,26 @@ class StreamingOrchestrator:
 
         # 5. TTS Streaming
         tts_start = time.perf_counter()
+        ttfa_elapsed = None
         first_chunk = True
         async for chunk in self.tts.run_stream(response_text):
             b64_audio = base64.b64encode(chunk).decode('utf-8')
             yield {"event": "audio_chunk", "data": b64_audio}
             if first_chunk:
-                logger.info("[PERF] TTFA 首個音訊 {:.3f}s", time.perf_counter() - request_start)
+                ttfa_elapsed = time.perf_counter() - request_start
+                logger.info("[PERF] TTFA 首個音訊 {:.3f}s", ttfa_elapsed)
                 first_chunk = False
-        logger.info("[PERF] tts_stream 耗時 {:.3f}s", time.perf_counter() - tts_start)
+        tts_elapsed = time.perf_counter() - tts_start
+        logger.info("[PERF] tts_stream 耗時 {:.3f}s", tts_elapsed)
 
-        logger.info("[PERF] 端對端 SSE 總耗時 {:.3f}s", time.perf_counter() - request_start)
+        total_elapsed = time.perf_counter() - request_start
+        logger.info("[PERF] 端對端 SSE 總耗時 {:.3f}s", total_elapsed)
+
+        # 記錄到效能收集器
+        perf_collector.record(
+            asr_s=asr_elapsed,
+            dm_s=dm_elapsed,
+            ttfa_s=ttfa_elapsed,
+            tts_s=tts_elapsed,
+            total_s=total_elapsed,
+        )

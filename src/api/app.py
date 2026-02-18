@@ -13,6 +13,7 @@ from loguru import logger
 from src.config.logging_config import setup_logging, PerfTimer
 from src.repository.order_repository import order_repo
 from src.utils.db_backup import backup_database
+from src.utils.perf_collector import perf_collector
 from src.dm.dialogue_manager import DialogueManager
 from src.dm.session_store import InMemorySessionStore
 from src.services.asr_service import ASRService
@@ -134,6 +135,16 @@ async def serve_frontend():
 @app.get("/healthz")
 async def healthz():
     return {"ok": True}
+
+
+@app.get("/api/perf-stats")
+async def get_perf_stats():
+    """
+    回傳最近 50 筆語音請求各階段耗時統計
+    欄位：asr_s, dm_s, ttfa_s（首個音訊）, tts_s, total_s
+    重啟後清零（in-memory）
+    """
+    return perf_collector.get_stats()
 
 
 # ============================================================================

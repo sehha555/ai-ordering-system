@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { AppStatus } from '../types';
 
 interface AudioVisualizerProps {
@@ -160,9 +161,21 @@ export default function AudioVisualizer({ status, volume = 0 }: AudioVisualizerP
         className="w-64 h-64 cursor-pointer"
         style={{ width: 256, height: 256 }}
       />
-      <p className="text-lg font-medium" style={{ color: '#5a6b70' }}>
-        {statusText[status]}
-      </p>
+      <div className="h-7 flex items-center justify-center overflow-hidden">
+        <AnimatePresence mode="wait">
+          <motion.p
+            key={status}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.2 }}
+            className="text-lg font-medium"
+            style={{ color: STATUS_COLORS[status] }}
+          >
+            {statusText[status]}
+          </motion.p>
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
