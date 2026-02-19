@@ -19,6 +19,10 @@ env/
 .DS_Store
 Thumbs.db
 
+# Environment variables (含敏感 key，不追蹤)
+.env
+*.env
+
 # Database
 *.db
 
