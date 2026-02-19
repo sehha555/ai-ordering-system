@@ -89,6 +89,23 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
 
+[tool.uv]
+# 覆蓋 funasr 上游的 numpy<=1.26.4 限制
+override-dependencies = [
+    "numpy>=1.26.4,<2.0",
+]
+
+# PyTorch CUDA 12.8 index
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+# 指定 torch/torchaudio 從 CUDA index 安裝
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchaudio = { index = "pytorch-cu128" }
+
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
 
