@@ -37,14 +37,29 @@ class Qwen3ASRAdapter(BaseASRAdapter):
 
 
 class SenseVoiceAdapter(BaseASRAdapter):
-    """SenseVoice adapter（待實作）"""
+    """SenseVoice adapter（使用現有 SenseVoiceService）"""
 
     def __init__(self, params: dict):
         super().__init__(params)
+        self._service = None
+
+    def _init_service(self):
+        if self._service is None:
+            from src.services.asr_service import SenseVoiceService
+            from src.config.models import SENSEVOICE_MODEL, SENSEVOICE_HUB
+            self._service = SenseVoiceService(
+                model_id=SENSEVOICE_MODEL,
+                language=self.params.get("language", "zh"),
+                hub=SENSEVOICE_HUB,
+            )
 
     def run(self, test_case: dict, timeout: float = 60) -> dict:
-        # TODO: 安裝 funasr 並載入 SenseVoice 模型
-        raise NotImplementedError("SenseVoice adapter 尚未實作，需安裝 funasr")
+        self._init_service()
+        result = self._service.transcribe(test_case["audio_path"])
+        return {
+            "text": result.get("text", ""),
+            "confidence": result.get("confidence", 0.0),
+        }
 
 
 REGISTRY = {

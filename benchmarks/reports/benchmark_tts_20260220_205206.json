@@ -1,0 +1,550 @@
+{
+  "benchmark_type": "tts",
+  "timestamp": "2026-02-20T20:52:06.015920",
+  "results": [
+    {
+      "model_id": "edge-tts-tw",
+      "model_name": "Edge TTS (台灣女聲)",
+      "type": "tts",
+      "timestamp": "2026-02-20T20:51:25.056537",
+      "test_cases": [
+        {
+          "case_id": "greeting",
+          "runs": [
+            {
+              "audio_bytes": "<bytes:31680>",
+              "first_byte_time": 0.5217748999857577,
+              "total_time": 0.6053534999955446,
+              "latency": 0.8144156000053044,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:31680>",
+              "first_byte_time": 0.4475186999916332,
+              "total_time": 0.5092030999949202,
+              "latency": 0.5092299999960233,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:31680>",
+              "first_byte_time": 0.49137279999558814,
+              "total_time": 0.55255359999137,
+              "latency": 0.5525843999930657,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "confirm_order",
+          "runs": [
+            {
+              "audio_bytes": "<bytes:39168>",
+              "first_byte_time": 0.4853136000019731,
+              "total_time": 0.5818238999927416,
+              "latency": 0.5818482000031509,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:39168>",
+              "first_byte_time": 0.5049957000010181,
+              "total_time": 0.6231789000012213,
+              "latency": 0.6232041999901412,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:39168>",
+              "first_byte_time": 0.49485199998889584,
+              "total_time": 0.5886832999967737,
+              "latency": 0.588718400002108,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "recommend",
+          "runs": [
+            {
+              "audio_bytes": "<bytes:38880>",
+              "first_byte_time": 0.5221744999871589,
+              "total_time": 0.6099530999927083,
+              "latency": 0.6099796000053175,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:38880>",
+              "first_byte_time": 0.5326217999972869,
+              "total_time": 0.6069110999960685,
+              "latency": 0.6069422000000486,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:38880>",
+              "first_byte_time": 0.47623149999708403,
+              "total_time": 0.7644785000011325,
+              "latency": 0.7645073999883607,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "checkout",
+          "runs": [
+            {
+              "audio_bytes": "<bytes:28512>",
+              "first_byte_time": 0.5231280000007246,
+              "total_time": 0.7079277000011643,
+              "latency": 0.7079565999883926,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:28512>",
+              "first_byte_time": 0.7320501999929547,
+              "total_time": 0.8148843999952078,
+              "latency": 0.8149057999980869,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:28512>",
+              "first_byte_time": 0.6472441000078106,
+              "total_time": 0.8057693000009749,
+              "latency": 0.8057940000144299,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "long_response",
+          "runs": [
+            {
+              "audio_bytes": "<bytes:79488>",
+              "first_byte_time": 0.7868817999988096,
+              "total_time": 1.021633299998939,
+              "latency": 1.0216732999979286,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:79488>",
+              "first_byte_time": 0.7540937999874586,
+              "total_time": 0.9674882999970578,
+              "latency": 0.9675370999902952,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:79488>",
+              "first_byte_time": 0.6785422000102699,
+              "total_time": 0.8435230000031879,
+              "latency": 0.8435720999987097,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "error_handling",
+          "runs": [
+            {
+              "audio_bytes": "<bytes:26496>",
+              "first_byte_time": 0.50690079999913,
+              "total_time": 0.6156341000023531,
+              "latency": 0.6156598999950802,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:26496>",
+              "first_byte_time": 0.49033179999969434,
+              "total_time": 0.5462532999954419,
+              "latency": 0.5462729999999283,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:26496>",
+              "first_byte_time": 0.5791852999973344,
+              "total_time": 0.6688204999954905,
+              "latency": 0.6688435999967624,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "short_confirm",
+          "runs": [
+            {
+              "audio_bytes": "<bytes:8496>",
+              "first_byte_time": 0.5394188999925973,
+              "total_time": 0.5900885000010021,
+              "latency": 0.5901010000088718,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:8496>",
+              "first_byte_time": 0.4933688000019174,
+              "total_time": 0.5353415999998106,
+              "latency": 0.5353534000023501,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:8496>",
+              "first_byte_time": 0.525102200001129,
+              "total_time": 0.5647054000000935,
+              "latency": 0.5647186999995029,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "short_question",
+          "runs": [
+            {
+              "audio_bytes": "<bytes:10368>",
+              "first_byte_time": 0.5360962000122527,
+              "total_time": 0.5928717000060715,
+              "latency": 0.5928870999923674,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:10368>",
+              "first_byte_time": 0.5504393000010168,
+              "total_time": 0.5952736999897752,
+              "latency": 0.5952878999960376,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:10368>",
+              "first_byte_time": 0.5531685999885667,
+              "total_time": 0.6429716999991797,
+              "latency": 0.6429840000055265,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "ask_flavor",
+          "runs": [
+            {
+              "audio_bytes": "<bytes:40464>",
+              "first_byte_time": 0.540624300003401,
+              "total_time": 0.6482982000015909,
+              "latency": 0.6483156999893254,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:40464>",
+              "first_byte_time": 0.5438655000034487,
+              "total_time": 0.8408391999982996,
+              "latency": 0.8408612999919569,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:40464>",
+              "first_byte_time": 0.5173750999965705,
+              "total_time": 0.6684205999918049,
+              "latency": 0.668444199996884,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "ask_drink_spec",
+          "runs": [
+            {
+              "audio_bytes": "<bytes:38016>",
+              "first_byte_time": 0.525996500000474,
+              "total_time": 0.6096699000045191,
+              "latency": 0.6096888000029139,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:38016>",
+              "first_byte_time": 0.514967399998568,
+              "total_time": 0.6262953999976162,
+              "latency": 0.6263435000000754,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:38016>",
+              "first_byte_time": 0.49503659999754746,
+              "total_time": 0.8029245000070659,
+              "latency": 0.8029565999895567,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "ask_egg_pancake",
+          "runs": [
+            {
+              "audio_bytes": "<bytes:45504>",
+              "first_byte_time": 0.5123906000080751,
+              "total_time": 0.617045600010897,
+              "latency": 0.6170799999963492,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:45504>",
+              "first_byte_time": 0.5279233999899589,
+              "total_time": 0.6158895999978995,
+              "latency": 0.6159318999998504,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:45504>",
+              "first_byte_time": 0.5075081999966642,
+              "total_time": 0.5920383000047877,
+              "latency": 0.5920700999995461,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "price_number",
+          "runs": [
+            {
+              "audio_bytes": "<bytes:52416>",
+              "first_byte_time": 0.5131063000007998,
+              "total_time": 0.6673116000019945,
+              "latency": 0.6673544000077527,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:52416>",
+              "first_byte_time": 0.5701723000092898,
+              "total_time": 0.6662480000086362,
+              "latency": 0.6663244000083068,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:52416>",
+              "first_byte_time": 0.5457874999992782,
+              "total_time": 0.6703587999945739,
+              "latency": 0.6703924000030383,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "order_number",
+          "runs": [
+            {
+              "audio_bytes": "<bytes:31680>",
+              "first_byte_time": 0.5270782000006875,
+              "total_time": 0.5906049000041094,
+              "latency": 0.5906333000020823,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:31680>",
+              "first_byte_time": 0.5506794999964768,
+              "total_time": 0.6145009999891045,
+              "latency": 0.6145320999930846,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:31680>",
+              "first_byte_time": 0.5342458999948576,
+              "total_time": 0.6360778999951435,
+              "latency": 0.636107099999208,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "menu_names",
+          "runs": [
+            {
+              "audio_bytes": "<bytes:49968>",
+              "first_byte_time": 0.5511336000054143,
+              "total_time": 0.7021585000038613,
+              "latency": 0.7021856000064872,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:49968>",
+              "first_byte_time": 0.5289241999998922,
+              "total_time": 0.6153199999971548,
+              "latency": 0.6153506999980891,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:49968>",
+              "first_byte_time": 0.4857406999944942,
+              "total_time": 0.5927342999930261,
+              "latency": 0.5927672999969218,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "combo_detail",
+          "runs": [
+            {
+              "audio_bytes": "<bytes:41904>",
+              "first_byte_time": 0.5572515000094427,
+              "total_time": 0.6615421000024071,
+              "latency": 0.6615785000030883,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:41904>",
+              "first_byte_time": 0.6156033000006573,
+              "total_time": 0.7546455999981845,
+              "latency": 0.7547544999979436,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:41904>",
+              "first_byte_time": 0.5248893999960274,
+              "total_time": 0.8789620000025025,
+              "latency": 0.8789906000019982,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "no_item_in_cart",
+          "runs": [
+            {
+              "audio_bytes": "<bytes:30528>",
+              "first_byte_time": 0.5229541000007885,
+              "total_time": 0.5854115000111051,
+              "latency": 0.5854324000101769,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:30528>",
+              "first_byte_time": 0.5509961000061594,
+              "total_time": 0.6363419999979669,
+              "latency": 0.636489900003653,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:30528>",
+              "first_byte_time": 0.506062500004191,
+              "total_time": 0.5712945000123,
+              "latency": 0.5713277000031667,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "empty_cart_warning",
+          "runs": [
+            {
+              "audio_bytes": "<bytes:26640>",
+              "first_byte_time": 0.5367614000133472,
+              "total_time": 0.6148539999994682,
+              "latency": 0.6148722000070848,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:26640>",
+              "first_byte_time": 0.5210369999986142,
+              "total_time": 0.5750790000020061,
+              "latency": 0.5750960000004852,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:26640>",
+              "first_byte_time": 0.5390536999912001,
+              "total_time": 0.5919562999915797,
+              "latency": 0.5919792999920901,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "modify_confirm",
+          "runs": [
+            {
+              "audio_bytes": "<bytes:36720>",
+              "first_byte_time": 0.5669779000018025,
+              "total_time": 0.6343804000061937,
+              "latency": 0.6344125999894459,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:36720>",
+              "first_byte_time": 0.6611212999996496,
+              "total_time": 0.7502036999940174,
+              "latency": 0.7502325999957975,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:36720>",
+              "first_byte_time": 0.6549299000034807,
+              "total_time": 0.8132488000119338,
+              "latency": 0.8132891999994172,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "very_long",
+          "runs": [
+            {
+              "audio_bytes": "<bytes:116208>",
+              "first_byte_time": 0.76903090000269,
+              "total_time": 1.0251676000043517,
+              "latency": 1.0252367000066442,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:116208>",
+              "first_byte_time": 0.6568453000072623,
+              "total_time": 0.9897062000090955,
+              "latency": 0.9897656999964966,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:116208>",
+              "first_byte_time": 0.560840799997095,
+              "total_time": 0.7097148000029847,
+              "latency": 0.7097846999968169,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "redirect_topic",
+          "runs": [
+            {
+              "audio_bytes": "<bytes:52128>",
+              "first_byte_time": 0.5537637999950675,
+              "total_time": 0.8633414999931119,
+              "latency": 0.8633774000045378,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:52128>",
+              "first_byte_time": 0.542577700005495,
+              "total_time": 0.6437831000075676,
+              "latency": 0.6438369000097737,
+              "success": true
+            },
+            {
+              "audio_bytes": "<bytes:52128>",
+              "first_byte_time": 0.5501504999992903,
+              "total_time": 0.7146760000032373,
+              "latency": 0.7147019999974873,
+              "success": true
+            }
+          ]
+        }
+      ],
+      "summary": {
+        "avg_first_byte_latency": 0.5542701733327704,
+        "avg_total_time": 0.6791061816666721,
+        "avg_rtf": 0.1514944184465467,
+        "avg_audio_size_kb": 40.29609375,
+        "success_rate": 1.0
+      }
+    }
+  ],
+  "comparison": {
+    "edge-tts-tw": {
+      "avg_first_byte_latency": 0.5542701733327704,
+      "avg_total_time": 0.6791061816666721,
+      "avg_rtf": 0.1514944184465467,
+      "avg_audio_size_kb": 40.29609375,
+      "success_rate": 1.0
+    }
+  }
+}
