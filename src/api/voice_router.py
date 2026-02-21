@@ -6,6 +6,7 @@ import json
 import os
 from loguru import logger
 
+from src.services.asr_postprocess import postprocess
 from src.services.streaming_orchestrator import StreamingOrchestrator
 from src.services.tts_implementations import create_tts_model
 from src.config.models import TTS_BACKEND
@@ -85,7 +86,7 @@ async def voice_chat(
                 os.unlink(tmp_path)
                 loop = asyncio.get_event_loop()
                 result = await loop.run_in_executor(None, self._asr.transcribe, wav_path)
-                return result.get("text", "")
+                return postprocess(result.get("text", ""))
             finally:
                 for p in [tmp_path, wav_path]:
                     if os.path.exists(p):
