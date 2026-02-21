@@ -4,7 +4,7 @@ import os
 
 # 後端選擇（可用環境變數覆蓋）
 ASR_BACKEND = os.getenv("ASR_BACKEND", "sensevoice")  # "qwen3asr" | "sensevoice"
-TTS_BACKEND = os.getenv("TTS_BACKEND", "qwen3tts")    # "edgetts" | "qwen3tts"
+TTS_BACKEND = os.getenv("TTS_BACKEND", "edgetts")      # "edgetts" | "qwen3tts"
 
 # SenseVoice 設定（必須用 modelscope hub，HuggingFace 版權重解碼異常）
 SENSEVOICE_MODEL = os.getenv("SENSEVOICE_MODEL", "iic/SenseVoiceSmall")
