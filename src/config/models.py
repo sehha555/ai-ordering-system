@@ -15,5 +15,5 @@ QWEN3TTS_MODEL = os.getenv("QWEN3TTS_MODEL", "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoi
 QWEN3TTS_SPEAKER = os.getenv("QWEN3TTS_SPEAKER", "Vivian")  # 預設女聲
 
 # LLM：在 LM Studio 手動載入以下模型（不影響程式碼，僅文件用）
-# 推薦：qwen3-14b (Q4_K_M, ~9GB VRAM) — 適合 RTX 5070 Ti 16GB
-LLM_RECOMMENDED = "qwen3-14b"
+# 推薦：qwen3-30b-a3b (MoE, 3B 活躍參數) — 適合 RTX 5070 Ti 16GB
+LLM_RECOMMENDED = "qwen/qwen3-30b-a3b-2507"

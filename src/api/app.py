@@ -86,7 +86,7 @@ if os.path.isdir(_frontend_dir):
 _session_store = InMemorySessionStore()
 _llm_caller = LLMToolCaller(
     base_url=os.getenv("LLM_BASE_URL", "http://127.0.0.1:1234/v1/chat/completions"),
-    model=os.getenv("LLM_MODEL", "qwen2.5-14b-instruct-1m"),
+    model=os.getenv("LLM_MODEL", "qwen/qwen3-30b-a3b-2507"),
     timeout=int(os.getenv("LLM_TIMEOUT", "120")),
 )
 _dialogue_manager = DialogueManager(llm=_llm_caller, store=_session_store)
