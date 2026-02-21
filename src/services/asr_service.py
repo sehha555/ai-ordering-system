@@ -161,12 +161,38 @@ class ASRService:
 class SenseVoiceService:
     """使用 SenseVoice-Small 的語音辨識服務"""
 
+    @staticmethod
+    def _patch_funasr_tiktoken():
+        """修復 funasr 1.3.1 打包缺陷：從 openai-whisper 複製缺失的 tiktoken 檔案"""
+        import importlib.util
+        import shutil
+        from pathlib import Path
+
+        funasr_spec = importlib.util.find_spec("funasr")
+        whisper_spec = importlib.util.find_spec("whisper")
+        if not funasr_spec or not funasr_spec.origin or not whisper_spec or not whisper_spec.origin:
+            return
+
+        funasr_assets = Path(funasr_spec.origin).parent / "models" / "sense_voice" / "whisper_lib" / "assets"
+        whisper_assets = Path(whisper_spec.origin).parent / "assets"
+        tiktoken_src = whisper_assets / "multilingual.tiktoken"
+        tiktoken_dst = funasr_assets / "multilingual.tiktoken"
+
+        if tiktoken_src.exists() and not tiktoken_dst.exists():
+            funasr_assets.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(tiktoken_src, tiktoken_dst)
+            logger.info("[ASR] 已修復 funasr whisper_lib/assets/multilingual.tiktoken")
+
     def __init__(self, model_id: str = "FunAudioLLM/SenseVoiceSmall", language: str = "zh", hub: str = "hf"):
         self.model = None
         self.language = language
         self.model_name = model_id
 
         try:
+            # 修復 funasr 1.3.1 打包缺陷：wheel 未包含 whisper_lib/assets/
+            # tiktoken 檔案與 openai-whisper 套件完全相同，偵測到缺失時自動複製
+            self._patch_funasr_tiktoken()
+
             from funasr import AutoModel
             import torch
 
