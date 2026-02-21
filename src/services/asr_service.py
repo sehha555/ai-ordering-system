@@ -227,6 +227,9 @@ class SenseVoiceService:
                 batch_size_s=60,
             )
             text = res[0]["text"].strip() if res else ""
+            # ModelScope 版 SenseVoice 輸出含特殊 tag，需清除
+            import re
+            text = re.sub(r"<\|[^|]*\|>", "", text).strip()
             logger.info("[ASR] SenseVoice 轉錄完成: '{}'", text)
             return {"text": text, "language": language or self.language, "confidence": 0.95, "segments": []}
         except Exception as e:

@@ -6,9 +6,9 @@ import os
 ASR_BACKEND = os.getenv("ASR_BACKEND", "sensevoice")  # "qwen3asr" | "sensevoice"
 TTS_BACKEND = os.getenv("TTS_BACKEND", "qwen3tts")    # "edgetts" | "qwen3tts"
 
-# SenseVoice 設定
-SENSEVOICE_MODEL = os.getenv("SENSEVOICE_MODEL", "FunAudioLLM/SenseVoiceSmall")
-SENSEVOICE_HUB = os.getenv("SENSEVOICE_HUB", "hf")  # "hf" = HuggingFace
+# SenseVoice 設定（必須用 modelscope hub，HuggingFace 版權重解碼異常）
+SENSEVOICE_MODEL = os.getenv("SENSEVOICE_MODEL", "iic/SenseVoiceSmall")
+SENSEVOICE_HUB = os.getenv("SENSEVOICE_HUB", "ms")  # "ms" = ModelScope
 
 # Qwen3-TTS 設定
 QWEN3TTS_MODEL = os.getenv("QWEN3TTS_MODEL", "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice")
