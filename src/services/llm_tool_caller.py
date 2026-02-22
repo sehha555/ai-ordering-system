@@ -22,7 +22,7 @@ class LLMToolCaller:
         self,
         *,
         base_url: str = "http://127.0.0.1:1234/v1/chat/completions",
-        model: str = "qwen2.5-14b-instruct-1m",
+        model: str = "qwen/qwen3-30b-a3b-2507",
         timeout: int = 60,
         max_steps: int = 4,
         max_arg_chars: int = 8000,

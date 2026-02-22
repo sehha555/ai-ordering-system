@@ -1,0 +1,1420 @@
+{
+  "benchmark_type": "llm",
+  "timestamp": "2026-02-21T00:31:24.707992",
+  "results": [
+    {
+      "model_id": "qwen25-14b",
+      "model_name": "Qwen2.5-14B-Instruct",
+      "type": "llm",
+      "timestamp": "2026-02-21T00:30:11.452837",
+      "test_cases": [
+        {
+          "case_id": "basic_order",
+          "runs": [
+            {
+              "response": "好 鮪魚飯糰是紫米還是白米",
+              "tool_calls": [],
+              "tokens": 4333,
+              "latency": 0.5615010999899823,
+              "success": true
+            },
+            {
+              "response": "好 鮪魚飯糰是紫米還是白米",
+              "tool_calls": [],
+              "tokens": 4333,
+              "latency": 0.43448359999456443,
+              "success": true
+            },
+            {
+              "response": "好 鮪魚飯糰是紫米還是白米",
+              "tool_calls": [],
+              "tokens": 4333,
+              "latency": 0.4467941000038991,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "basic_order_complete",
+          "runs": [
+            {
+              "response": "好 一個紫米鮪魚飯糰 還要嗎",
+              "tool_calls": [],
+              "tokens": 4339,
+              "latency": 0.4819871000072453,
+              "success": true
+            },
+            {
+              "response": "好 一個紫米鮪魚飯糰 還要嗎",
+              "tool_calls": [],
+              "tokens": 4339,
+              "latency": 0.4800443999993149,
+              "success": true
+            },
+            {
+              "response": "好 一個紫米鮪魚飯糰 還要嗎",
+              "tool_calls": [],
+              "tokens": 4339,
+              "latency": 0.4754864999995334,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "combo_query",
+          "runs": [
+            {
+              "response": "",
+              "tool_calls": [
+                {
+                  "name": "query_menu",
+                  "arguments": {
+                    "category": "套餐"
+                  }
+                }
+              ],
+              "tokens": 4336,
+              "latency": 0.5349542999902042,
+              "success": true
+            },
+            {
+              "response": "",
+              "tool_calls": [
+                {
+                  "name": "query_menu",
+                  "arguments": {
+                    "category": "套餐"
+                  }
+                }
+              ],
+              "tokens": 4336,
+              "latency": 0.5733762000018032,
+              "success": true
+            },
+            {
+              "response": "",
+              "tool_calls": [
+                {
+                  "name": "query_menu",
+                  "arguments": {
+                    "category": "套餐"
+                  }
+                }
+              ],
+              "tokens": 4336,
+              "latency": 0.564095499998075,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "multi_item",
+          "runs": [
+            {
+              "response": "好 一個起司蛋餅 飲料要冰的溫的",
+              "tool_calls": [
+                {
+                  "name": "add_to_cart",
+                  "arguments": {
+                    "item_type": "egg_pancake",
+                    "flavor": "起司"
+                  }
+                },
+                {
+                  "name": "add_to_cart",
+                  "arguments": {
+                    "item_type": "drink",
+                    "flavor": "紅茶",
+                    "size": "大",
+                    "temp": "冰"
+                  }
+                }
+              ],
+              "tokens": 4422,
+              "latency": 1.6891195999924093,
+              "success": true
+            },
+            {
+              "response": "好 一個起司蛋餅 飲料要冰的溫的",
+              "tool_calls": [
+                {
+                  "name": "add_to_cart",
+                  "arguments": {
+                    "item_type": "egg_pancake",
+                    "flavor": "起司"
+                  }
+                },
+                {
+                  "name": "add_to_cart",
+                  "arguments": {
+                    "item_type": "drink",
+                    "flavor": "紅茶",
+                    "size": "大",
+                    "temp": "冰"
+                  }
+                }
+              ],
+              "tokens": 4424,
+              "latency": 1.7255312999914167,
+              "success": true
+            },
+            {
+              "response": "好 一個起司蛋餅 飲料要冰的溫的",
+              "tool_calls": [
+                {
+                  "name": "add_to_cart",
+                  "arguments": {
+                    "item_type": "egg_pancake",
+                    "flavor": "起司"
+                  }
+                },
+                {
+                  "name": "add_to_cart",
+                  "arguments": {
+                    "item_type": "drink",
+                    "flavor": "紅茶",
+                    "size": "大",
+                    "temp": "冰"
+                  }
+                }
+              ],
+              "tokens": 4424,
+              "latency": 1.7504972000024281,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "modify_order",
+          "runs": [
+            {
+              "response": "好 一個玉米飯糰 還要嗎",
+              "tool_calls": [],
+              "tokens": 4355,
+              "latency": 0.4363502000051085,
+              "success": true
+            },
+            {
+              "response": "好 一個玉米飯糰 還要嗎",
+              "tool_calls": [],
+              "tokens": 4355,
+              "latency": 0.4374517999967793,
+              "success": true
+            },
+            {
+              "response": "好 一個玉米飯糰 還要嗎",
+              "tool_calls": [],
+              "tokens": 4355,
+              "latency": 0.41825909999897704,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "query_menu",
+          "runs": [
+            {
+              "response": "",
+              "tool_calls": [
+                {
+                  "name": "query_menu",
+                  "arguments": {
+                    "category": "飲品"
+                  }
+                }
+              ],
+              "tokens": 4338,
+              "latency": 0.5571828999964055,
+              "success": true
+            },
+            {
+              "response": "",
+              "tool_calls": [
+                {
+                  "name": "query_menu",
+                  "arguments": {
+                    "category": "飲品"
+                  }
+                }
+              ],
+              "tokens": 4338,
+              "latency": 0.5509649000014178,
+              "success": true
+            },
+            {
+              "response": "",
+              "tool_calls": [
+                {
+                  "name": "query_menu",
+                  "arguments": {
+                    "category": "飲品"
+                  }
+                }
+              ],
+              "tokens": 4338,
+              "latency": 0.5557174000132363,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "checkout_flow",
+          "runs": [
+            {
+              "response": "內用還是外帶？\n",
+              "tool_calls": [
+                {
+                  "name": "get_cart_summary",
+                  "arguments": {}
+                }
+              ],
+              "tokens": 4341,
+              "latency": 0.6275433000118937,
+              "success": true
+            },
+            {
+              "response": "內用還是外帶？\n",
+              "tool_calls": [
+                {
+                  "name": "get_cart_summary",
+                  "arguments": {}
+                }
+              ],
+              "tokens": 4341,
+              "latency": 0.6410557000053814,
+              "success": true
+            },
+            {
+              "response": "內用還是外帶？\n",
+              "tool_calls": [
+                {
+                  "name": "get_cart_summary",
+                  "arguments": {}
+                }
+              ],
+              "tokens": 4341,
+              "latency": 0.5803721999982372,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "missing_flavor",
+          "runs": [
+            {
+              "response": "傳統還是其他口味？",
+              "tool_calls": [],
+              "tokens": 4321,
+              "latency": 0.33017909999762196,
+              "success": true
+            },
+            {
+              "response": "傳統還是其他口味？",
+              "tool_calls": [],
+              "tokens": 4321,
+              "latency": 0.3421524000004865,
+              "success": true
+            },
+            {
+              "response": "傳統還是其他口味？",
+              "tool_calls": [],
+              "tokens": 4321,
+              "latency": 0.31288679999124724,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "missing_quantity",
+          "runs": [
+            {
+              "response": "好 蛋餅什麼口味",
+              "tool_calls": [],
+              "tokens": 4325,
+              "latency": 0.3936242000054335,
+              "success": true
+            },
+            {
+              "response": "好 蛋餅什麼口味",
+              "tool_calls": [],
+              "tokens": 4325,
+              "latency": 0.36727580000297166,
+              "success": true
+            },
+            {
+              "response": "好 蛋餅什麼口味",
+              "tool_calls": [],
+              "tokens": 4325,
+              "latency": 0.3444562000076985,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "missing_drink_spec",
+          "runs": [
+            {
+              "response": "大杯還是中杯 需要冰的溫的熱的",
+              "tool_calls": [],
+              "tokens": 4330,
+              "latency": 0.45974190000561066,
+              "success": true
+            },
+            {
+              "response": "大杯還是中杯 需要冰的溫的熱的",
+              "tool_calls": [],
+              "tokens": 4330,
+              "latency": 0.47160200000507757,
+              "success": true
+            },
+            {
+              "response": "大杯還是中杯 需要冰的溫的熱的",
+              "tool_calls": [],
+              "tokens": 4330,
+              "latency": 0.4384704999974929,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "missing_egg_pancake_flavor",
+          "runs": [
+            {
+              "response": "蛋餅什麼口味？",
+              "tool_calls": [],
+              "tokens": 4320,
+              "latency": 0.31175169999187347,
+              "success": true
+            },
+            {
+              "response": "蛋餅什麼口味？",
+              "tool_calls": [],
+              "tokens": 4320,
+              "latency": 0.3414472000004025,
+              "success": true
+            },
+            {
+              "response": "蛋餅什麼口味？",
+              "tool_calls": [],
+              "tokens": 4320,
+              "latency": 0.31034229999931995,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "ambiguous_item",
+          "runs": [
+            {
+              "response": "什麼口味？",
+              "tool_calls": [],
+              "tokens": 4319,
+              "latency": 0.3398749000043608,
+              "success": true
+            },
+            {
+              "response": "什麼口味？",
+              "tool_calls": [],
+              "tokens": 4319,
+              "latency": 0.34587489999830723,
+              "success": true
+            },
+            {
+              "response": "什麼口味？",
+              "tool_calls": [],
+              "tokens": 4319,
+              "latency": 0.3437009999906877,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "complex_order_complete",
+          "runs": [
+            {
+              "response": "好 兩個紫米鮪魚飯糰 一個起司蛋餅 一杯大冰紅茶 一份薯餅 還要嗎",
+              "tool_calls": [],
+              "tokens": 4368,
+              "latency": 0.7200605999969412,
+              "success": true
+            },
+            {
+              "response": "好 兩個紫米鮪魚飯糰 一個起司蛋餅 一杯大冰紅茶 一份薯餅 還要嗎",
+              "tool_calls": [],
+              "tokens": 4368,
+              "latency": 0.7443143999989843,
+              "success": true
+            },
+            {
+              "response": "好 兩個紫米鮪魚飯糰 一個起司蛋餅 一杯大冰紅茶 一份薯餅 還要嗎",
+              "tool_calls": [],
+              "tokens": 4368,
+              "latency": 0.7524082000018097,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "complex_order_partial_info",
+          "runs": [
+            {
+              "response": "好 一個鮪魚飯糰 鮪魚蛋餅 飲料要冰的溫的\n<|im_start|><|im_start|><|im_start|><|im_start|><|im_start|><|im_start|>",
+              "tool_calls": [],
+              "tokens": 4359,
+              "latency": 0.7402531999978237,
+              "success": true
+            },
+            {
+              "response": "好 一個鮪魚飯糰 鮪魚蛋餅 飲料要冰的溫的\n<|im_start|><|im_start|><|im_start|><|im_start|><|im_start|><|im_start|>",
+              "tool_calls": [],
+              "tokens": 4359,
+              "latency": 0.7263659000018379,
+              "success": true
+            },
+            {
+              "response": "好 一個鮪魚飯糰 鮪魚蛋餅 飲料要冰的溫的\n<|im_start|><|im_start|><|im_start|><|im_start|><|im_start|><|im_start|>",
+              "tool_calls": [],
+              "tokens": 4359,
+              "latency": 0.7477045999985421,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "modify_without_context",
+          "runs": [
+            {
+              "response": "好的 要改成什麼口味的蛋餅？",
+              "tool_calls": [],
+              "tokens": 4330,
+              "latency": 0.45570669999870006,
+              "success": true
+            },
+            {
+              "response": "好的 蛋餅什麼口味",
+              "tool_calls": [],
+              "tokens": 4326,
+              "latency": 0.3914197999984026,
+              "success": true
+            },
+            {
+              "response": "好的 蛋餅什麼口味",
+              "tool_calls": [],
+              "tokens": 4326,
+              "latency": 0.3446506999898702,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "cancel_nonexistent",
+          "runs": [
+            {
+              "response": "購物車裡沒有這個。\n請問是要把哪個品項移除呢？",
+              "tool_calls": [],
+              "tokens": 4357,
+              "latency": 0.5614504999975907,
+              "success": true
+            },
+            {
+              "response": "購物車裡沒有這個。\n請問是要把哪個品項移除呢？",
+              "tool_calls": [],
+              "tokens": 4357,
+              "latency": 0.562585499996203,
+              "success": true
+            },
+            {
+              "response": "購物車裡沒有這個。\n請問是要把哪個品項移除呢？",
+              "tool_calls": [],
+              "tokens": 4357,
+              "latency": 0.5147526000073412,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "off_topic",
+          "runs": [
+            {
+              "response": "不太清楚呢，你可以告訴我你想要點什麼嗎？",
+              "tool_calls": [],
+              "tokens": 4330,
+              "latency": 0.43497020000359043,
+              "success": true
+            },
+            {
+              "response": "不太清楚呢，你可以告訴我你想要點什麼嗎？",
+              "tool_calls": [],
+              "tokens": 4330,
+              "latency": 0.43883959999948274,
+              "success": true
+            },
+            {
+              "response": "不太清楚呢，你可以告訴我你想要點什麼嗎？",
+              "tool_calls": [],
+              "tokens": 4330,
+              "latency": 0.43466309999348596,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "multi_round_clarification",
+          "runs": [
+            {
+              "response": "好 一個紫米鮪魚飯糰 還要嗎",
+              "tool_calls": [],
+              "tokens": 4369,
+              "latency": 0.5421783999918262,
+              "success": true
+            },
+            {
+              "response": "好 一個紫米鮪魚飯糰 還要嗎",
+              "tool_calls": [],
+              "tokens": 4369,
+              "latency": 0.5038685000035912,
+              "success": true
+            },
+            {
+              "response": "好 一個紫米鮪魚飯糰 還要嗎",
+              "tool_calls": [],
+              "tokens": 4369,
+              "latency": 0.511581800004933,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "multi_round_drink",
+          "runs": [
+            {
+              "response": "好 一杯大冰紅茶 還要嗎",
+              "tool_calls": [],
+              "tokens": 4354,
+              "latency": 0.40790870001364965,
+              "success": true
+            },
+            {
+              "response": "好 一杯大冰紅茶 還要嗎",
+              "tool_calls": [],
+              "tokens": 4354,
+              "latency": 0.4744505999988178,
+              "success": true
+            },
+            {
+              "response": "好 一杯大冰紅茶 還要嗎",
+              "tool_calls": [],
+              "tokens": 4354,
+              "latency": 0.4008777999988524,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "combo_with_customization",
+          "runs": [
+            {
+              "response": "好 一個套餐A 飲料要冰的溫的\n<|im_start|><|im_start|><|im_start|><|im_start|><|im_start|><|im_start|>",
+              "tool_calls": [],
+              "tokens": 4345,
+              "latency": 0.582093300006818,
+              "success": true
+            },
+            {
+              "response": "好 一個套餐A 飲料要冰的溫的\n<|im_start|><|im_start|><|im_start|><|im_start|><|im_start|><|im_start|>",
+              "tool_calls": [],
+              "tokens": 4345,
+              "latency": 0.5820398999931058,
+              "success": true
+            },
+            {
+              "response": "好 一個套餐A 飲料要冰的溫的\n<|im_start|><|im_start|><|im_start|><|im_start|><|im_start|><|im_start|>",
+              "tool_calls": [],
+              "tokens": 4345,
+              "latency": 0.5803064999927301,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "rapid_fire_order",
+          "runs": [
+            {
+              "response": "好 一個起司蛋餅 一杯大冰紅茶 還要嗎",
+              "tool_calls": [],
+              "tokens": 4379,
+              "latency": 0.5438431999937166,
+              "success": true
+            },
+            {
+              "response": "好 一個起司蛋餅 一杯大冰紅茶 還要嗎",
+              "tool_calls": [],
+              "tokens": 4379,
+              "latency": 0.5339365999971051,
+              "success": true
+            },
+            {
+              "response": "好 一個起司蛋餅 一杯大冰紅茶 還要嗎",
+              "tool_calls": [],
+              "tokens": 4379,
+              "latency": 0.5136918000061996,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "greeting",
+          "runs": [
+            {
+              "response": "嗨～歡迎光臨源飯糰！想吃什麼呢？",
+              "tool_calls": [],
+              "tokens": 4327,
+              "latency": 0.4784656999981962,
+              "success": true
+            },
+            {
+              "response": "嗨～歡迎光臨源飯糰！想吃什麼呢？",
+              "tool_calls": [],
+              "tokens": 4327,
+              "latency": 0.47325460000138264,
+              "success": true
+            },
+            {
+              "response": "嗨～歡迎光臨源飯糰！想吃什麼呢？",
+              "tool_calls": [],
+              "tokens": 4327,
+              "latency": 0.4644946000044001,
+              "success": true
+            }
+          ]
+        }
+      ],
+      "summary": {
+        "avg_latency": 0.5475649530300429,
+        "avg_tokens": 4345.257575757576,
+        "tool_call_f1": 0.6363636363636364,
+        "tool_call_precision": 0.6363636363636364,
+        "tool_call_recall": 0.6363636363636364,
+        "response_quality": 0.5909090909090909,
+        "scenario_pass_rate": 0.6363636363636364
+      }
+    },
+    {
+      "model_id": "qwen3-30b-a3b",
+      "model_name": "Qwen3-30B-A3B",
+      "type": "llm",
+      "timestamp": "2026-02-21T00:30:47.593972",
+      "test_cases": [
+        {
+          "case_id": "basic_order",
+          "runs": [
+            {
+              "response": "好 鮪魚飯糰是紫米還是白米",
+              "tool_calls": [],
+              "tokens": 4333,
+              "latency": 0.4460092999943299,
+              "success": true
+            },
+            {
+              "response": "好 鮪魚飯糰是紫米還是白米",
+              "tool_calls": [],
+              "tokens": 4333,
+              "latency": 0.4585014000040246,
+              "success": true
+            },
+            {
+              "response": "好 鮪魚飯糰是紫米還是白米",
+              "tool_calls": [],
+              "tokens": 4333,
+              "latency": 0.4334284999931697,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "basic_order_complete",
+          "runs": [
+            {
+              "response": "好 一個紫米鮪魚飯糰 還要嗎",
+              "tool_calls": [],
+              "tokens": 4339,
+              "latency": 0.5165826000011293,
+              "success": true
+            },
+            {
+              "response": "好 一個紫米鮪魚飯糰 還要嗎",
+              "tool_calls": [],
+              "tokens": 4339,
+              "latency": 0.5132551999995485,
+              "success": true
+            },
+            {
+              "response": "好 一個紫米鮪魚飯糰 還要嗎",
+              "tool_calls": [],
+              "tokens": 4339,
+              "latency": 0.5310376999987056,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "combo_query",
+          "runs": [
+            {
+              "response": "",
+              "tool_calls": [
+                {
+                  "name": "query_menu",
+                  "arguments": {
+                    "category": "套餐"
+                  }
+                }
+              ],
+              "tokens": 4336,
+              "latency": 0.5509495999867795,
+              "success": true
+            },
+            {
+              "response": "",
+              "tool_calls": [
+                {
+                  "name": "query_menu",
+                  "arguments": {
+                    "category": "套餐"
+                  }
+                }
+              ],
+              "tokens": 4336,
+              "latency": 0.5853714999975637,
+              "success": true
+            },
+            {
+              "response": "",
+              "tool_calls": [
+                {
+                  "name": "query_menu",
+                  "arguments": {
+                    "category": "套餐"
+                  }
+                }
+              ],
+              "tokens": 4336,
+              "latency": 0.5315065000031609,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "multi_item",
+          "runs": [
+            {
+              "response": "好 一個起司蛋餅 飲料要冰的溫的",
+              "tool_calls": [
+                {
+                  "name": "add_to_cart",
+                  "arguments": {
+                    "item_type": "egg_pancake",
+                    "flavor": "起司"
+                  }
+                },
+                {
+                  "name": "add_to_cart",
+                  "arguments": {
+                    "item_type": "drink",
+                    "flavor": "紅茶",
+                    "size": "大",
+                    "temp": "冰"
+                  }
+                }
+              ],
+              "tokens": 4422,
+              "latency": 1.784245999995619,
+              "success": true
+            },
+            {
+              "response": "好 一個起司蛋餅 飲料要冰的溫的",
+              "tool_calls": [
+                {
+                  "name": "add_to_cart",
+                  "arguments": {
+                    "item_type": "egg_pancake",
+                    "flavor": "起司"
+                  }
+                },
+                {
+                  "name": "add_to_cart",
+                  "arguments": {
+                    "item_type": "drink",
+                    "flavor": "紅茶",
+                    "size": "大",
+                    "temp": "冰"
+                  }
+                }
+              ],
+              "tokens": 4424,
+              "latency": 1.7324144000012893,
+              "success": true
+            },
+            {
+              "response": "好 一個起司蛋餅 飲料要冰的溫的",
+              "tool_calls": [
+                {
+                  "name": "add_to_cart",
+                  "arguments": {
+                    "item_type": "egg_pancake",
+                    "flavor": "起司"
+                  }
+                },
+                {
+                  "name": "add_to_cart",
+                  "arguments": {
+                    "item_type": "drink",
+                    "flavor": "紅茶",
+                    "size": "大",
+                    "temp": "冰"
+                  }
+                }
+              ],
+              "tokens": 4424,
+              "latency": 1.7706375999987358,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "modify_order",
+          "runs": [
+            {
+              "response": "好 一個玉米飯糰 還要嗎",
+              "tool_calls": [],
+              "tokens": 4355,
+              "latency": 0.45873820000269916,
+              "success": true
+            },
+            {
+              "response": "好 一個玉米飯糰 還要嗎",
+              "tool_calls": [],
+              "tokens": 4355,
+              "latency": 0.4831368000013754,
+              "success": true
+            },
+            {
+              "response": "好 一個玉米飯糰 還要嗎",
+              "tool_calls": [],
+              "tokens": 4355,
+              "latency": 0.46817199999350123,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "query_menu",
+          "runs": [
+            {
+              "response": "",
+              "tool_calls": [
+                {
+                  "name": "query_menu",
+                  "arguments": {
+                    "category": "飲品"
+                  }
+                }
+              ],
+              "tokens": 4338,
+              "latency": 0.6143640999944182,
+              "success": true
+            },
+            {
+              "response": "",
+              "tool_calls": [
+                {
+                  "name": "query_menu",
+                  "arguments": {
+                    "category": "飲品"
+                  }
+                }
+              ],
+              "tokens": 4338,
+              "latency": 0.5602504999988014,
+              "success": true
+            },
+            {
+              "response": "",
+              "tool_calls": [
+                {
+                  "name": "query_menu",
+                  "arguments": {
+                    "category": "飲品"
+                  }
+                }
+              ],
+              "tokens": 4338,
+              "latency": 0.6430472000065492,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "checkout_flow",
+          "runs": [
+            {
+              "response": "內用還是外帶？\n",
+              "tool_calls": [
+                {
+                  "name": "get_cart_summary",
+                  "arguments": {}
+                }
+              ],
+              "tokens": 4341,
+              "latency": 0.6566712999920128,
+              "success": true
+            },
+            {
+              "response": "內用還是外帶？\n",
+              "tool_calls": [
+                {
+                  "name": "get_cart_summary",
+                  "arguments": {}
+                }
+              ],
+              "tokens": 4341,
+              "latency": 0.6070168000005651,
+              "success": true
+            },
+            {
+              "response": "內用還是外帶？\n",
+              "tool_calls": [
+                {
+                  "name": "get_cart_summary",
+                  "arguments": {}
+                }
+              ],
+              "tokens": 4341,
+              "latency": 0.6713488999957917,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "missing_flavor",
+          "runs": [
+            {
+              "response": "傳統還是其他口味？",
+              "tool_calls": [],
+              "tokens": 4321,
+              "latency": 0.3542974000010872,
+              "success": true
+            },
+            {
+              "response": "傳統還是其他口味？",
+              "tool_calls": [],
+              "tokens": 4321,
+              "latency": 0.3575890000065556,
+              "success": true
+            },
+            {
+              "response": "傳統還是其他口味？",
+              "tool_calls": [],
+              "tokens": 4321,
+              "latency": 0.35295320001023356,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "missing_quantity",
+          "runs": [
+            {
+              "response": "好 蛋餅什麼口味",
+              "tool_calls": [],
+              "tokens": 4325,
+              "latency": 0.39211420000356156,
+              "success": true
+            },
+            {
+              "response": "好 蛋餅什麼口味",
+              "tool_calls": [],
+              "tokens": 4325,
+              "latency": 0.391971699995338,
+              "success": true
+            },
+            {
+              "response": "好 蛋餅什麼口味",
+              "tool_calls": [],
+              "tokens": 4325,
+              "latency": 0.36432930000592023,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "missing_drink_spec",
+          "runs": [
+            {
+              "response": "大杯還是中杯 需要冰的溫的熱的",
+              "tool_calls": [],
+              "tokens": 4330,
+              "latency": 0.5415028999996139,
+              "success": true
+            },
+            {
+              "response": "大杯還是中杯 需要冰的溫的熱的",
+              "tool_calls": [],
+              "tokens": 4330,
+              "latency": 0.5005534000083571,
+              "success": true
+            },
+            {
+              "response": "大杯還是中杯 需要冰的溫的熱的",
+              "tool_calls": [],
+              "tokens": 4330,
+              "latency": 0.48886909999419004,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "missing_egg_pancake_flavor",
+          "runs": [
+            {
+              "response": "蛋餅什麼口味？",
+              "tool_calls": [],
+              "tokens": 4320,
+              "latency": 0.33070669999870006,
+              "success": true
+            },
+            {
+              "response": "蛋餅什麼口味？",
+              "tool_calls": [],
+              "tokens": 4320,
+              "latency": 0.3196726000023773,
+              "success": true
+            },
+            {
+              "response": "蛋餅什麼口味？",
+              "tool_calls": [],
+              "tokens": 4320,
+              "latency": 0.32044609999866225,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "ambiguous_item",
+          "runs": [
+            {
+              "response": "什麼口味？",
+              "tool_calls": [],
+              "tokens": 4319,
+              "latency": 0.3132193999917945,
+              "success": true
+            },
+            {
+              "response": "什麼口味？",
+              "tool_calls": [],
+              "tokens": 4319,
+              "latency": 0.28515059998608194,
+              "success": true
+            },
+            {
+              "response": "什麼口味？",
+              "tool_calls": [],
+              "tokens": 4319,
+              "latency": 0.28529620000335854,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "complex_order_complete",
+          "runs": [
+            {
+              "response": "好 兩個紫米鮪魚飯糰 一個起司蛋餅 一杯大冰紅茶 一份薯餅 還要嗎",
+              "tool_calls": [],
+              "tokens": 4368,
+              "latency": 0.7380086999910418,
+              "success": true
+            },
+            {
+              "response": "好 兩個紫米鮪魚飯糰 一個起司蛋餅 一杯大冰紅茶 一份薯餅 還要嗎",
+              "tool_calls": [],
+              "tokens": 4368,
+              "latency": 0.7448884999903385,
+              "success": true
+            },
+            {
+              "response": "好 兩個紫米鮪魚飯糰 一個起司蛋餅 一杯大冰紅茶 一份薯餅 還要嗎",
+              "tool_calls": [],
+              "tokens": 4368,
+              "latency": 0.7400912000011886,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "complex_order_partial_info",
+          "runs": [
+            {
+              "response": "好 一個鮪魚飯糰 鮪魚蛋餅 飲料要冰的溫的\n<|im_start|><|im_start|><|im_start|><|im_start|><|im_start|><|im_start|>",
+              "tool_calls": [],
+              "tokens": 4359,
+              "latency": 0.7494202999951085,
+              "success": true
+            },
+            {
+              "response": "好 一個鮪魚飯糰 鮪魚蛋餅 飲料要冰的溫的\n<|im_start|><|im_start|><|im_start|><|im_start|><|im_start|><|im_start|>",
+              "tool_calls": [],
+              "tokens": 4359,
+              "latency": 0.737604800000554,
+              "success": true
+            },
+            {
+              "response": "好 一個鮪魚飯糰 鮪魚蛋餅 飲料要冰的溫的\n<|im_start|><|im_start|><|im_start|><|im_start|><|im_start|><|im_start|>",
+              "tool_calls": [],
+              "tokens": 4359,
+              "latency": 0.6944857999915257,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "modify_without_context",
+          "runs": [
+            {
+              "response": "好的 要改成什麼口味的蛋餅？",
+              "tool_calls": [],
+              "tokens": 4330,
+              "latency": 0.44445249999989755,
+              "success": true
+            },
+            {
+              "response": "好的 蛋餅什麼口味",
+              "tool_calls": [],
+              "tokens": 4326,
+              "latency": 0.39156160000129603,
+              "success": true
+            },
+            {
+              "response": "好的 蛋餅什麼口味",
+              "tool_calls": [],
+              "tokens": 4326,
+              "latency": 0.3624864000012167,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "cancel_nonexistent",
+          "runs": [
+            {
+              "response": "購物車裡沒有這個。\n請問是要把哪個品項移除呢？",
+              "tool_calls": [],
+              "tokens": 4357,
+              "latency": 0.597682799998438,
+              "success": true
+            },
+            {
+              "response": "購物車裡沒有這個。\n請問是要把哪個品項移除呢？",
+              "tool_calls": [],
+              "tokens": 4357,
+              "latency": 0.5049135000008391,
+              "success": true
+            },
+            {
+              "response": "購物車裡沒有這個。\n請問是要把哪個品項移除呢？",
+              "tool_calls": [],
+              "tokens": 4357,
+              "latency": 0.5268418000050588,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "off_topic",
+          "runs": [
+            {
+              "response": "不太清楚呢，你可以告訴我你想要點什麼嗎？",
+              "tool_calls": [],
+              "tokens": 4330,
+              "latency": 0.49489569998695515,
+              "success": true
+            },
+            {
+              "response": "不太清楚呢，你可以告訴我你想要點什麼嗎？",
+              "tool_calls": [],
+              "tokens": 4330,
+              "latency": 0.4510984999942593,
+              "success": true
+            },
+            {
+              "response": "不太清楚呢，你可以告訴我你想要點什麼嗎？",
+              "tool_calls": [],
+              "tokens": 4330,
+              "latency": 0.4530120999988867,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "multi_round_clarification",
+          "runs": [
+            {
+              "response": "好 一個紫米鮪魚飯糰 還要嗎",
+              "tool_calls": [],
+              "tokens": 4369,
+              "latency": 0.5541709999961313,
+              "success": true
+            },
+            {
+              "response": "好 一個紫米鮪魚飯糰 還要嗎",
+              "tool_calls": [],
+              "tokens": 4369,
+              "latency": 0.5251480000006268,
+              "success": true
+            },
+            {
+              "response": "好 一個紫米鮪魚飯糰 還要嗎",
+              "tool_calls": [],
+              "tokens": 4369,
+              "latency": 0.5020649000070989,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "multi_round_drink",
+          "runs": [
+            {
+              "response": "好 一杯大冰紅茶 還要嗎",
+              "tool_calls": [],
+              "tokens": 4354,
+              "latency": 0.4512049000040861,
+              "success": true
+            },
+            {
+              "response": "好 一杯大冰紅茶 還要嗎",
+              "tool_calls": [],
+              "tokens": 4354,
+              "latency": 0.46675509998749476,
+              "success": true
+            },
+            {
+              "response": "好 一杯大冰紅茶 還要嗎",
+              "tool_calls": [],
+              "tokens": 4354,
+              "latency": 0.4550777999975253,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "combo_with_customization",
+          "runs": [
+            {
+              "response": "好 一個套餐A 飲料要冰的溫的\n<|im_start|><|im_start|><|im_start|><|im_start|><|im_start|><|im_start|>",
+              "tool_calls": [],
+              "tokens": 4345,
+              "latency": 0.5818354999937583,
+              "success": true
+            },
+            {
+              "response": "好 一個套餐A 飲料要冰的溫的\n<|im_start|><|im_start|><|im_start|><|im_start|><|im_start|><|im_start|>",
+              "tool_calls": [],
+              "tokens": 4345,
+              "latency": 0.5956707000004826,
+              "success": true
+            },
+            {
+              "response": "好 一個套餐A 飲料要冰的溫的\n<|im_start|><|im_start|><|im_start|><|im_start|><|im_start|><|im_start|>",
+              "tool_calls": [],
+              "tokens": 4345,
+              "latency": 0.5555568999989191,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "rapid_fire_order",
+          "runs": [
+            {
+              "response": "好 一個起司蛋餅 一杯大冰紅茶 還要嗎",
+              "tool_calls": [],
+              "tokens": 4379,
+              "latency": 0.553101900004549,
+              "success": true
+            },
+            {
+              "response": "好 一個起司蛋餅 一杯大冰紅茶 還要嗎",
+              "tool_calls": [],
+              "tokens": 4379,
+              "latency": 0.5580687000037869,
+              "success": true
+            },
+            {
+              "response": "好 一個起司蛋餅 一杯大冰紅茶 還要嗎",
+              "tool_calls": [],
+              "tokens": 4379,
+              "latency": 0.5309727999992901,
+              "success": true
+            }
+          ]
+        },
+        {
+          "case_id": "greeting",
+          "runs": [
+            {
+              "response": "嗨～歡迎光臨源飯糰！想吃什麼呢？",
+              "tool_calls": [],
+              "tokens": 4327,
+              "latency": 0.5518631000013556,
+              "success": true
+            },
+            {
+              "response": "嗨～歡迎光臨源飯糰！想吃什麼呢？",
+              "tool_calls": [],
+              "tokens": 4327,
+              "latency": 0.4838438999868231,
+              "success": true
+            },
+            {
+              "response": "嗨～歡迎光臨源飯糰！想吃什麼呢？",
+              "tool_calls": [],
+              "tokens": 4327,
+              "latency": 0.5013049999979557,
+              "success": true
+            }
+          ]
+        }
+      ],
+      "summary": {
+        "avg_latency": 0.5623248833318498,
+        "avg_tokens": 4345.257575757576,
+        "tool_call_f1": 0.6363636363636364,
+        "tool_call_precision": 0.6363636363636364,
+        "tool_call_recall": 0.6363636363636364,
+        "response_quality": 0.5909090909090909,
+        "scenario_pass_rate": 0.6363636363636364
+      }
+    }
+  ],
+  "comparison": {
+    "qwen25-14b": {
+      "avg_latency": 0.5475649530300429,
+      "avg_tokens": 4345.257575757576,
+      "tool_call_f1": 0.6363636363636364,
+      "tool_call_precision": 0.6363636363636364,
+      "tool_call_recall": 0.6363636363636364,
+      "response_quality": 0.5909090909090909,
+      "scenario_pass_rate": 0.6363636363636364
+    },
+    "qwen3-30b-a3b": {
+      "avg_latency": 0.5623248833318498,
+      "avg_tokens": 4345.257575757576,
+      "tool_call_f1": 0.6363636363636364,
+      "tool_call_precision": 0.6363636363636364,
+      "tool_call_recall": 0.6363636363636364,
+      "response_quality": 0.5909090909090909,
+      "scenario_pass_rate": 0.6363636363636364
+    }
+  }
+}

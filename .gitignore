@@ -19,6 +19,10 @@ env/
 .DS_Store
 Thumbs.db
 
+# Environment variables (含敏感 key，不追蹤)
+.env
+*.env
+
 # Database
 *.db
 
@@ -35,3 +39,6 @@ backups/
 claude.md
 nul
 IMPLEMENTATION_BLUEPRINT.md
+
+# Benchmark 報告（跑測試產生的結果）
+benchmarks/reports/

@@ -111,8 +111,14 @@ def save_report(all_results: list[dict], benchmark_type: str, output_dir: Path) 
         "comparison": generate_comparison(all_results),
     }
 
+    def _json_default(obj):
+        """處理無法序列化的型別（如 bytes）"""
+        if isinstance(obj, bytes):
+            return f"<bytes:{len(obj)}>"
+        raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
     with open(report_path, "w", encoding="utf-8") as f:
-        json.dump(report, f, ensure_ascii=False, indent=2)
+        json.dump(report, f, ensure_ascii=False, indent=2, default=_json_default)
 
     print(f"\n📊 報告已儲存: {report_path}")
     return report

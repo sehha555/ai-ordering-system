@@ -1,5 +1,5 @@
 # src/services/asr_service.py
-"""ASR Service - 語音辨識服務 (使用 Qwen3-ASR)"""
+"""ASR Service - 語音辨識服務 (Qwen3-ASR 或 SenseVoice-Small)"""
 
 from loguru import logger
 import os
@@ -156,3 +156,91 @@ class ASRService:
                 "language": None,
                 "confidence": 0.0
             }
+
+
+class SenseVoiceService:
+    """使用 SenseVoice-Small 的語音辨識服務"""
+
+    @staticmethod
+    def _patch_funasr_tiktoken():
+        """修復 funasr 1.3.1 打包缺陷：從 openai-whisper 複製缺失的 tiktoken 檔案"""
+        import importlib.util
+        import shutil
+        from pathlib import Path
+
+        funasr_spec = importlib.util.find_spec("funasr")
+        whisper_spec = importlib.util.find_spec("whisper")
+        if not funasr_spec or not funasr_spec.origin or not whisper_spec or not whisper_spec.origin:
+            return
+
+        funasr_assets = Path(funasr_spec.origin).parent / "models" / "sense_voice" / "whisper_lib" / "assets"
+        whisper_assets = Path(whisper_spec.origin).parent / "assets"
+        tiktoken_src = whisper_assets / "multilingual.tiktoken"
+        tiktoken_dst = funasr_assets / "multilingual.tiktoken"
+
+        if tiktoken_src.exists() and not tiktoken_dst.exists():
+            funasr_assets.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(tiktoken_src, tiktoken_dst)
+            logger.info("[ASR] 已修復 funasr whisper_lib/assets/multilingual.tiktoken")
+
+    def __init__(self, model_id: str = "FunAudioLLM/SenseVoiceSmall", language: str = "zh", hub: str = "hf"):
+        self.model = None
+        self.language = language
+        self.model_name = model_id
+
+        try:
+            # 修復 funasr 1.3.1 打包缺陷：wheel 未包含 whisper_lib/assets/
+            # tiktoken 檔案與 openai-whisper 套件完全相同，偵測到缺失時自動複製
+            self._patch_funasr_tiktoken()
+
+            from funasr import AutoModel
+            import torch
+
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            logger.info(f"[ASR] 正在載入 SenseVoice {model_id} ({device}, hub={hub})...")
+            self.model = AutoModel(
+                model=model_id,
+                hub=hub,
+                device=device,
+                disable_update=True,
+            )
+            logger.info("[ASR] SenseVoice 模型已載入")
+        except ImportError:
+            logger.error("[ASR] 未安裝 funasr，請執行: pip install funasr")
+        except Exception as e:
+            logger.error(f"[ASR] SenseVoice 載入失敗: {e}")
+
+    def transcribe(self, audio_path: str, language: Optional[str] = None) -> dict:
+        if self.model is None:
+            return {"text": "", "error": "SenseVoice 模型未載入", "language": None, "confidence": 0.0}
+
+        if not os.path.exists(audio_path):
+            return {"text": "", "error": f"音訊文件不存在: {audio_path}", "language": None, "confidence": 0.0}
+
+        try:
+            logger.info("[ASR] SenseVoice 開始轉錄: {}", audio_path)
+            res = self.model.generate(
+                input=audio_path,
+                cache={},
+                language=language or self.language,
+                use_itn=True,
+                batch_size_s=60,
+            )
+            text = res[0]["text"].strip() if res else ""
+            # ModelScope 版 SenseVoice 輸出含特殊 tag，需清除
+            import re
+            text = re.sub(r"<\|[^|]*\|>", "", text).strip()
+            logger.info("[ASR] SenseVoice 轉錄完成: '{}'", text)
+            return {"text": text, "language": language or self.language, "confidence": 0.95, "segments": []}
+        except Exception as e:
+            logger.exception("[ASR] SenseVoice 轉錄失敗")
+            return {"text": "", "error": str(e), "language": None, "confidence": 0.0}
+
+
+def create_asr_service(backend: str = "sensevoice", **kwargs):
+    """工廠函式：依 backend 建立 ASR 服務"""
+    if backend == "sensevoice":
+        from src.config.models import SENSEVOICE_MODEL, SENSEVOICE_HUB
+        return SenseVoiceService(model_id=SENSEVOICE_MODEL, hub=SENSEVOICE_HUB, **kwargs)
+    else:
+        return ASRService(**kwargs)
