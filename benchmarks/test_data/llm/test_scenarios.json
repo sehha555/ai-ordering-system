@@ -179,11 +179,12 @@
   },
   {
     "id": "combo_with_customization",
-    "description": "套餐搭配客製化",
-    "category": "complex",
+    "description": "套餐A搭配客製化 — 有溫度但缺吐司口味",
+    "category": "combo",
     "messages": [{"role": "user", "content": "我要 A 套餐，飲料換大冰奶茶"}],
-    "expected_tools": ["add_to_cart"],
-    "expected_response_contains": ["套餐"]
+    "expected_tools": [],
+    "expected_response_contains": ["吐司"],
+    "expected_behavior": "套餐A需要吐司口味，即使飲料溫度已提供仍應追問吐司口味"
   },
   {
     "id": "rapid_fire_order",
@@ -205,5 +206,186 @@
     "expected_tools": [],
     "expected_response_contains": ["歡迎", "點"],
     "expected_behavior": "應歡迎客人並引導點餐"
+  },
+  {
+    "id": "combo_basic_order",
+    "description": "套餐直接點餐 — 缺飲料溫度應追問",
+    "category": "combo",
+    "messages": [{"role": "user", "content": "我要一個套餐一"}],
+    "expected_tools": [],
+    "expected_response_contains": ["冰", "溫"],
+    "expected_behavior": "套餐一缺飲料溫度，add_to_cart 回 ok:false 追問溫度"
+  },
+  {
+    "id": "combo_alias_order",
+    "description": "套餐別名點餐 — 缺溫度應追問",
+    "category": "combo",
+    "messages": [{"role": "user", "content": "給我一個四號餐"}],
+    "expected_tools": [],
+    "expected_response_contains": ["冰", "溫"],
+    "expected_behavior": "四號餐=套餐四，缺飲料溫度應追問"
+  },
+  {
+    "id": "combo_b_needs_toast_flavor",
+    "description": "套餐B — 需追問厚片口味",
+    "category": "combo",
+    "messages": [
+      {"role": "user", "content": "我要B套餐"},
+      {"role": "assistant", "content": "好 飲料冰的溫的"},
+      {"role": "user", "content": "冰的"}
+    ],
+    "expected_tools": ["add_to_cart"],
+    "expected_response_contains": ["套餐B"],
+    "expected_behavior": "套餐B含義大利肉醬麵+熱狗+薯餅+荷包蛋+紅茶，飲料溫度補齊後應加入購物車"
+  },
+  {
+    "id": "combo_c_needs_toast",
+    "description": "套餐C — 有溫度但缺吐司口味",
+    "category": "combo",
+    "messages": [{"role": "user", "content": "一個C套餐 飲料冰的"}],
+    "expected_tools": [],
+    "expected_response_contains": ["吐司"],
+    "expected_behavior": "套餐C需要吐司口味，飲料溫度已提供但仍應追問吐司口味"
+  },
+  {
+    "id": "combo_kids_meal",
+    "description": "兒童餐 — 有溫度但缺吐司口味",
+    "category": "combo",
+    "messages": [{"role": "user", "content": "一個兒童餐 飲料冰的"}],
+    "expected_tools": [],
+    "expected_response_contains": ["吐司"],
+    "expected_behavior": "兒童餐需要吐司口味，飲料溫度已提供但仍應追問吐司口味"
+  },
+  {
+    "id": "combo_drink_swap",
+    "description": "套餐換飲料",
+    "category": "combo",
+    "messages": [{"role": "user", "content": "我要套餐三 飲料換大冰豆漿"}],
+    "expected_tools": ["add_to_cart"],
+    "expected_response_contains": ["套餐三"],
+    "expected_behavior": "套餐三原本是高麗菜蛋餅+純鮮奶茶大，飲料換成大冰豆漿應記錄客製化"
+  },
+  {
+    "id": "long_full_flow",
+    "description": "完整長對話 — 點餐到結帳全流程",
+    "category": "long_conversation",
+    "messages": [
+      {"role": "user", "content": "你好"},
+      {"role": "assistant", "content": "歡迎光臨 要點什麼"},
+      {"role": "user", "content": "一個鮪魚飯糰 紫米 加辣"},
+      {"role": "assistant", "content": "好 還要嗎"},
+      {"role": "user", "content": "再一個起司蛋餅"},
+      {"role": "assistant", "content": "好 還要嗎"},
+      {"role": "user", "content": "一杯大冰紅茶"},
+      {"role": "assistant", "content": "好 還要嗎"},
+      {"role": "user", "content": "不用了"},
+      {"role": "assistant", "content": "內用還是外帶"},
+      {"role": "user", "content": "外帶"}
+    ],
+    "expected_tools": ["finalize_order"],
+    "expected_response_contains": ["現金", "行動支付"],
+    "expected_behavior": "客人說外帶後，應接著問付款方式（現金還是行動支付），不能直接結帳"
+  },
+  {
+    "id": "long_modify_midway",
+    "description": "長對話 — 中途修改再繼續點",
+    "category": "long_conversation",
+    "messages": [
+      {"role": "user", "content": "一個鮪魚飯糰紫米"},
+      {"role": "assistant", "content": "好 還要嗎"},
+      {"role": "user", "content": "再一杯大冰紅茶"},
+      {"role": "assistant", "content": "好 還要嗎"},
+      {"role": "user", "content": "等一下 飯糰改成培根的"},
+      {"role": "assistant", "content": "好 紫米培根飯糰 還要嗎"},
+      {"role": "user", "content": "再加一份薯餅 然後結帳"}
+    ],
+    "expected_tools": ["add_to_cart"],
+    "expected_response_contains": ["薯餅"],
+    "expected_behavior": "加完薯餅後應先問內用外帶，不能直接結帳"
+  },
+  {
+    "id": "long_multi_drink_temp",
+    "description": "長對話 — 多杯飲料合併問溫度",
+    "category": "long_conversation",
+    "messages": [
+      {"role": "user", "content": "一杯大紅茶 一杯大豆漿"},
+      {"role": "assistant", "content": "飲料要冰的溫的"},
+      {"role": "user", "content": "紅茶冰的 豆漿溫的"},
+      {"role": "assistant", "content": "好 還要嗎"},
+      {"role": "user", "content": "不用了 結帳"}
+    ],
+    "expected_tools": [],
+    "expected_response_contains": ["內用", "外帶"],
+    "expected_behavior": "客人說結帳，應先問內用外帶"
+  },
+  {
+    "id": "long_combo_plus_extra",
+    "description": "長對話 — 套餐加單點再結帳",
+    "category": "long_conversation",
+    "messages": [
+      {"role": "user", "content": "我要一個四號餐"},
+      {"role": "assistant", "content": "好 套餐四 飲料冰的溫的"},
+      {"role": "user", "content": "溫的"},
+      {"role": "assistant", "content": "好 還要嗎"},
+      {"role": "user", "content": "再一份蘿蔔糕"},
+      {"role": "assistant", "content": "好 還要嗎"},
+      {"role": "user", "content": "一個鮪魚飯糰紫米加辣"},
+      {"role": "assistant", "content": "好 還要嗎"},
+      {"role": "user", "content": "沒了"}
+    ],
+    "expected_tools": [],
+    "expected_response_contains": ["內用", "外帶"],
+    "expected_behavior": "客人說沒了，應詢問內用還是外帶"
+  },
+  {
+    "id": "long_indecisive_customer",
+    "description": "長對話 — 猶豫不決的客人",
+    "category": "long_conversation",
+    "messages": [
+      {"role": "user", "content": "我要一個蛋餅"},
+      {"role": "assistant", "content": "什麼口味"},
+      {"role": "user", "content": "嗯...有什麼口味"},
+      {"role": "assistant", "content": "原味、起司、火腿、玉米、培根等等"},
+      {"role": "user", "content": "起司好了"},
+      {"role": "assistant", "content": "好 還要嗎"},
+      {"role": "user", "content": "你們飲料有什麼"}
+    ],
+    "expected_tools": ["query_menu"],
+    "expected_response_contains": ["飲"],
+    "expected_behavior": "客人問飲料菜單，應調用 query_menu 查詢飲品分類"
+  },
+  {
+    "id": "long_group_order",
+    "description": "長對話 — 多人團體點餐",
+    "category": "long_conversation",
+    "messages": [
+      {"role": "user", "content": "三個鮪魚飯糰 都要紫米"},
+      {"role": "assistant", "content": "好 三個紫米鮪魚飯糰 還要嗎"},
+      {"role": "user", "content": "兩個起司蛋餅 一個培根蛋餅"},
+      {"role": "assistant", "content": "好 還要嗎"},
+      {"role": "user", "content": "三杯大紅茶"},
+      {"role": "assistant", "content": "冰的溫的"},
+      {"role": "user", "content": "都冰的"},
+      {"role": "assistant", "content": "好 還要嗎"},
+      {"role": "user", "content": "再兩份薯餅 就這樣"}
+    ],
+    "expected_tools": ["add_to_cart"],
+    "expected_response_contains": ["薯餅"],
+    "expected_behavior": "加完薯餅後應問內用外帶，不能直接結帳"
+  },
+  {
+    "id": "long_off_topic_recovery",
+    "description": "長對話 — 離題後回到點餐",
+    "category": "long_conversation",
+    "messages": [
+      {"role": "user", "content": "一個起司蛋餅"},
+      {"role": "assistant", "content": "好 還要嗎"},
+      {"role": "user", "content": "對了你們幾點關門"},
+      {"role": "assistant", "content": "不好意思我只負責點餐 還需要什麼嗎"},
+      {"role": "user", "content": "那再一杯大冰豆漿 就這樣"}
+    ],
+    "expected_tools": ["add_to_cart"],
+    "expected_response_contains": ["豆漿"],
+    "expected_behavior": "客人回到點餐，加完豆漿後應問內用外帶"
   }
 ]

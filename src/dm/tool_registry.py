@@ -14,6 +14,52 @@ from src.tools.snack_tool import SNACK_ALIASES
 EGG_PANCAKE_ALIASES = EggPancakeTool.FLAVOR_ALIASES
 
 
+# 套餐必填欄位定義（所有套餐都需要飲料溫度）
+_COMBO_REQUIREMENTS = {
+    "套餐二": {"needs_rice": True},
+    "套餐六": {"needs_noodle_flavor": True},
+    "套餐七": {"needs_noodle_flavor": True},
+    "套餐A": {"needs_toast_flavor": True},
+    "套餐C": {"needs_toast_flavor": True},
+    "兒童餐": {"needs_toast_flavor": True},
+}
+
+
+def _check_combo_required(
+    combo_name: Optional[str],
+    temp: Optional[str],
+    flavor: Optional[str],
+    rice: Optional[str],
+    customization: Optional[str],
+) -> Optional[str]:
+    """檢查套餐必填欄位，回傳缺少的追問訊息，全齊回 None"""
+    if not combo_name:
+        return "套餐名稱是什麼"
+
+    missing_parts = []
+
+    # 所有套餐都需要飲料溫度
+    if not temp:
+        missing_parts.append("飲料冰的還是溫的")
+
+    # 個別套餐的額外需求
+    reqs = _COMBO_REQUIREMENTS.get(combo_name, {})
+
+    if reqs.get("needs_rice") and not rice:
+        missing_parts.append("飯糰要紫米白米還是混米")
+
+    if reqs.get("needs_noodle_flavor") and not flavor:
+        missing_parts.append("鐵板麵要黑椒蘑菇義大利還是咖哩")
+
+    if reqs.get("needs_toast_flavor") and not flavor:
+        missing_parts.append("吐司口味要什麼 草莓花生蒜香奶酥巧克力")
+
+    if not missing_parts:
+        return None
+
+    return " ".join(missing_parts)
+
+
 class ToolRegistry:
     """
     工具註冊表 - 提供 OpenAI Function Calling 格式的工具定義、執行映射和參數驗證
@@ -199,6 +245,17 @@ class ToolRegistry:
             elif item_type == "combo":
                 if combo_name:
                     item["combo_name"] = combo_name
+                # 檢查套餐必填欄位
+                missing = _check_combo_required(combo_name, temp, flavor, rice, customization)
+                if missing:
+                    return {"ok": False, "message": missing}
+                # 存入追問答案
+                if temp:
+                    item["drink_temp"] = temp
+                if rice:
+                    item["rice"] = rice
+                if flavor:
+                    item["sub_flavor"] = flavor
 
             # 添加客製化需求
             if customization:
