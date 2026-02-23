@@ -661,7 +661,16 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "add_to_cart",
-                    "description": "添加品項到購物車。飯糰需要口味+米種，飲料需要品項+杯型+溫度，蛋餅/吐司/漢堡/饅頭需要口味，套餐需要套餐名。",
+                    "description": (
+                        "添加品項到購物車。飯糰需要口味+米種，飲料需要品項+杯型+溫度，蛋餅/吐司/漢堡/饅頭需要口味，套餐需要套餐名。\n\n"
+                        "調用範例：\n"
+                        "- 「一個鮪魚飯糰紫米」→ add_to_cart(item_type=\"riceball\", flavor=\"鮪魚\", rice=\"紫米\", quantity=1)\n"
+                        "- 「大杯冰紅茶」→ add_to_cart(item_type=\"drink\", flavor=\"紅茶\", size=\"大杯\", temp=\"冰\", quantity=1)\n"
+                        "- 「起司蛋餅兩份」→ add_to_cart(item_type=\"egg_pancake\", flavor=\"起司\", quantity=2)\n"
+                        "- 「火腿蛋吐司」→ add_to_cart(item_type=\"carrier\", carrier=\"吐司\", flavor=\"火腿蛋\", quantity=1)\n"
+                        "- 「套餐一 飲料冰的」→ add_to_cart(item_type=\"combo\", combo_name=\"套餐一\", temp=\"冰\", quantity=1)\n"
+                        "- 「一份薯餅」→ add_to_cart(item_type=\"snack\", flavor=\"薯餅\", quantity=1)"
+                    ),
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -730,7 +739,13 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "remove_from_cart",
-                    "description": "從購物車移除品項",
+                    "description": (
+                        "從購物車移除品項。\n\n"
+                        "調用範例：\n"
+                        "- 「把第二個取消」→ remove_from_cart(index=2)\n"
+                        "- 「最後那個不要了」→ remove_from_cart(last=true)\n"
+                        "- 「全部清掉重來」→ remove_from_cart(all=true)"
+                    ),
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -756,7 +771,12 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "get_cart_summary",
-                    "description": "取得購物車摘要，包括品項列表和總價",
+                    "description": (
+                        "取得購物車摘要，包括品項列表和總價。\n\n"
+                        "調用範例：\n"
+                        "- 「總共多少錢」→ get_cart_summary()\n"
+                        "- 「我點了什麼」→ get_cart_summary()"
+                    ),
                     "parameters": {
                         "type": "object",
                         "properties": {},
@@ -767,7 +787,13 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "query_menu",
-                    "description": "查詢菜單，可選擇指定分類或查看所有分類",
+                    "description": (
+                        "查詢菜單，可選擇指定分類或查看所有分類。\n\n"
+                        "調用範例：\n"
+                        "- 「有什麼飲料」→ query_menu(category=\"飲品\")\n"
+                        "- 「飯糰有哪些口味」→ query_menu(category=\"飯糰\")\n"
+                        "- 「菜單給我看看」→ query_menu()"
+                    ),
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -783,7 +809,12 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "get_price",
-                    "description": "查詢品項價格",
+                    "description": (
+                        "查詢品項價格。\n\n"
+                        "調用範例：\n"
+                        "- 「飯糰多少錢」→ get_price(item_type=\"riceball\", flavor=\"源味傳統\")\n"
+                        "- 「大杯紅茶多少」→ get_price(item_type=\"drink\", flavor=\"紅茶\", size=\"大杯\")"
+                    ),
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -826,7 +857,13 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "finalize_order",
-                    "description": "完成結帳並送出訂單。在確認客人點完餐、問完內用外帶、問完付款方式後才能調用。",
+                    "description": (
+                        "完成結帳並送出訂單。必須同時滿足三個條件才能調用：(1) 購物車有品項 (2) 已確認內用/外帶 (3) 已確認付款方式。\n\n"
+                        "調用範例：\n"
+                        "- 客人說「外帶 現金」且購物車有品項 → finalize_order(dine_type=\"外帶\", payment_method=\"現金\")\n"
+                        "- 客人說「內用 行動支付」→ finalize_order(dine_type=\"內用\", payment_method=\"行動支付\")\n\n"
+                        "⚠ 錯誤：客人只說「結帳」但還沒問內用外帶 → 不要調用，先追問"
+                    ),
                     "parameters": {
                         "type": "object",
                         "properties": {
