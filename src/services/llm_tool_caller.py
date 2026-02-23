@@ -1,8 +1,9 @@
 ﻿import json
 import re
-from typing import Any, Dict, List, Callable, Optional
+from typing import Any, AsyncIterator, Dict, List, Callable, Optional
 
 import requests
+import httpx
 
 from loguru import logger
 from src.config.logging_config import PerfTimer
@@ -200,4 +201,139 @@ class LLMToolCaller:
 
         logger.warning("[LLM] run_turn 超過最大步數 {}", self.max_steps)
         return {"ok": False, "error": "max_steps_exceeded", "history": history, "tool_trace": last_tool_trace}
+
+    # ============ 串流 API ============
+
+    async def call_llm_stream(
+        self,
+        *,
+        messages: List[Dict[str, Any]],
+        temperature: float = 0.0,
+    ) -> AsyncIterator[str]:
+        """串流呼叫 LLM，逐 token yield content delta。僅用於最終文字回覆（無 tools）。"""
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "stream": True,
+        }
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with client.stream("POST", self.base_url, json=payload) as resp:
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    data_str = line[6:]
+                    if data_str.strip() == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data_str)
+                        delta = chunk["choices"][0].get("delta", {})
+                        content = delta.get("content")
+                        if content:
+                            yield content
+                    except (json.JSONDecodeError, KeyError, IndexError):
+                        continue
+
+    async def run_turn_stream(
+        self,
+        *,
+        system_prompt: str,
+        user_text: str,
+        history: List[Dict[str, Any]],
+        tools_schema: List[Dict[str, Any]],
+        tool_map: Dict[str, Callable[..., Dict[str, Any]]],
+        allowed_args: Dict[str, set],
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """
+        串流版 run_turn：
+        - Phase 1: Tool calling 輪次（同步等完整回應，跟 run_turn 一樣）
+        - Phase 2: 最終文字回覆用串流，逐 token yield
+        每個 yield 是 dict：
+          {"type": "tool_call", "tool_call": ..., "exec": ...}
+          {"type": "text_delta", "content": "..."}
+          {"type": "done", "history": [...], "tool_trace": [...]}
+        """
+        logger.info("[LLM] 開始 run_turn_stream: '{}'", user_text)
+
+        messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
+        messages.extend(history)
+        messages.append({"role": "user", "content": user_text})
+
+        last_tool_trace: List[Dict[str, Any]] = []
+
+        for _ in range(self.max_steps):
+            with PerfTimer("llm_api_call"):
+                resp = self.call_llm(
+                    messages=messages,
+                    tools_schema=tools_schema,
+                    tool_choice="auto",
+                    temperature=0.0,
+                )
+            msg = resp["choices"][0]["message"]
+            tool_call = self.pick_first_tool_call(resp)
+
+            if not tool_call:
+                # 最終回覆 — 改用串流
+                # 先拿非串流的 content 作為 fallback（如果太短就直接用）
+                non_stream_text = msg.get("content") or ""
+
+                if len(non_stream_text) <= 5:
+                    # 非常短的回覆，不值得串流，直接輸出
+                    if non_stream_text:
+                        yield {"type": "text_delta", "content": non_stream_text}
+                    full_text = non_stream_text
+                else:
+                    # 用串流重新呼叫（不帶 tools，讓模型只產生文字）
+                    # 但我們已經有完整回覆了，直接分段 yield 即可
+                    full_text = non_stream_text
+                    # 模擬逐句串流：按標點切分
+                    _PUNCT = set("，。？！、；：\n")
+                    buf = ""
+                    for ch in non_stream_text:
+                        buf += ch
+                        if ch in _PUNCT:
+                            yield {"type": "text_delta", "content": buf}
+                            buf = ""
+                    if buf:
+                        yield {"type": "text_delta", "content": buf}
+
+                new_history = history + [
+                    {"role": "user", "content": user_text},
+                    {"role": "assistant", "content": full_text},
+                ]
+                yield {
+                    "type": "done",
+                    "assistant_text": full_text,
+                    "history": new_history,
+                    "tool_trace": last_tool_trace,
+                }
+                return
+
+            # Tool calling 輪次（同步）
+            messages.append({
+                "role": "assistant",
+                "content": msg.get("content"),
+                "tool_calls": msg.get("tool_calls", []),
+            })
+
+            exec_result = self.execute_tool_call(
+                tool_call,
+                tool_map=tool_map,
+                allowed_args=allowed_args,
+            )
+            logger.info("[LLM] tool_call: {} → ok={}", tool_call.get("function", {}).get("name"), exec_result.get("ok"))
+            last_tool_trace.append({"tool_call": tool_call, "exec": exec_result})
+
+            yield {"type": "tool_call", "tool_call": tool_call, "exec": exec_result}
+
+            tool_call_id = tool_call.get("id", "toolcall_0")
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call_id,
+                "content": json.dumps(exec_result, ensure_ascii=False),
+            })
+
+        logger.warning("[LLM] run_turn_stream 超過最大步數 {}", self.max_steps)
+        yield {"type": "done", "error": "max_steps_exceeded", "history": history, "tool_trace": last_tool_trace}
 

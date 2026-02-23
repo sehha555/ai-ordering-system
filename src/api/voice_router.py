@@ -9,6 +9,7 @@ from loguru import logger
 from src.services.asr_postprocess import postprocess
 from src.services.streaming_orchestrator import StreamingOrchestrator
 from src.services.tts_implementations import create_tts_model
+from src.services.tts_cache import tts_cache
 from src.config.models import TTS_BACKEND
 
 router = APIRouter()
@@ -31,6 +32,150 @@ async def event_generator(orchestrator: StreamingOrchestrator, audio_bytes: byte
     async for event in orchestrator.process_audio_stream(audio_bytes, session_id=session_id):
         # Format as SSE
         yield f"event: {event['event']}\ndata: {json.dumps(event['data'], ensure_ascii=False)}\n\n"
+
+
+async def event_generator_v2(orchestrator: StreamingOrchestrator, audio_bytes: bytes, session_id: str):
+    """串流版 SSE — 使用 process_audio_stream_v2"""
+    async for event in orchestrator.process_audio_stream_v2(audio_bytes, session_id=session_id):
+        yield f"event: {event['event']}\ndata: {json.dumps(event['data'], ensure_ascii=False)}\n\n"
+
+
+class StreamingDMAdapter:
+    """串流版 DM 適配器 — 提供 process_input_stream() 方法"""
+
+    def __init__(self, session_id: str):
+        self._session_id = session_id
+
+    def process_input(self, text: str):
+        """向後相容：非串流版"""
+        # 延遲導入
+        from src.api.app import _session_store, _llm_caller, _tool_registry, _dialogue_manager, SYSTEM_PROMPT
+        return _do_dm_sync(self._session_id, text, _session_store, _llm_caller, _tool_registry, _dialogue_manager, SYSTEM_PROMPT)
+
+    async def process_input_stream(self, text: str):
+        """串流版：逐 token yield LLM 回應，提供給 orchestrator 做分段 TTS"""
+        from src.api.app import _session_store, _llm_caller, _tool_registry, _dialogue_manager, SYSTEM_PROMPT
+
+        _tool_registry.set_session_id(self._session_id)
+        session = _session_store.get(self._session_id)
+        session.setdefault("llm_history", [])
+
+        logger.info("[VOICE-STREAM] LLM 串流處理: '{}', 購物車: {} 項", text, len(session.get('cart', [])))
+
+        full_text = ""
+        tool_trace = []
+
+        async for event in _llm_caller.run_turn_stream(
+            system_prompt=SYSTEM_PROMPT,
+            user_text=text,
+            history=session["llm_history"],
+            tools_schema=_tool_registry.get_tools_schema(),
+            tool_map=_tool_registry.get_tool_map(),
+            allowed_args=_tool_registry.get_allowed_args(),
+        ):
+            evt_type = event.get("type")
+
+            if evt_type == "text_delta":
+                yield event
+
+            elif evt_type == "tool_call":
+                tool_trace.append({"tool_call": event.get("tool_call"), "exec": event.get("exec")})
+                yield event
+
+            elif evt_type == "done":
+                full_text = event.get("assistant_text", "")
+                session["llm_history"] = event.get("history", [])
+
+                if not full_text:
+                    full_text = "好的，還需要什麼嗎？"
+
+                # 讀取購物車
+                cart = session.get("cart", [])
+                total_price = 0
+                for item in cart:
+                    qty = int(item.get("quantity", 1) or 1)
+                    price_info = _dialogue_manager.get_price_info(item)
+                    if price_info and price_info.get("status") == "success":
+                        item_total = _dialogue_manager.extract_total(price_info, qty)
+                        total_price += item_total
+
+                # 檢查 finalize_order
+                finalize_result = None
+                for trace in event.get("tool_trace", []):
+                    tc = trace.get("tool_call", {})
+                    if tc.get("function", {}).get("name") == "finalize_order":
+                        exec_r = trace.get("exec", {})
+                        if exec_r.get("ok"):
+                            finalize_result = exec_r
+                            break
+
+                yield {
+                    "type": "done",
+                    "cart": cart,
+                    "order_payload": {"total_price": total_price},
+                    "finalize_result": finalize_result,
+                }
+
+
+def _do_dm_sync(session_id, text, _session_store, _llm_caller, _tool_registry, _dialogue_manager, SYSTEM_PROMPT):
+    """非串流 DM 處理（共用邏輯）"""
+    try:
+        _tool_registry.set_session_id(session_id)
+        session = _session_store.get(session_id)
+        session.setdefault("llm_history", [])
+
+        logger.info("[VOICE] LLM 處理: '{}', 當前購物車: {} 項", text, len(session.get('cart', [])))
+
+        result = _llm_caller.run_turn(
+            system_prompt=SYSTEM_PROMPT,
+            user_text=text,
+            history=session["llm_history"],
+            tools_schema=_tool_registry.get_tools_schema(),
+            tool_map=_tool_registry.get_tool_map(),
+            allowed_args=_tool_registry.get_allowed_args(),
+        )
+
+        if result.get("ok"):
+            session["llm_history"] = result.get("history", [])
+            response_text = result.get("assistant_text", "")
+            if not response_text:
+                response_text = "好的，還需要什麼嗎？"
+
+            cart = session.get("cart", [])
+            total_price = 0
+            for item in cart:
+                qty = int(item.get("quantity", 1) or 1)
+                price_info = _dialogue_manager.get_price_info(item)
+                if price_info and price_info.get("status") == "success":
+                    item_total = _dialogue_manager.extract_total(price_info, qty)
+                    total_price += item_total
+
+            finalize_result = None
+            for trace in result.get("tool_trace", []):
+                tool_call = trace.get("tool_call", {})
+                if tool_call.get("function", {}).get("name") == "finalize_order":
+                    exec_result = trace.get("exec", {})
+                    if exec_result.get("ok"):
+                        finalize_result = exec_result
+                        break
+
+            return (response_text, {
+                "cart": cart,
+                "order_payload": {"total_price": total_price},
+                "finalize_result": finalize_result,
+            })
+        else:
+            logger.error("[VOICE] LLM 錯誤: {}", result.get('error'))
+            return ("抱歉，系統暫時無法處理，請稍後再試。", {
+                "cart": [],
+                "order_payload": {"total_price": 0}
+            })
+    except Exception as e:
+        logger.exception("[VOICE] DMAdapter 異常")
+        return (f"錯誤: {str(e)}", {
+            "cart": [],
+            "order_payload": {"total_price": 0}
+        })
 
 
 @router.post("/voice-chat")
@@ -98,91 +243,33 @@ async def voice_chat(
             self._session_id = session_id
 
         def process_input(self, text: str):
-            """
-            使用 LLM + ToolRegistry 處理用戶輸入
-            返回 (回應文字, 購物車快照)
-            """
-            try:
-                # 設置當前會話
-                _tool_registry.set_session_id(self._session_id)
-
-                # 確保會話存在
-                session = _session_store.get(self._session_id)
-                session.setdefault("llm_history", [])
-
-                logger.info("[VOICE] LLM 處理: '{}', 當前購物車: {} 項", text, len(session.get('cart', [])))
-
-                # 調用 LLM
-                result = _llm_caller.run_turn(
-                    system_prompt=SYSTEM_PROMPT,
-                    user_text=text,
-                    history=session["llm_history"],
-                    tools_schema=_tool_registry.get_tools_schema(),
-                    tool_map=_tool_registry.get_tool_map(),
-                    allowed_args=_tool_registry.get_allowed_args(),
-                )
-
-                if result.get("ok"):
-                    # 更新歷史
-                    session["llm_history"] = result.get("history", [])
-                    response_text = result.get("assistant_text", "")
-                    if not response_text:
-                        response_text = "好的，還需要什麼嗎？"
-
-                    # 讀取更新後的購物車
-                    cart = session.get("cart", [])
-                    total_price = 0
-
-                    # 計算總價
-                    for item in cart:
-                        qty = int(item.get("quantity", 1) or 1)
-                        price_info = _dialogue_manager.get_price_info(item)
-                        if price_info and price_info.get("status") == "success":
-                            item_total = _dialogue_manager.extract_total(price_info, qty)
-                            total_price += item_total
-
-                    logger.info("[VOICE] LLM 回應: '{}', 購物車: {} 項, 總計: ${}", response_text, len(cart), total_price)
-
-                    # 檢查是否有 finalize_order 結果
-                    finalize_result = None
-                    for trace in result.get("tool_trace", []):
-                        tool_call = trace.get("tool_call", {})
-                        if tool_call.get("function", {}).get("name") == "finalize_order":
-                            exec_result = trace.get("exec", {})
-                            if exec_result.get("ok"):
-                                finalize_result = exec_result
-                                break
-
-                    return (response_text, {
-                        "cart": cart,
-                        "order_payload": {"total_price": total_price},
-                        "finalize_result": finalize_result,
-                    })
-                else:
-                    logger.error("[VOICE] LLM 錯誤: {}", result.get('error'))
-                    return ("抱歉，系統暫時無法處理，請稍後再試。", {
-                        "cart": [],
-                        "order_payload": {"total_price": 0}
-                    })
-
-            except Exception as e:
-                logger.exception("[VOICE] DMAdapter 異常")
-                return (f"錯誤: {str(e)}", {
-                    "cart": [],
-                    "order_payload": {"total_price": 0}
-                })
+            return _do_dm_sync(self._session_id, text, _session_store, _llm_caller, _tool_registry, _dialogue_manager, SYSTEM_PROMPT)
 
     asr_adapter = ASRAdapter(_asr_service)
-    dm_adapter = DMAdapter(session_id)
 
-    orchestrator = StreamingOrchestrator(asr_adapter, dm_adapter, streaming_tts, session_id=session_id)
-
-    return StreamingResponse(
-        event_generator(orchestrator, audio_bytes, session_id),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # 禁用 nginx 緩衝
-        }
-    )
+    # 檢查是否使用串流模式
+    use_stream = True  # 預設啟用串流
+    if use_stream:
+        dm_adapter = StreamingDMAdapter(session_id)
+        orchestrator = StreamingOrchestrator(asr_adapter, dm_adapter, streaming_tts, session_id=session_id)
+        return StreamingResponse(
+            event_generator_v2(orchestrator, audio_bytes, session_id),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            }
+        )
+    else:
+        dm_adapter = DMAdapter(session_id)
+        orchestrator = StreamingOrchestrator(asr_adapter, dm_adapter, streaming_tts, session_id=session_id)
+        return StreamingResponse(
+            event_generator(orchestrator, audio_bytes, session_id),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            }
+        )

@@ -1,3 +1,4 @@
+import asyncio
 import os
 import re
 import json
@@ -60,7 +61,22 @@ STORE_CONFIG = load_store_config()
 SYSTEM_PROMPT = load_system_prompt(STORE_CONFIG)
 from src.api.voice_router import router as voice_router
 
-app = FastAPI(title="Yuan Rice Ball Order API")
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def lifespan(app):
+    # startup: 背景預熱 TTS 快取
+    from src.services.tts_cache import tts_cache
+    from src.services.tts_implementations import create_tts_model as _create_tts
+    from src.config.models import TTS_BACKEND as _tts_backend
+    _warmup_tts = _create_tts(_tts_backend)
+    asyncio.create_task(tts_cache.warmup(_warmup_tts))
+    yield
+    # shutdown: 清理（目前不需要）
+
+
+app = FastAPI(title="Yuan Rice Ball Order API", lifespan=lifespan)
 
 # CORS - 允許 Next.js dev server
 app.add_middleware(
