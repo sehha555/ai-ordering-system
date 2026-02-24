@@ -114,6 +114,12 @@ def setup_logging():
     log_level = settings.LOG_LEVEL.upper()
     log_format = settings.LOG_FORMAT
 
+    # prod 環境強制 JSON 日誌
+    if settings.is_production and log_format != "json":
+        log_format = "json"
+
+    retention_days = settings.LOG_RETENTION_DAYS
+
     # 移除 loguru 預設 handler
     logger.remove()
 
@@ -127,14 +133,14 @@ def setup_logging():
             format="<green>{time:HH:mm:ss}</green> | <level>{level:<7}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan> | <level>{message}</level>",
         )
 
-    # 檔案輸出 — 每日輪替，保留 7 天
+    # 檔案輸出 — 每日輪替，保留天數可配置
     log_dir = os.path.join(os.path.dirname(__file__), "..", "..", "logs")
     os.makedirs(log_dir, exist_ok=True)
     logger.add(
         os.path.join(log_dir, "app.log"),
         level=log_level,
         rotation="00:00",  # 每日午夜輪替
-        retention="7 days",
+        retention=f"{retention_days} days",
         encoding="utf-8",
         serialize=(log_format == "json"),
     )
@@ -142,4 +148,4 @@ def setup_logging():
     # 攔截標準 logging
     logging.basicConfig(handlers=[_InterceptHandler()], level=0, force=True)
 
-    logger.info("日誌系統已初始化 (level={}, format={})", log_level, log_format)
+    logger.info("日誌系統已初始化 (level={}, format={}, retention={}天)", log_level, log_format, retention_days)
