@@ -21,7 +21,7 @@ from src.repository.order_repository import order_repo
 from src.utils.db_backup import backup_database
 from src.utils.perf_collector import perf_collector
 from src.dm.dialogue_manager import DialogueManager
-from src.dm.session_store import InMemorySessionStore
+from src.dm.session_store import create_session_store
 from src.dm import cart_manager
 from src.services.asr_service import create_asr_service
 from src.config.models import ASR_BACKEND
@@ -66,20 +66,58 @@ def load_system_prompt(config):
 STORE_CONFIG = load_store_config()
 SYSTEM_PROMPT = load_system_prompt(STORE_CONFIG)
 from src.api.voice_router import router as voice_router
+from src.api.health import router as health_router
 
 from contextlib import asynccontextmanager
 
 
+def _validate_startup():
+    """啟動驗證 — 檢查必要條件"""
+    # SQLite DB 可讀寫
+    db_path = os.path.join(os.path.dirname(__file__), "..", "..", "orders.db")
+    db_dir = os.path.dirname(os.path.abspath(db_path))
+    if not os.access(db_dir, os.W_OK):
+        logger.warning("[STARTUP] orders.db 目錄不可寫: {}", db_dir)
+
+    # prod 環境 API_KEY 必須設定
+    if settings.is_production and not settings.API_KEY:
+        raise RuntimeError("ENVIRONMENT=prod 時必須設定 API_KEY")
+
+    # prod 環境建議 JSON 日誌
+    if settings.is_production and settings.LOG_FORMAT != "json":
+        logger.warning("[STARTUP] 生產環境建議設定 LOG_FORMAT=json")
+
+    logger.info(
+        "[STARTUP] 環境={}, CORS={}, Session TTL={}min",
+        settings.ENVIRONMENT,
+        settings.cors_origin_list,
+        settings.SESSION_TTL_MINUTES,
+    )
+
+
 @asynccontextmanager
 async def lifespan(app):
+    # startup: 啟動驗證
+    _validate_startup()
+
     # startup: 背景預熱 TTS 快取
     from src.services.tts_cache import tts_cache
     from src.services.tts_implementations import create_tts_model as _create_tts
     from src.config.models import TTS_BACKEND as _tts_backend
     _warmup_tts = _create_tts(_tts_backend)
     asyncio.create_task(tts_cache.warmup(_warmup_tts))
+
+    # startup: Session 背景清理任務（每 5 分鐘）
+    cleanup_task = asyncio.create_task(_session_cleanup_loop())
+
     yield
-    # shutdown: 清理（目前不需要）
+
+    # shutdown: 取消背景任務
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
 
 
 app = FastAPI(title="Yuan Rice Ball Order API", lifespan=lifespan)
@@ -89,19 +127,17 @@ limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS - 允許 Next.js dev server
+# CORS - 從設定檔讀取允許的來源
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=settings.cors_origin_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 註冊語音聊天路由
+# 註冊路由
+app.include_router(health_router)
 app.include_router(voice_router, prefix="/api", tags=["voice"])
 
 # 掛載靜態檔案（如果目錄存在）
@@ -110,7 +146,22 @@ if os.path.isdir(_frontend_dir):
     app.mount("/static", StaticFiles(directory=_frontend_dir), name="static")
 
 # 初始化服務
-_session_store = InMemorySessionStore()
+_session_store = create_session_store(
+    redis_url=settings.REDIS_URL,
+    ttl_minutes=settings.SESSION_TTL_MINUTES,
+)
+
+
+async def _session_cleanup_loop():
+    """背景任務：定期清理過期 session"""
+    while True:
+        await asyncio.sleep(300)  # 每 5 分鐘
+        try:
+            cleaned = _session_store.cleanup()
+            if cleaned:
+                logger.info("背景清理 {} 個過期 session", cleaned)
+        except Exception as e:
+            logger.error("Session 清理失敗: {}", e)
 _llm_caller = LLMToolCaller(
     base_url=settings.LLM_BASE_URL,
     model=settings.LLM_MODEL,
@@ -158,11 +209,6 @@ async def serve_frontend():
     if os.path.exists(frontend_path):
         return FileResponse(frontend_path)
     return {"message": "Voice Dashboard API", "docs": "/docs"}
-
-
-@app.get("/healthz")
-async def healthz():
-    return {"ok": True}
 
 
 @app.get("/api/perf-stats")
@@ -369,6 +415,7 @@ async def text_dialogue(request: Request, body: TextDialogueRequest, api_key: st
 
         if result.get("ok"):
             session["llm_history"] = result.get("history", [])
+            _session_store.set(session_id, session)  # Redis 回寫
             response_text = result.get("assistant_text", "")
             if not response_text:
                 response_text = "好的，還需要什麼嗎？"
@@ -435,6 +482,7 @@ async def llm_dialogue(request: Request, body: TextDialogueRequest, api_key: str
         if result.get("ok"):
             # 更新歷史
             session["llm_history"] = result.get("history", [])
+            _session_store.set(session_id, session)  # Redis 回寫
             response_text = result.get("assistant_text", "")
 
             # 如果 LLM 沒有回覆，給一個預設回覆
@@ -577,6 +625,7 @@ async def voice_dialogue(
 
             if llm_result.get("ok"):
                 session["llm_history"] = llm_result.get("history", [])
+                _session_store.set(session_id, session)  # Redis 回寫
                 dialogue_response = llm_result.get("assistant_text", "")
                 if not dialogue_response:
                     dialogue_response = "好的，還需要什麼嗎？"
@@ -791,6 +840,7 @@ async def checkout(request: Request, body: CheckoutRequest):
         # 7. 清空 session（llm_history 和購物車）
         session["llm_history"] = []
         session["cart"] = []
+        _session_store.set(session_id, session)  # Redis 回寫
         logger.debug("[CHECKOUT] Session 已清除")
 
         return {

@@ -85,6 +85,7 @@ class StreamingDMAdapter:
             elif evt_type == "done":
                 full_text = event.get("assistant_text", "")
                 session["llm_history"] = event.get("history", [])
+                _session_store.set(self._session_id, session)  # Redis 回寫
 
                 if not full_text:
                     full_text = "好的，還需要什麼嗎？"
@@ -137,6 +138,7 @@ def _do_dm_sync(session_id, text, _session_store, _llm_caller, _tool_registry, _
 
         if result.get("ok"):
             session["llm_history"] = result.get("history", [])
+            _session_store.set(session_id, session)  # Redis 回寫
             response_text = result.get("assistant_text", "")
             if not response_text:
                 response_text = "好的，還需要什麼嗎？"

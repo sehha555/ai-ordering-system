@@ -10,13 +10,13 @@ from src.tools.jam_toast_tool import jam_toast_tool
 from src.tools.egg_pancake_tool import egg_pancake_tool
 from src.tools.combo_tool import combo_tool
 from src.tools.menu import menu_price_service
-from src.dm.session_store import InMemorySessionStore
+from src.dm.session_store import InMemorySessionStore, SessionStore
 from src.dm import cart_manager
 from src.dm.clarify_policy import recompute_missing_slots, clarify_message
 
 
 class _SessionsProxy:
-    def __init__(self, store: InMemorySessionStore):
+    def __init__(self, store: SessionStore):
         self._store = store
 
     def get(self, session_id: str, default: Optional[dict] = None) -> dict:
@@ -30,7 +30,7 @@ class DialogueManager:
     def __init__(
         self,
         llm: Any = None,
-        store: Optional[InMemorySessionStore] = None,
+        store: Optional[SessionStore] = None,
         **kwargs
     ):
         self.llm = llm
