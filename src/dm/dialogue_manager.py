@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Dict, Any, List, Optional
 
 from src.tools.order_router import order_router
@@ -66,7 +67,6 @@ class DialogueManager:
 
         # 記錄開始時間（新 session 首次發言）
         if session.get("started_at") is None:
-            from datetime import datetime
             session["started_at"] = datetime.now().isoformat()
 
         # 記錄 user 訊息（含角色標記，供分析用）

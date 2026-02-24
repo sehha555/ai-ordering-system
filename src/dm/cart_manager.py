@@ -99,11 +99,13 @@ def get_order_summary(cart: List[Dict[str, Any]]) -> str:
     if not cart:
         return "目前沒有品項"
 
-    # 先檢查所有品項是否可計價
+    # 先檢查所有品項是否可計價，同時快取價格資訊
+    price_cache: Dict[int, Dict[str, Any]] = {}
     for item in cart:
         pi = get_price_info(item)
         if not pi or pi.get("status") != "success":
             return f"品項「{format_item(item)}」無法計價：{pi.get('message', '計價失敗') if pi else '計價失敗'}。請洽服務人員再結帳。"
+        price_cache[id(item)] = pi
 
     # 依品項唯一鍵分組，保持插入順序
     groups: OrderedDict = OrderedDict()
@@ -112,8 +114,7 @@ def get_order_summary(cart: List[Dict[str, Any]]) -> str:
         if key not in groups:
             groups[key] = {"item": item, "count": 0, "subtotal": 0}
         groups[key]["count"] += 1
-        pi = get_price_info(item)
-        groups[key]["subtotal"] += extract_total(pi, 1)
+        groups[key]["subtotal"] += extract_total(price_cache[id(item)], 1)
 
     lines = []
     total_count = 0

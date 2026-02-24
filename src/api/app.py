@@ -691,19 +691,19 @@ async def tts_play(
 
     # 安全檢查：只允許播放 TTS 輸出目錄的檔案
     import tempfile
-    tts_dir = os.path.join(tempfile.gettempdir(), "tts_output")
+    tts_dir = os.path.realpath(os.path.join(tempfile.gettempdir(), "tts_output"))
 
-    # 正規化路徑
-    normalized_path = os.path.normpath(path)
+    # 解析真實路徑（防 symlink traversal），Windows 大小寫不敏感比較
+    real_path = os.path.realpath(path)
 
-    if not normalized_path.startswith(tts_dir):
+    if not real_path.lower().startswith(tts_dir.lower()):
         raise HTTPException(status_code=403, detail="Access denied")
 
-    if not os.path.exists(normalized_path):
+    if not os.path.exists(real_path):
         raise HTTPException(status_code=404, detail="Audio file not found")
 
     return FileResponse(
-        normalized_path,
+        real_path,
         media_type="audio/mpeg",
         filename="response.mp3"
     )

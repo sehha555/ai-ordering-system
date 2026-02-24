@@ -180,14 +180,11 @@ class LLMConversationProcessor:
         Returns:
             簡化的歷史列表
         """
-        history = []
-        for msg in llm_messages:
-            if msg.get("role") != "system":
-                # 跳過系統消息，只保留用戶和助手消息
-                content = msg.get("content", "")
-                if content:
-                    history.append(content)
-        return history
+        return [
+            {"role": msg["role"], "content": msg.get("content", "")}
+            for msg in llm_messages
+            if msg.get("role") != "system" and msg.get("content")
+        ]
 
     def _handle_timeout_or_network_error(
         self,
