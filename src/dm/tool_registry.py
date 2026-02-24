@@ -2,6 +2,7 @@
 from typing import Dict, Any, List, Callable, Optional, Set
 from src.dm.dialogue_manager import DialogueManager
 from src.dm.session_store import InMemorySessionStore
+from src.dm import cart_manager
 from src.tools.menu import menu_price_service
 
 # 導入各工具的別名映射
@@ -565,7 +566,7 @@ class ToolRegistry:
             for item in cart:
                 pi = self.dm.get_price_info(item)
                 if not pi or pi.get("status") != "success":
-                    unpriceable_items.append(self.dm._format_item(item))
+                    unpriceable_items.append(cart_manager.format_item(item))
             if unpriceable_items:
                 return {
                     "ok": False,
@@ -582,7 +583,7 @@ class ToolRegistry:
             resolved_payment = payment_map.get(payment_method, payment_method)
 
             # 計算總價（複用現有 _calculate_cart_total）
-            total_price = self.dm._calculate_cart_total(session)
+            total_price = cart_manager.calculate_cart_total(session["cart"])
 
             # 生成取餐號碼（複用 order_repo）
             from src.repository.order_repository import order_repo
@@ -600,7 +601,7 @@ class ToolRegistry:
                 item_total = self.dm.extract_total(pi, qty)
                 unit_price = item_total // qty if qty > 0 else 0
                 items_payload.append({
-                    "name": self.dm._format_item(item),
+                    "name": cart_manager.format_item(item),
                     "quantity": qty,
                     "unit_price": unit_price,
                     "subtotal": item_total,

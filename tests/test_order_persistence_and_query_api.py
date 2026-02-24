@@ -9,7 +9,7 @@ from src.repository.order_repository import OrderRepository
 # 這些是持有 order_repo 單例引用的模組
 import src.repository.order_repository as repo_mod
 import src.api.app as api_mod
-import src.dm.dialogue_manager as dm_mod
+import src.dm.cart_manager as dm_mod
 
 def get_unique_test_db():
     return f"test_orders_{uuid.uuid4().hex[:8]}.db"

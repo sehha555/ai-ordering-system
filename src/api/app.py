@@ -17,6 +17,7 @@ from src.utils.db_backup import backup_database
 from src.utils.perf_collector import perf_collector
 from src.dm.dialogue_manager import DialogueManager
 from src.dm.session_store import InMemorySessionStore
+from src.dm import cart_manager
 from src.services.asr_service import ASRService, create_asr_service
 from src.config.models import ASR_BACKEND
 from src.services.tts_service import TTSService
@@ -285,7 +286,7 @@ async def get_cart_summary(
             qty = int(item.get("quantity", 1) or 1)
 
             # 格式化品項名稱
-            name = _dialogue_manager._format_item(item)
+            name = cart_manager.format_item(item)
 
             # 計算價格
             price_info = _dialogue_manager.get_price_info(item)
