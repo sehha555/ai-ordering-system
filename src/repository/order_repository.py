@@ -1,6 +1,7 @@
 import sqlite3
 import json
 import os
+from contextlib import contextmanager
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
@@ -9,15 +10,22 @@ class OrderRepository:
         self.db_path = db_path
         self._init_db()
 
-    def _get_connection(self):
-        # 確保連線在 Windows 下能正確關閉
+    @contextmanager
+    def _connection(self):
+        """連接 contextmanager — 自動 commit/rollback/close"""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
     def _init_db(self):
-        conn = self._get_connection()
-        try:
+        with self._connection() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS orders (
                     order_id TEXT PRIMARY KEY,
@@ -46,9 +54,6 @@ class OrderRepository:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_orders_session_id ON orders(session_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_convlogs_session_id ON conversation_logs(session_id)")
-            conn.commit()
-        finally:
-            conn.close()
 
     def save_order(self, order_payload: Dict[str, Any], session_id: str):
         order_id = order_payload["order_id"]
@@ -58,25 +63,18 @@ class OrderRepository:
         total_price = order_payload.get("total_price", 0)
         payload_json = json.dumps(order_payload, ensure_ascii=False)
 
-        conn = self._get_connection()
-        try:
+        with self._connection() as conn:
             conn.execute("""
-                INSERT OR REPLACE INTO orders 
+                INSERT OR REPLACE INTO orders
                 (order_id, status, created_at, session_id, items_json, total_price, order_payload_json)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (order_id, status, created_at, session_id, items_json, total_price, payload_json))
-            conn.commit()
-        finally:
-            conn.close()
 
     def get_order(self, order_id: str) -> Optional[Dict[str, Any]]:
-        conn = self._get_connection()
-        try:
+        with self._connection() as conn:
             row = conn.execute("SELECT order_payload_json FROM orders WHERE order_id = ?", (order_id,)).fetchone()
             if row:
                 return json.loads(row["order_payload_json"])
-        finally:
-            conn.close()
         return None
 
     def list_orders(self, date: Optional[str] = None, status: Optional[str] = None, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
@@ -91,12 +89,9 @@ class OrderRepository:
         query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
         params.extend([min(limit, 100), offset])
 
-        conn = self._get_connection()
-        try:
+        with self._connection() as conn:
             rows = conn.execute(query, params).fetchall()
             return [json.loads(r["order_payload_json"]) for r in rows]
-        finally:
-            conn.close()
 
     def get_next_order_number(self) -> str:
         """
@@ -105,34 +100,22 @@ class OrderRepository:
         使用 BEGIN IMMEDIATE 避免競態條件
         """
         today = datetime.now().strftime("%Y-%m-%d")
-        conn = self._get_connection()
-        try:
+        with self._connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute("""
                 SELECT COUNT(*) as cnt FROM orders WHERE created_at LIKE ?
             """, (f"{today}%",)).fetchone()
-
             next_num = (row["cnt"] or 0) + 1
-            conn.commit()
             return f"{next_num:02d}"
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
 
     def save_conversation_log(self, session_id: str, order_number: str, messages: List[Dict[str, Any]]):
         """保存對話紀錄到 SQLite"""
-        conn = self._get_connection()
-        try:
+        with self._connection() as conn:
             messages_json = json.dumps(messages, ensure_ascii=False)
             conn.execute("""
                 INSERT INTO conversation_logs (session_id, order_number, messages)
                 VALUES (?, ?, ?)
             """, (session_id, order_number, messages_json))
-            conn.commit()
-        finally:
-            conn.close()
 
     def save_conversation_log_json(self, session_id: str, order_number: str, cart: List[Dict], total: int, dine_type: str, messages: List[Dict[str, Any]]):
         """保存對話紀錄為 JSON 檔案"""
