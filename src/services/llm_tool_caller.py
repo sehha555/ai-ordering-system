@@ -1,5 +1,6 @@
 ﻿import json
 import re
+import time
 from typing import Any, AsyncIterator, Dict, List, Callable, Optional
 
 import requests
@@ -27,17 +28,39 @@ class LLMToolCaller:
         timeout: int = 60,
         max_steps: int = 4,
         max_arg_chars: int = 8000,
+        max_retries: int = 2,
+        retry_base_delay: float = 1.0,
     ):
         self.base_url = base_url
         self.model = model
         self.timeout = timeout
         self.max_steps = max_steps
         self.max_arg_chars = max_arg_chars
+        self.max_retries = max_retries
+        self.retry_base_delay = retry_base_delay
 
     def _post(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        r = requests.post(self.base_url, json=payload, timeout=self.timeout)
-        r.raise_for_status()
-        return r.json()
+        """POST 請求，帶指數退避重試（連線錯誤 / 5xx）。"""
+        last_exc = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                r = requests.post(self.base_url, json=payload, timeout=self.timeout)
+                if r.status_code >= 500 and attempt < self.max_retries:
+                    delay = self.retry_base_delay * (2 ** attempt)
+                    logger.warning("[LLM] 5xx 錯誤 ({}), {}s 後重試 ({}/{})", r.status_code, delay, attempt + 1, self.max_retries)
+                    time.sleep(delay)
+                    continue
+                r.raise_for_status()
+                return r.json()
+            except (requests.ConnectionError, requests.Timeout) as e:
+                last_exc = e
+                if attempt < self.max_retries:
+                    delay = self.retry_base_delay * (2 ** attempt)
+                    logger.warning("[LLM] 連線失敗 ({}), {}s 後重試 ({}/{})", type(e).__name__, delay, attempt + 1, self.max_retries)
+                    time.sleep(delay)
+                    continue
+                raise
+        raise last_exc  # type: ignore[misc]
 
     def call_llm(
         self,
