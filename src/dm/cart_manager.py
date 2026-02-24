@@ -1,5 +1,6 @@
 import re
 import uuid
+from collections import OrderedDict
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
@@ -37,6 +38,13 @@ def format_item(frame: Dict[str, Any]) -> str:
     if rtype == "combo":
         return frame.get("combo_name", "套餐")
     return "未知品項"
+
+
+def _item_key(frame: Dict[str, Any]) -> str:
+    """提取品項唯一身份（品項類型+格式化名稱），用於合併判斷"""
+    rtype = frame.get("recognized_type", frame.get("itemtype", ""))
+    name = format_item(frame)
+    return f"{rtype}:{name}"
 
 
 def get_price_info(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -87,27 +95,58 @@ def calculate_cart_total(cart: List[Dict[str, Any]]) -> int:
 
 
 def get_order_summary(cart: List[Dict[str, Any]]) -> str:
-    """產生訂單摘要字串"""
+    """產生訂單摘要字串（同品項+同客製選項合併顯示 x數量）"""
     if not cart:
         return "目前沒有品項"
-    items, total = [], 0
+
+    # 先檢查所有品項是否可計價
     for item in cart:
-        qty = int(item.get("quantity", 1) or 1)
         pi = get_price_info(item)
-        if pi and pi.get("status") == "success":
-            total += extract_total(pi, qty)
-            items.append(format_item(item))
-        else:
+        if not pi or pi.get("status") != "success":
             return f"品項「{format_item(item)}」無法計價：{pi.get('message', '計價失敗') if pi else '計價失敗'}。請洽服務人員再結帳。"
-    return f"這樣一共{', '.join(items)}，共 {len(cart)} 個品項，共 {total}元"
+
+    # 依品項唯一鍵分組，保持插入順序
+    groups: OrderedDict = OrderedDict()
+    for item in cart:
+        key = _item_key(item)
+        if key not in groups:
+            groups[key] = {"item": item, "count": 0, "subtotal": 0}
+        groups[key]["count"] += 1
+        pi = get_price_info(item)
+        groups[key]["subtotal"] += extract_total(pi, 1)
+
+    lines = []
+    total_count = 0
+    total_price = 0
+    for g in groups.values():
+        name = format_item(g["item"])
+        lines.append(f"{name} x{g['count']}" if g["count"] > 1 else name)
+        total_count += g["count"]
+        total_price += g["subtotal"]
+
+    if total_price == 0:
+        return "抱歉，部分品項找不到價格資訊，請重新確認。"
+
+    items_str = ", ".join(lines)
+    return f"這樣一共{items_str}，共 {total_count} 個品項，共 {total_price}元"
 
 
 def get_short_summary(cart: List[Dict[str, Any]]) -> str:
-    """產生簡短摘要（用於刪除/取消後）"""
+    """產生簡短摘要（用於刪除/取消後），同品項合併顯示 x數量"""
     if not cart:
-        return "目前購物車已空。"
-    total = calculate_cart_total(cart)
-    return f"目前剩餘 {len(cart)} 項品項，總計 {total}元。還需要什麼嗎？"
+        return "購物車是空的"
+    # 依品項唯一鍵分組，保持插入順序
+    groups: OrderedDict = OrderedDict()
+    for item in cart:
+        key = _item_key(item)
+        if key not in groups:
+            groups[key] = {"item": item, "count": 0}
+        groups[key]["count"] += 1
+    parts = []
+    for g in groups.values():
+        name = format_item(g["item"])
+        parts.append(f"{name} x{g['count']}" if g["count"] > 1 else name)
+    return "、".join(parts)
 
 
 def submit_order(session: Dict[str, Any]) -> str:
