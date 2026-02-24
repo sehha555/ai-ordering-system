@@ -32,8 +32,11 @@ class Settings(BaseSettings):
     LOG_FORMAT: str = "color"             # "color" | "json"
     PERF_SLOW_THRESHOLD: float = 5.0
 
-    # --- Session ---
-    SESSION_TTL_MINUTES: int = 30
+    # --- API 限流 ---
+    RATE_LIMIT_DIALOGUE: str = "10/minute"
+    RATE_LIMIT_CHECKOUT: str = "5/minute"
+    RATE_LIMIT_QUERY: str = "60/minute"
+    RATE_LIMIT_TEST: str = "30/minute"
 
 
 settings = Settings()

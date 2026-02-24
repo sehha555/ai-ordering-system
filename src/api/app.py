@@ -11,10 +11,13 @@ from fastapi.responses import FileResponse
 from typing import List, Optional
 from pydantic import BaseModel
 from loguru import logger
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from starlette.requests import Request
 from src.config.logging_config import setup_logging, PerfTimer
 from src.config.settings import settings
 from src.repository.order_repository import order_repo
-from src.repository.conversation_log import conversation_log
 from src.utils.db_backup import backup_database
 from src.utils.perf_collector import perf_collector
 from src.dm.dialogue_manager import DialogueManager
@@ -75,19 +78,16 @@ async def lifespan(app):
     from src.config.models import TTS_BACKEND as _tts_backend
     _warmup_tts = _create_tts(_tts_backend)
     asyncio.create_task(tts_cache.warmup(_warmup_tts))
-
-    # startup: 每 5 分鐘清理過期 session
-    async def _session_cleanup_loop():
-        while True:
-            await asyncio.sleep(300)
-            _session_store.cleanup()
-
-    asyncio.create_task(_session_cleanup_loop())
     yield
     # shutdown: 清理（目前不需要）
 
 
 app = FastAPI(title="Yuan Rice Ball Order API", lifespan=lifespan)
+
+# 全域限流器（default_limits 作為 fallback，涵蓋未個別設定的路由）
+limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS - 允許 Next.js dev server
 app.add_middleware(
@@ -110,10 +110,7 @@ if os.path.isdir(_frontend_dir):
     app.mount("/static", StaticFiles(directory=_frontend_dir), name="static")
 
 # 初始化服務
-_session_store = InMemorySessionStore(
-    ttl_minutes=settings.SESSION_TTL_MINUTES,
-    on_expire=lambda sid, data: conversation_log.save(sid, data),
-)
+_session_store = InMemorySessionStore()
 _llm_caller = LLMToolCaller(
     base_url=settings.LLM_BASE_URL,
     model=settings.LLM_MODEL,
@@ -183,7 +180,8 @@ async def get_perf_stats():
 # ============================================================================
 
 @app.get("/api/store-config")
-async def get_store_config():
+@limiter.limit(settings.RATE_LIMIT_QUERY)
+async def get_store_config(request: Request):
     """取得店家設定（前端用）"""
     return {
         "store": STORE_CONFIG["store"],
@@ -196,7 +194,8 @@ async def get_store_config():
 # ============================================================================
 
 @app.get("/api/menu")
-async def get_menu():
+@limiter.limit(settings.RATE_LIMIT_QUERY)
+async def get_menu(request: Request):
     """
     取得完整菜單供前端渲染
     按分類組織，包含圖示
@@ -247,28 +246,9 @@ async def get_menu():
 
     return {"categories": categories}
 
-@app.get("/api/conversations")
-async def list_conversations(
-    date: Optional[str] = None,
-    limit: int = 50,
-    offset: int = 0,
-    api_key: str = Depends(get_api_key),
-):
-    """對話紀錄列表（供分析用）"""
-    return conversation_log.list_conversations(date=date, limit=limit, offset=offset)
-
-
-@app.get("/api/conversations/{session_id}")
-async def get_conversation(session_id: str, api_key: str = Depends(get_api_key)):
-    """取得特定 session 的對話紀錄"""
-    record = conversation_log.get_by_session(session_id)
-    if not record:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-    return record
-
-
 @app.get("/orders/{order_id}")
-async def get_order(order_id: str, api_key: str = Depends(get_api_key)):
+@limiter.limit(settings.RATE_LIMIT_QUERY)
+async def get_order(request: Request, order_id: str, api_key: str = Depends(get_api_key)):
     validate_order_id(order_id)
     order = order_repo.get_order(order_id)
     if not order:
@@ -276,7 +256,9 @@ async def get_order(order_id: str, api_key: str = Depends(get_api_key)):
     return order
 
 @app.get("/orders")
+@limiter.limit(settings.RATE_LIMIT_QUERY)
 async def list_orders(
+    request: Request,
     date: Optional[str] = None,
     status: Optional[str] = None,
     limit: int = 50,
@@ -292,7 +274,9 @@ async def list_orders(
 # ============================================================================
 
 @app.get("/cart/summary")
+@limiter.limit(settings.RATE_LIMIT_QUERY)
 async def get_cart_summary(
+    request: Request,
     session_id: str,
     api_key: str = Depends(get_api_key)
 ):
@@ -354,14 +338,15 @@ async def get_cart_summary(
 # ============================================================================
 
 @app.post("/dialogue/text", response_model=TextDialogueResponse)
-async def text_dialogue(request: TextDialogueRequest, api_key: str = Depends(get_api_key)):
+@limiter.limit(settings.RATE_LIMIT_DIALOGUE)
+async def text_dialogue(request: Request, body: TextDialogueRequest, api_key: str = Depends(get_api_key)):
     """
     文本對話端點（文字輸入，文字輸出）
     使用 LLM + Function Calling 處理點餐邏輯
     """
     try:
-        session_id = request.session_id
-        user_text = request.text
+        session_id = body.session_id
+        user_text = body.text
 
         logger.info("[TEXT] 收到文字: '{}'", user_text)
 
@@ -404,14 +389,15 @@ async def text_dialogue(request: TextDialogueRequest, api_key: str = Depends(get
     except Exception as e:
         logger.exception("[TEXT] 異常")
         return TextDialogueResponse(
-            session_id=request.session_id,
+            session_id=body.session_id,
             response=f"錯誤: {str(e)}",
             status="error"
         )
 
 
 @app.post("/dialogue/llm")
-async def llm_dialogue(request: TextDialogueRequest, api_key: str = Depends(get_api_key)):
+@limiter.limit(settings.RATE_LIMIT_DIALOGUE)
+async def llm_dialogue(request: Request, body: TextDialogueRequest, api_key: str = Depends(get_api_key)):
     """
     LLM 對話端點（使用 Qwen2.5 + Function Calling）
 
@@ -422,8 +408,8 @@ async def llm_dialogue(request: TextDialogueRequest, api_key: str = Depends(get_
           -d '{"session_id": "user123", "text": "我要一個紫米傳統飯糰"}'
     """
     try:
-        session_id = request.session_id
-        user_text = request.text
+        session_id = body.session_id
+        user_text = body.text
 
         logger.info("[LLM] 收到請求: session={}, text={}", session_id, user_text)
 
@@ -472,14 +458,16 @@ async def llm_dialogue(request: TextDialogueRequest, api_key: str = Depends(get_
     except Exception as e:
         logger.exception("[LLM] 異常")
         return {
-            "session_id": request.session_id,
+            "session_id": body.session_id,
             "response": f"錯誤: {str(e)}",
             "status": "error",
         }
 
 
 @app.post("/dialogue/voice")
+@limiter.limit(settings.RATE_LIMIT_DIALOGUE)
 async def voice_dialogue(
+    request: Request,
     session_id: str = Form(...),
     audio_file: UploadFile = File(...),
     api_key: str = Depends(get_api_key)
@@ -625,7 +613,8 @@ async def voice_dialogue(
 
 
 @app.get("/llm/test")
-async def test_llm(api_key: str = Depends(get_api_key)):
+@limiter.limit(settings.RATE_LIMIT_TEST)
+async def test_llm(request: Request, api_key: str = Depends(get_api_key)):
     """
     測試 LLM 服務狀態
     """
@@ -648,7 +637,8 @@ async def test_llm(api_key: str = Depends(get_api_key)):
 
 
 @app.get("/asr/test")
-async def test_asr(api_key: str = Depends(get_api_key)):
+@limiter.limit(settings.RATE_LIMIT_TEST)
+async def test_asr(request: Request, api_key: str = Depends(get_api_key)):
     """
     測試 ASR 服務狀態
     """
@@ -661,7 +651,8 @@ async def test_asr(api_key: str = Depends(get_api_key)):
 
 
 @app.get("/tts/test")
-async def test_tts(api_key: str = Depends(get_api_key)):
+@limiter.limit(settings.RATE_LIMIT_TEST)
+async def test_tts(request: Request, api_key: str = Depends(get_api_key)):
     """
     測試 TTS 服務狀態
     """
@@ -673,7 +664,9 @@ async def test_tts(api_key: str = Depends(get_api_key)):
 
 
 @app.post("/tts/speak")
+@limiter.limit(settings.RATE_LIMIT_TEST)
 async def tts_speak(
+    request: Request,
     text: str,
     api_key: str = Depends(get_api_key)
 ):
@@ -685,7 +678,9 @@ async def tts_speak(
 
 
 @app.get("/tts/play")
+@limiter.limit(settings.RATE_LIMIT_TEST)
 async def tts_play(
+    request: Request,
     path: str,
     api_key: str = Depends(get_api_key)
 ):
@@ -726,7 +721,8 @@ class CheckoutRequest(BaseModel):
 
 
 @app.post("/api/checkout")
-async def checkout(request: CheckoutRequest):
+@limiter.limit(settings.RATE_LIMIT_CHECKOUT)
+async def checkout(request: Request, body: CheckoutRequest):
     """
     處理結帳請求
     - 從 session_store 讀取購物車
@@ -736,9 +732,9 @@ async def checkout(request: CheckoutRequest):
     - 清空 session 的 llm_history 和購物車
     """
     try:
-        session_id = request.session_id
-        dine_type = request.dine_type
-        payment_method = request.payment_method
+        session_id = body.session_id
+        dine_type = body.dine_type
+        payment_method = body.payment_method
 
         logger.info("[CHECKOUT] 開始結帳: session_id={}, dine_type={}, payment={}", session_id, dine_type, payment_method)
 
