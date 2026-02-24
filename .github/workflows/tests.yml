@@ -1,27 +1,54 @@
-name: Python CI
+name: Tests
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main]
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
 
 jobs:
-  test:
+  # 後端：Python lint + pytest
+  backend:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-    - name: Install uv
-      run: pip install uv
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
 
-    - name: Install dependencies
-      run: uv sync --all-extras --locked
+      - name: Install dependencies
+        run: uv sync --all-extras --locked
 
-    - name: Run tests
-      run: uv run pytest -q --strict-markers
+      - name: Lint (ruff)
+        run: uv run ruff check src/
+
+      - name: Test (pytest)
+        run: uv run pytest -q --strict-markers
+
+  # 前端：Next.js vitest
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/frontend_next
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: src/frontend_next/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test (vitest)
+        # --run 讓 vitest 執行一次後退出，不進入 watch mode
+        run: npm test -- --run
