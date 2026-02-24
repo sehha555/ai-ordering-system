@@ -32,5 +32,8 @@ class Settings(BaseSettings):
     LOG_FORMAT: str = "color"             # "color" | "json"
     PERF_SLOW_THRESHOLD: float = 5.0
 
+    # --- Session ---
+    SESSION_TTL_MINUTES: int = 30
+
 
 settings = Settings()

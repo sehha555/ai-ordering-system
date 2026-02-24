@@ -58,12 +58,36 @@ class DialogueManager:
     # ─── 主狀態機 ───
 
     def handle(self, session_id: str, text: str) -> str:
+        """Wrapper：統一處理 history 記錄與對話紀錄儲存"""
         self._last_session_id = session_id
         session = self.store.get(session_id)
         self._ensure_session_defaults(session)
         session["last_user_text"] = text.strip()
-        session["history"].append(text.strip())
 
+        # 記錄開始時間（新 session 首次發言）
+        if session.get("started_at") is None:
+            from datetime import datetime
+            session["started_at"] = datetime.now().isoformat()
+
+        # 記錄 user 訊息（含角色標記，供分析用）
+        session["history"].append({"role": "user", "content": text.strip()})
+
+        # 執行核心邏輯
+        response = self._handle_core(session_id, session, text)
+
+        # 記錄 assistant 回應
+        session["history"].append({"role": "assistant", "content": response})
+
+        # 結帳完成時儲存對話紀錄（避免重複儲存）
+        if session.get("status") == "SUBMITTED" and not session.get("_conversation_saved"):
+            from src.repository.conversation_log import conversation_log
+            conversation_log.save(session_id, session)
+            session["_conversation_saved"] = True
+
+        return response
+
+    def _handle_core(self, session_id: str, session: Dict[str, Any], text: str) -> str:
+        """核心狀態機邏輯"""
         # 0. 訂單凍結檢查
         if session["status"] == "SUBMITTED":
             return "訂單已送出，若需要修改請洽店員處理喔！"
@@ -333,3 +357,4 @@ class DialogueManager:
         session.setdefault("pending_frames", [])
         session.setdefault("history", [])
         session.setdefault("status", "OPEN")
+        session.setdefault("started_at", None)

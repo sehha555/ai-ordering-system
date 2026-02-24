@@ -14,6 +14,7 @@ from loguru import logger
 from src.config.logging_config import setup_logging, PerfTimer
 from src.config.settings import settings
 from src.repository.order_repository import order_repo
+from src.repository.conversation_log import conversation_log
 from src.utils.db_backup import backup_database
 from src.utils.perf_collector import perf_collector
 from src.dm.dialogue_manager import DialogueManager
@@ -74,6 +75,14 @@ async def lifespan(app):
     from src.config.models import TTS_BACKEND as _tts_backend
     _warmup_tts = _create_tts(_tts_backend)
     asyncio.create_task(tts_cache.warmup(_warmup_tts))
+
+    # startup: 每 5 分鐘清理過期 session
+    async def _session_cleanup_loop():
+        while True:
+            await asyncio.sleep(300)
+            _session_store.cleanup()
+
+    asyncio.create_task(_session_cleanup_loop())
     yield
     # shutdown: 清理（目前不需要）
 
@@ -101,7 +110,10 @@ if os.path.isdir(_frontend_dir):
     app.mount("/static", StaticFiles(directory=_frontend_dir), name="static")
 
 # 初始化服務
-_session_store = InMemorySessionStore()
+_session_store = InMemorySessionStore(
+    ttl_minutes=settings.SESSION_TTL_MINUTES,
+    on_expire=lambda sid, data: conversation_log.save(sid, data),
+)
 _llm_caller = LLMToolCaller(
     base_url=settings.LLM_BASE_URL,
     model=settings.LLM_MODEL,
@@ -234,6 +246,26 @@ async def get_menu():
             categories.append(categories_dict[cat_name])
 
     return {"categories": categories}
+
+@app.get("/api/conversations")
+async def list_conversations(
+    date: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    api_key: str = Depends(get_api_key),
+):
+    """對話紀錄列表（供分析用）"""
+    return conversation_log.list_conversations(date=date, limit=limit, offset=offset)
+
+
+@app.get("/api/conversations/{session_id}")
+async def get_conversation(session_id: str, api_key: str = Depends(get_api_key)):
+    """取得特定 session 的對話紀錄"""
+    record = conversation_log.get_by_session(session_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return record
+
 
 @app.get("/orders/{order_id}")
 async def get_order(order_id: str, api_key: str = Depends(get_api_key)):
