@@ -1,23 +1,30 @@
 import type { NextConfig } from "next";
 
+const apiBase = process.env.API_REWRITE_TARGET || 'http://127.0.0.1:8000';
+
 const nextConfig: NextConfig = {
+  output: "standalone",
   async rewrites() {
     return [
       {
         source: '/api/:path*',
-        destination: 'http://127.0.0.1:8000/api/:path*',
+        destination: `${apiBase}/api/:path*`,
       },
       {
         source: '/healthz',
-        destination: 'http://127.0.0.1:8000/healthz',
+        destination: `${apiBase}/healthz`,
+      },
+      {
+        source: '/readyz',
+        destination: `${apiBase}/readyz`,
       },
       {
         source: '/cart/:path*',
-        destination: 'http://127.0.0.1:8000/cart/:path*',
+        destination: `${apiBase}/cart/:path*`,
       },
       {
         source: '/static/:path*',
-        destination: 'http://127.0.0.1:8000/static/:path*',
+        destination: `${apiBase}/static/:path*`,
       },
     ];
   },
