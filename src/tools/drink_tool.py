@@ -10,20 +10,20 @@ DRINK_ALIASES = {
     # 大冰簡寫（最高優先）
     "大冰豆": "有糖豆漿", "大冰清": "無糖豆漿", "大冰紅": "精選紅茶",
     "大冰米": "花生糙米漿", "大冰混": "米漿+豆漿", "大冰薏": "燕麥薏仁漿",
-    "大冰綠": "無糖清香綠茶", "大冰薏牛": "燕麥薏仁牛奶", 
-    "大冰奶": "純鮮奶茶", "大冰黑糖": "黑糖純鮮奶茶", 
+    "大冰綠": "無糖清香綠茶", "大冰薏牛": "燕麥薏仁牛奶",
+    "大冰奶": "純鮮奶茶", "大冰黑糖": "黑糖純鮮奶茶",
     "大冰咖": "純鮮奶咖啡", "大冰十穀": "十穀漿",
-    
+
     # 單字簡寫
-    "豆": "有糖豆漿", "清": "無糖豆漿", "紅": "精選紅茶", 
+    "豆": "有糖豆漿", "清": "無糖豆漿", "紅": "精選紅茶",
     "米": "花生糙米漿", "薏": "燕麥薏仁漿", "薏牛": "燕麥薏仁牛奶",
     "混": "米漿+豆漿", "綠": "無糖清香綠茶", "奶": "純鮮奶茶",
     "黑糖": "黑糖純鮮奶茶", "咖": "純鮮奶咖啡", "十穀": "十穀漿",
-    
+
     # 完整別稱
-    "有糖豆漿": "有糖豆漿", "豆漿": "有糖豆漿", "無糖豆漿": "無糖豆漿", "清漿": "無糖豆漿", 
-    "白漿": "無糖豆漿", "花生糙米漿": "花生糙米漿", "米漿": "花生糙米漿", 
-    "糙米漿": "花生糙米漿", "燕麥薏仁漿": "燕麥薏仁漿", 
+    "有糖豆漿": "有糖豆漿", "豆漿": "有糖豆漿", "無糖豆漿": "無糖豆漿", "清漿": "無糖豆漿",
+    "白漿": "無糖豆漿", "花生糙米漿": "花生糙米漿", "米漿": "花生糙米漿",
+    "糙米漿": "花生糙米漿", "燕麥薏仁漿": "燕麥薏仁漿",
     "五穀漿": "五穀漿", "豆紅": "紅豆", "紅豆": "紅豆",
     "純鮮奶茶": "純鮮奶茶", "鮮奶茶": "純鮮奶茶", "奶茶": "純鮮奶茶",
     "精選紅茶": "精選紅茶", "無糖清香綠茶": "無糖清香綠茶",
@@ -46,25 +46,25 @@ TEMP_SIZE_SHORTCUTS = {
 class DrinkTool:
     def __init__(self):
         self.menu_items = self.load_menu()
-    
+
     def parse_drink_utterance(self, text: str) -> Dict[str, Any]:
         """先拆 size/temp，再找 drink"""
         t = text.strip()
-        
+
         # 1. 先解析 quantity/sugar
         qty = self.parse_quantity(t)
         sugar = self.parse_sugar(t)
-        
+
         # 2. 解析 size/temp (優先使用 shortcut)
         size, temp = self.parse_size_temp_shortcut(t)
         if not size:
             size = self.parse_size(t)
         if not temp:
             temp = self.parse_temp(t)
-        
+
         # 3. 再解析 drink
         drink = self.detect_drink(t)
-        
+
         frame = {
             "itemtype": "drink",
             "drink": drink,
@@ -74,13 +74,13 @@ class DrinkTool:
             "sugar": sugar,
             "rawtext": text
         }
-        
+
         # 4. missing slots
         missing = []
         if not drink: missing.append("drink")
         if not temp: missing.append("temp")
         if not size: missing.append("size")
-        
+
         frame["missing_slots"] = missing
         return frame
 
@@ -122,7 +122,7 @@ class DrinkTool:
             "total_price": total_price,
             "message": f"{quantity}杯{drink_name}{size}，共 {total_price}元",
         }
-    
+
     def detect_drink(self, text: str) -> Optional[str]:
         """長字優先全匹配"""
         t = text
@@ -130,14 +130,14 @@ class DrinkTool:
         for alias, canonical in DRINK_ALIASES.items():
             if alias in t:
                 candidates.append((len(alias), alias, canonical))
-        
+
         # 按長度降序排序（長字優先）
         candidates.sort(key=lambda x: x[0], reverse=True)
-        
+
         if candidates:
             _, matched_alias, canonical = candidates[0]
             return canonical
-        
+
         return None
 
     def parse_size_temp_shortcut(self, text: str) -> (Optional[str], Optional[str]):
@@ -146,22 +146,22 @@ class DrinkTool:
             if shortcut in text:
                 return size, temp
         return None, None
-    
+
     def parse_size(self, text: str) -> Optional[str]:
         for k, v in SIZE_MAP.items():
             if k in text: return v
         return None
-    
+
     def parse_temp(self, text: str) -> Optional[str]:
         for k, v in TEMP_MAP.items():
             if k in text: return v
         return None
-    
+
     def parse_sugar(self, text: str) -> Optional[str]:
         for k, v in SUGAR_MAP.items():
             if k in text: return v
         return None
-    
+
     def parse_quantity(self, text: str) -> int:
         m = re.search(r'(\d+)\s*杯?', text) # Matches digits and optional "杯"
         if m: return int(m.group(1)) if int(m.group(1)) > 0 else 1
@@ -173,7 +173,7 @@ class DrinkTool:
                 return val
 
         return 1
-    
+
     def load_menu(self) -> List[Dict[str, Any]]:
         return menu_price_service.get_raw_menu()
 

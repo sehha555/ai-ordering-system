@@ -116,8 +116,6 @@ class CarrierTool:
             if ("饅頭", "饅頭夾蛋") in self.price_index:
                 flavor = "饅頭夾蛋"
 
-        missing: List[str] = [] # DialogueManager will recompute missing slots
-
         frame: Dict[str, Any] = {
             "itemtype": "carrier", # Explicitly set itemtype
             "carrier": carrier,  # 吐司/漢堡/饅頭

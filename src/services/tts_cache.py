@@ -1,6 +1,5 @@
 # src/services/tts_cache.py
 """TTS 預快取層 — 啟動時對高頻固定回覆預生成音檔，命中時 TTFA ≈ 0"""
-import asyncio
 from typing import AsyncIterator, Dict, Optional
 
 from loguru import logger

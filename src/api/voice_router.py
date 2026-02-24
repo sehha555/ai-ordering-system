@@ -9,7 +9,6 @@ from loguru import logger
 from src.services.asr_postprocess import postprocess
 from src.services.streaming_orchestrator import StreamingOrchestrator
 from src.services.tts_implementations import create_tts_model
-from src.services.tts_cache import tts_cache
 from src.config.models import TTS_BACKEND
 from src.config.settings import settings
 
@@ -199,7 +198,7 @@ async def voice_chat(
 
     # 取得服務實例（從 app.py 導入）
     # 這裡使用延遲導入避免循環依賴
-    from src.api.app import _asr_service, _dialogue_manager, _tts_service, _session_store, _llm_caller, _tool_registry, SYSTEM_PROMPT
+    from src.api.app import _asr_service, _dialogue_manager, _session_store, _llm_caller, _tool_registry, SYSTEM_PROMPT
 
     # 使用啟動時已載入的 TTS 實例
     streaming_tts = _streaming_tts

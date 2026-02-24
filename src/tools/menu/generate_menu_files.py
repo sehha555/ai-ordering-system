@@ -1,4 +1,5 @@
-﻿import json, os
+﻿import json
+import os
 from collections import defaultdict
 
 menu_dir = r"src\tools\menu"

@@ -57,7 +57,7 @@ class ASRService:
             logger.info(f"[ASR] Qwen3-ASR {self.model_name} 模型已載入")
 
         except ImportError as e:
-            logger.error(f"[ASR] 未安裝 qwen-asr，請執行: pip install qwen-asr")
+            logger.error("[ASR] 未安裝 qwen-asr，請執行: pip install qwen-asr")
             logger.error(f"[ASR] 錯誤詳情: {e}")
         except Exception as e:
             logger.error(f"[ASR] 模型載入失敗: {e}")

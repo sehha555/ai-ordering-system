@@ -324,16 +324,16 @@ class ToolRegistry:
                 return {"ok": True, "message": "已清空購物車"}
 
             if last:
-                removed = cart.pop()
+                cart.pop()
                 return {
                     "ok": True,
-                    "message": f"已移除最後一項",
+                    "message": "已移除最後一項",
                     "cart_count": len(cart),
                 }
 
             if index is not None:
                 if 1 <= index <= len(cart):
-                    removed = cart.pop(index - 1)
+                    cart.pop(index - 1)
                     return {
                         "ok": True,
                         "message": f"已移除第 {index} 項",

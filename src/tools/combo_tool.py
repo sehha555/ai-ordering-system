@@ -14,12 +14,12 @@ class ComboTool:
         Loads combo data from the menu service and builds internal lookups.
         """
         all_items = menu_price_service.get_raw_menu()
-        self.combo_index = {}  
-        
+        self.combo_index = {}
+
         self.item_name_to_category = {item['name']: item['category'] for item in all_items if 'name' in item and 'category' in item}
         self.all_item_names = sorted(list(self.item_name_to_category.keys()), key=len, reverse=True)
         self.simple_name_to_canonical = {}
-        
+
         self.manual_aliases = self.alias_cfg.get("manual_aliases", {})
         norm_rules = self.alias_cfg.get("normalize_rules", {})
         self.remove_tokens = norm_rules.get("remove_tokens", [])
@@ -32,7 +32,7 @@ class ComboTool:
             for p in self.regex_removals: s = re.sub(p, '', s)
             s = s.strip()
             if s: self.simple_name_to_canonical[s] = name
-            
+
             # Keep parens
             sp = name
             for t in self.remove_tokens: sp = sp.replace(t, "")
@@ -53,7 +53,7 @@ class ComboTool:
                     self.combo_index[short] = {"price": item["price"], "desc": m.group(2).strip(), "full_name": fn, "default_drink_canonical": None}
 
         # Build sub_item_to_combo_names and find default drinks
-        self.sub_item_to_combo_names = {} 
+        self.sub_item_to_combo_names = {}
         for short in self.combo_index:
              subs = self.explode_combo_items({"combo_name": short})
              for sub in subs:
@@ -96,13 +96,13 @@ class ComboTool:
             name_no_size = re.sub(r'\(.*\)', '', name).strip()
             if category == "飲品" and name_no_size == resolved_base:
                 candidates.append(name)
-        
+
         # Fallback: if no exact base match, try contains (but this is rare with our menu)
         if not candidates:
             for name, category in self.item_name_to_category.items():
                 if category == "飲品" and resolved_base in name:
                     candidates.append(name)
-                    
+
         return sorted(list(set(candidates)))
 
     def choose_default_by_price(self, candidates: List[str], p_old: int) -> Tuple[Optional[str], int, bool]:
@@ -151,12 +151,12 @@ class ComboTool:
         short = frame.get("combo_name")
         if not short or short not in self.combo_index: return {"status": "error", "message": f"找不到套餐：{short}"}
         data = self.combo_index[short]
-        
+
         try:
             base = menu_price_service.get_price("套餐", data["full_name"])
         except KeyError:
             return {"status": "error", "message": f"無法取得套餐價格：{short}"}
-            
+
         delta = 0
         swap = frame.get("swap_drink")
         if swap:
@@ -169,7 +169,7 @@ class ComboTool:
                 new_p = menu_price_service.get_price("飲品", new_can)
                 delta = max(0, new_p - old_p)
             except KeyError: return {"status": "error", "message": "計價時找不到品項價格。"}
-        
+
         qty = frame.get("quantity", 1)
         total = (base + delta) * qty
         msg = f"{short} 價格為 {total}元"
@@ -207,7 +207,7 @@ class ComboTool:
                 pf = {}
                 if cat == "飯糰": pf = {"itemtype": "riceball", "flavor": best.replace("飯糰", "")}
                 elif cat in ("吐司", "漢堡", "饅頭"): pf = {"itemtype": "carrier", "carrier": cat, "flavor": best.replace(cat, "")}
-                elif cat == "飲品": 
+                elif cat == "飲品":
                     sz, can = None, best
                     if "(中)" in can: sz, can = "中杯", can.replace("(中)", "")
                     elif "(大)" in can: sz, can = "大杯", can.replace("(大)", "")

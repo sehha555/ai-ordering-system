@@ -1,5 +1,5 @@
 import re
-from typing import Dict, List, Optional, Any
+from typing import Dict, Optional, Any
 
 from src.tools.menu import menu_price_service
 from src.tools.riceball_tool import _chinese_number_to_int
@@ -41,12 +41,12 @@ class SnackTool:
         """Parses the user's utterance to identify snack, quantity, and options."""
         snack = self.detect_snack(text)
         quantity = self.parse_quantity(text)
-        
+
         # Parse options
         egg_cook = "全熟"  # Default
         if "半熟" in text:
             egg_cook = "半熟"
-        
+
         no_pepper = False
         if snack in ["麥克雞塊(5個)", "香酥脆薯"] and ("不要胡椒" in text or "無椒" in text):
             no_pepper = True
@@ -72,7 +72,7 @@ class SnackTool:
         for alias, canonical_name in self.sorted_aliases:
             if alias in text:
                 return canonical_name
-        
+
         # 2. Fallback to full menu name matching (less likely to be used)
         for snack_name in self.snack_names:
             if snack_name in text:
@@ -104,7 +104,7 @@ class SnackTool:
         try:
             base_price = menu_price_service.get_price("點心", snack_name)
             total_price = base_price * quantity
-            
+
             message = f"{quantity}份{snack_name}，共 {total_price}元"
 
             return {

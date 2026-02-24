@@ -1,6 +1,6 @@
 """LLM 對話處理器 - 主要的 LLM 對話入口"""
 import json
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 from requests.exceptions import Timeout, RequestException
 
 from src.services.llm_tool_caller import LLMToolCaller
@@ -204,14 +204,13 @@ class LLMConversationProcessor:
             回退回覆或錯誤消息
         """
         error_type = type(error).__name__
-        error_msg = str(error)
 
         if self.fallback_enabled:
             # 回退到傳統對話管理器
             try:
                 fallback_response = self.dialogue_manager.handle(session_id, user_text)
                 return fallback_response
-            except Exception as fallback_error:
+            except Exception:
                 # 回退也失敗
                 return f"系統暫時無法回應，請稍後再試（{error_type}）"
 

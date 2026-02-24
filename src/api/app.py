@@ -8,14 +8,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security.api_key import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from typing import List, Optional
+from typing import Optional
 from pydantic import BaseModel
 from loguru import logger
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from starlette.requests import Request
-from src.config.logging_config import setup_logging, PerfTimer
+from src.config.logging_config import setup_logging
 from src.config.settings import settings
 from src.repository.order_repository import order_repo
 from src.utils.db_backup import backup_database
@@ -23,7 +23,7 @@ from src.utils.perf_collector import perf_collector
 from src.dm.dialogue_manager import DialogueManager
 from src.dm.session_store import InMemorySessionStore
 from src.dm import cart_manager
-from src.services.asr_service import ASRService, create_asr_service
+from src.services.asr_service import create_asr_service
 from src.config.models import ASR_BACKEND
 from src.services.tts_service import TTSService
 from src.services.llm_tool_caller import LLMToolCaller
@@ -510,7 +510,7 @@ async def voice_dialogue(
             wav_path = tmp_path.replace(".webm", ".wav")
             logger.debug("[VOICE] 開始 ffmpeg 轉換: {} -> {}", tmp_path, wav_path)
             try:
-                result = subprocess.run([
+                subprocess.run([
                     "ffmpeg", "-y", "-i", tmp_path,
                     "-ar", "16000", "-ac", "1", "-f", "wav", wav_path
                 ], capture_output=True, check=True)

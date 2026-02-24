@@ -1,5 +1,5 @@
 """會話上下文提取 - 協助 LLM 理解當前訂單狀態"""
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from dataclasses import dataclass, asdict
 
 

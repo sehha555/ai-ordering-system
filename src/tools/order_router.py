@@ -1,5 +1,5 @@
 """訂單路由器 - 物件介面"""
-from typing import Dict, Any, List
+from typing import Dict, Any
 from src.tools.snack_tool import snack_tool
 
 
@@ -50,13 +50,13 @@ def _route(text: str, current_order_has_main: bool = False) -> Dict[str, Any]:
 
     if any(kw in t for kw in CLEAR_ALL_KEYWORDS):
         return {"route_type": "clear_all", "needs_clarify": False}
-    
+
     if any(kw in t for kw in REMOVE_INDEX_KEYWORDS) or (("第" in t) and ("項" in t or "個" in t) and ("刪" in t or "取消" in t)):
         return {"route_type": "remove_index", "needs_clarify": False}
 
     if any(kw in t for kw in CANCEL_LAST_KEYWORDS):
         return {"route_type": "cancel_last", "needs_clarify": False}
-    
+
     if t == "取消": # 純粹的取消，交給 DM 根據狀態判斷
         return {"route_type": "cancel_generic", "needs_clarify": False}
 

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import re
-from typing import Dict, List, Optional, Any
+from typing import Dict, Optional, Any
 
 from src.tools.menu import menu_price_service
 from src.tools.riceball_tool import _chinese_number_to_int
@@ -32,7 +32,7 @@ class JamToastTool:
                 "cut_edge": cut_edge,
                 "missing_slots": ["size"]
             }
-            
+
         full_name = None
         missing_slots = []
         if flavor and size:
@@ -41,7 +41,7 @@ class JamToastTool:
             # Default "吐司" to "薄片"
             size = "薄片"
             full_name = f"果醬吐司({flavor}/{size})"
-        
+
         if not flavor: missing_slots.append("flavor")
         if not size: missing_slots.append("size")
 

@@ -37,7 +37,7 @@ def _load_menu_if_needed():
                 if category not in processed_index:
                     processed_index[category] = {}
                 processed_index[category][name] = price
-    
+
     _price_index_cache = processed_index
 
 def get_price(category: str, name: str) -> int:
@@ -47,15 +47,15 @@ def get_price(category: str, name: str) -> int:
     _load_menu_if_needed()
     # Non-null assertion is safe because _load_menu_if_needed populates it.
     price_index = _price_index_cache
-    
+
     if category not in price_index:
         raise KeyError(f"Price not found: Category '{category}' does not exist in the menu.")
-    
+
     category_items = price_index[category]
-    
+
     if name not in category_items:
         raise KeyError(f"Price not found: Item '{name}' not found in category '{category}'.")
-        
+
     return category_items[name]
 
 def get_raw_menu() -> List[Dict[str, Any]]:
