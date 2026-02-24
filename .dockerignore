@@ -1,0 +1,45 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.egg-info
+
+# Node
+node_modules
+.next
+
+# 環境與設定
+.env
+.env.dev
+.env.prod
+.env.local
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# 日誌與資料
+logs/
+*.log
+conversation_logs/
+
+# 測試與文件
+tests/
+benchmarks/
+docs/
+*.md
+
+# 其他
+.claude/
+.dockerignore
+docker-compose*.yml
+Dockerfile.*

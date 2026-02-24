@@ -1,0 +1,29 @@
+# docker-compose.hybrid.yml — 混合模式（backend native + 其他 Docker）
+# 用法：docker compose -f docker-compose.yml -f docker-compose.hybrid.yml up -d
+# backend 在本機跑（直接存取 GPU），frontend + redis 用 Docker
+
+services:
+  backend:
+    profiles:
+      - never  # 排除 backend，在本機直接跑
+
+  frontend:
+    restart: unless-stopped
+    environment:
+      - API_REWRITE_TARGET=http://host.docker.internal:8000
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  redis_data:

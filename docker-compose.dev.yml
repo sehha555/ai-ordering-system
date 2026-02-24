@@ -1,34 +1,22 @@
-version: "3.8"
+# docker-compose.dev.yml — 開發模式 override
+# 用法：docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 
 services:
-  # Python FastAPI 後端 (開發模式)
   backend:
-    build:
-      context: .
-      dockerfile: Dockerfile.backend
-    ports:
-      - "8000:8000"
     volumes:
       - ./src:/app/src
       - ./prompts:/app/prompts
       - ./orders.db:/app/orders.db
     environment:
-      - API_KEY=yuan-secret-key
+      - ENVIRONMENT=dev
+      - LOG_FORMAT=color
     command: uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
 
-  # Next.js 前端 (開發模式)
   frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
-    ports:
-      - "3000:3000"
     volumes:
       - ./src/frontend_next:/app
       - /app/node_modules
       - /app/.next
     environment:
-      - NEXT_PUBLIC_API_URL=http://backend:8000
-    depends_on:
-      - backend
+      - API_REWRITE_TARGET=http://backend:8000
     command: npm run dev

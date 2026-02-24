@@ -1,17 +1,38 @@
-FROM python:3.11-slim
+# ============================================================
+# Backend Multi-stage Build
+# Stage 1: 安裝依賴 → Stage 2: 最小 runtime image
+# ============================================================
+
+# --- Stage 1: deps ---
+FROM python:3.11-slim AS deps
 
 WORKDIR /app
 
-# Install system dependencies (ffmpeg for audio conversion)
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg curl && rm -rf /var/lib/apt/lists/*
+# 安裝 build 所需的系統套件
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency files
 COPY pyproject.toml uv.lock ./
 
-# Install Python dependencies
-RUN pip install --no-cache-dir uv && uv pip install --system -r pyproject.toml
+RUN pip install --no-cache-dir uv \
+    && uv pip install --system -r pyproject.toml
 
-# Copy source code
+# --- Stage 2: runtime ---
+FROM python:3.11-slim AS runtime
+
+WORKDIR /app
+
+# 只安裝 runtime 所需的系統套件
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# 從 deps stage 複製已安裝的 Python 套件
+COPY --from=deps /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=deps /usr/local/bin /usr/local/bin
+
+# 複製應用程式碼
 COPY src/ ./src/
 COPY prompts/ ./prompts/
 
@@ -20,4 +41,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/healthz || exit 1
 
-CMD ["uvicorn", "src.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+# 單 worker（ASR/TTS 模型在 process memory）
+CMD ["uvicorn", "src.api.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
