@@ -12,6 +12,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 from loguru import logger
 from src.config.logging_config import setup_logging, PerfTimer
+from src.config.settings import settings
 from src.repository.order_repository import order_repo
 from src.utils.db_backup import backup_database
 from src.utils.perf_collector import perf_collector
@@ -102,9 +103,9 @@ if os.path.isdir(_frontend_dir):
 # 初始化服務
 _session_store = InMemorySessionStore()
 _llm_caller = LLMToolCaller(
-    base_url=os.getenv("LLM_BASE_URL", "http://127.0.0.1:1234/v1/chat/completions"),
-    model=os.getenv("LLM_MODEL", "qwen/qwen3-30b-a3b-2507"),
-    timeout=int(os.getenv("LLM_TIMEOUT", "120")),
+    base_url=settings.LLM_BASE_URL,
+    model=settings.LLM_MODEL,
+    timeout=settings.LLM_TIMEOUT,
 )
 _dialogue_manager = DialogueManager(llm=_llm_caller, store=_session_store)
 _tool_registry = ToolRegistry(_dialogue_manager, _session_store)
@@ -125,7 +126,7 @@ class TextDialogueResponse(BaseModel):
     response: str
     status: str = "ok"
 
-API_KEY = os.getenv("API_KEY")
+API_KEY = settings.API_KEY
 if not API_KEY:
     logger.warning("[AUTH] API_KEY 未設定，API Key 驗證已停用（僅限開發環境）")
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)

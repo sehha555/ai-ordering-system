@@ -9,6 +9,7 @@ import functools
 from contextlib import contextmanager
 
 from loguru import logger
+from src.config.settings import settings
 
 
 # ============================================================================
@@ -38,7 +39,7 @@ class _InterceptHandler(logging.Handler):
 # 性能計時工具
 # ============================================================================
 
-_SLOW_THRESHOLD = float(os.getenv("PERF_SLOW_THRESHOLD", "5.0"))
+_SLOW_THRESHOLD = settings.PERF_SLOW_THRESHOLD
 
 
 @contextmanager
@@ -110,8 +111,8 @@ def asyncio_iscoroutinefunction(func):
 def setup_logging():
     """初始化日誌系統 — 應用啟動時呼叫一次"""
 
-    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-    log_format = os.getenv("LOG_FORMAT", "color")  # "color" | "json"
+    log_level = settings.LOG_LEVEL.upper()
+    log_format = settings.LOG_FORMAT
 
     # 移除 loguru 預設 handler
     logger.remove()

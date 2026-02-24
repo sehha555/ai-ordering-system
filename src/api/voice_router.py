@@ -11,6 +11,7 @@ from src.services.streaming_orchestrator import StreamingOrchestrator
 from src.services.tts_implementations import create_tts_model
 from src.services.tts_cache import tts_cache
 from src.config.models import TTS_BACKEND
+from src.config.settings import settings
 
 router = APIRouter()
 
@@ -18,7 +19,7 @@ router = APIRouter()
 _streaming_tts = create_tts_model(TTS_BACKEND)
 
 # API Key 驗證
-API_KEY = os.getenv("API_KEY")
+API_KEY = settings.API_KEY
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
