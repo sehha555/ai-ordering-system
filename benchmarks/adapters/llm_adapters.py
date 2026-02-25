@@ -3,11 +3,14 @@ LLM 模型 Adapters
 新增 LLM 模型：1) 建立子類別 2) 在 REGISTRY 註冊
 """
 import json
+import logging
 import re
 import sys
 from pathlib import Path
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 # Qwen 模型有時把 tool call 輸出到 content 而非 tool_calls 欄位
 _TOOL_CALL_PREFIX_RE = re.compile(r'[<\|im_start\|>]*\s*(?:<tool_call>\s*)?(\{)', re.DOTALL)
@@ -97,8 +100,14 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
 
         url = f"{base_url}/chat/completions" if not base_url.endswith("/chat/completions") else base_url
 
+        logger.debug("LLM request → %s | model=%s | messages=%d | tools=%d",
+                      url, model, len(messages), len(tools) if tools else 0)
+        logger.debug("Payload: %s", json.dumps(payload, ensure_ascii=False, default=str)[:2000])
+
         with httpx.Client(timeout=timeout) as client:
             resp = client.post(url, json=payload)
+            if resp.status_code != 200:
+                logger.error("LLM API 回傳 %d: %s", resp.status_code, resp.text[:500])
             resp.raise_for_status()
             data = resp.json()
 

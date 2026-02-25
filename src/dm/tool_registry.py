@@ -18,11 +18,11 @@ EGG_PANCAKE_ALIASES = EggPancakeTool.FLAVOR_ALIASES
 # 套餐必填欄位定義（所有套餐都需要飲料溫度）
 _COMBO_REQUIREMENTS = {
     "套餐二": {"needs_rice": True},
+    "套餐五": {"needs_mantou_flavor": True},
     "套餐六": {"needs_noodle_flavor": True},
     "套餐七": {"needs_noodle_flavor": True},
-    "套餐A": {"needs_toast_flavor": True},
-    "套餐C": {"needs_toast_flavor": True},
-    "兒童餐": {"needs_toast_flavor": True},
+    "套餐B": {"needs_toast_flavor": True},
+    "兒童餐": {"needs_jam_flavor": True},
 }
 
 
@@ -49,11 +49,17 @@ def _check_combo_required(
     if reqs.get("needs_rice") and not rice:
         missing_parts.append("飯糰要紫米白米還是混米")
 
+    if reqs.get("needs_mantou_flavor") and not flavor:
+        missing_parts.append("饅頭要什麼口味")
+
     if reqs.get("needs_noodle_flavor") and not flavor:
         missing_parts.append("鐵板麵要黑椒蘑菇義大利還是咖哩")
 
     if reqs.get("needs_toast_flavor") and not flavor:
-        missing_parts.append("吐司口味要什麼 草莓花生蒜香奶酥巧克力")
+        missing_parts.append("厚片要什麼口味 花生巧克力奶酥蒜香草莓")
+
+    if reqs.get("needs_jam_flavor") and not flavor:
+        missing_parts.append("果醬吐司要什麼口味 草莓花生巧克力")
 
     if not missing_parts:
         return None
