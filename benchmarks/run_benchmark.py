@@ -54,6 +54,15 @@ def run_single_benchmark(benchmark_type: str, model_config: dict, test_data: lis
     repeat = config["benchmark"]["repeat"]
     timeout = config["benchmark"]["timeout"]
 
+    # 暖機：先跑一次丟棄結果，避免冷啟動影響數據
+    if test_data:
+        try:
+            print("    🔥 暖機中...", end="", flush=True)
+            adapter.run(test_data[0], timeout=timeout)
+            print(" 完成")
+        except Exception:
+            print(" 跳過")
+
     results = {
         "model_id": model_config["id"],
         "model_name": model_config["name"],
