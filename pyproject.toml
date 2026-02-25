@@ -115,3 +115,8 @@ torchaudio = { index = "pytorch-cu128" }
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
 
+[dependency-groups]
+dev = [
+    "textual>=8.0.0",
+]
+
