@@ -8,6 +8,9 @@ import httpx
 
 from loguru import logger
 from src.config.logging_config import PerfTimer
+from src.dm.tool_priming import get_priming_messages
+
+_PRIMING_MESSAGES = get_priming_messages()
 
 # Qwen 模型有時把 tool call 輸出到 content 而非 tool_calls 欄位
 _TOOL_CALL_RE = re.compile(
@@ -169,6 +172,7 @@ class LLMToolCaller:
         logger.info("[LLM] 開始 run_turn: '{}'", user_text)
 
         messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
+        messages.extend(_PRIMING_MESSAGES)  # few-shot priming 讓模型學會用 tool_calls
         messages.extend(history)
         messages.append({"role": "user", "content": user_text})
 
@@ -179,7 +183,7 @@ class LLMToolCaller:
                 resp = self.call_llm(
                     messages=messages,
                     tools_schema=tools_schema,
-                    tool_choice="auto",  # 關鍵：不要每句都 required
+                    tool_choice="auto",
                     temperature=0.0,
                 )
             msg = resp["choices"][0]["message"]
@@ -280,6 +284,7 @@ class LLMToolCaller:
         logger.info("[LLM] 開始 run_turn_stream: '{}'", user_text)
 
         messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
+        messages.extend(_PRIMING_MESSAGES)  # few-shot priming 讓模型學會用 tool_calls
         messages.extend(history)
         messages.append({"role": "user", "content": user_text})
 

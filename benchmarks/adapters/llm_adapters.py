@@ -63,6 +63,12 @@ def _load_system_prompt_and_tools():
     return system_prompt, tools_schema
 
 
+def _load_priming_messages():
+    """載入 few-shot priming messages"""
+    from src.dm.tool_priming import get_priming_messages
+    return get_priming_messages()
+
+
 class OpenAICompatibleAdapter(BaseLLMAdapter):
     """OpenAI 相容 API adapter（LM Studio、vLLM、Ollama 等）"""
 
@@ -70,11 +76,13 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
         super().__init__(params)
         self._system_prompt = None
         self._tools_schema = None
+        self._priming = None
 
     def _ensure_context(self):
-        """懶載入 system prompt 和 tools schema"""
+        """懶載入 system prompt、tools schema 和 priming"""
         if self._system_prompt is None:
             self._system_prompt, self._tools_schema = _load_system_prompt_and_tools()
+            self._priming = _load_priming_messages()
 
     def run(self, test_case: dict, timeout: float = 60) -> dict:
         self._ensure_context()
@@ -82,8 +90,9 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
         model = self.params["model"]
         temperature = self.params.get("temperature", 0.0)
 
-        # 注入 system prompt
+        # 注入 system prompt + few-shot priming
         messages = [{"role": "system", "content": self._system_prompt}]
+        messages.extend(self._priming)
         messages.extend(test_case["messages"])
 
         payload = {

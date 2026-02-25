@@ -258,21 +258,21 @@
 
   {
     "id": "combo_missing_temp",
-    "description": "G1: 套餐缺飲料溫度",
+    "description": "G1: 套餐缺飲料溫度 — add_to_cart 回 ok:false 追問",
     "category": "combo",
     "messages": [{"role": "user", "content": "一個套餐一"}],
-    "expected_tools": [],
+    "expected_tools": ["add_to_cart"],
     "expected_response_contains": ["冰", "溫"],
-    "expected_behavior": "套餐一缺飲料溫度，應追問冰的還是溫的"
+    "expected_behavior": "模型 call add_to_cart，系統回 ok:false 追問飲料溫度"
   },
   {
     "id": "combo_alias",
-    "description": "G2: 套餐別名 — 四號餐=套餐四",
+    "description": "G2: 套餐別名 — 四號餐=套餐四，add_to_cart 回 ok:false 追問",
     "category": "combo",
     "messages": [{"role": "user", "content": "一個四號餐"}],
-    "expected_tools": [],
+    "expected_tools": ["add_to_cart"],
     "expected_response_contains": ["冰", "溫"],
-    "expected_behavior": "理解四號餐=套餐四，缺飲料溫度應追問"
+    "expected_behavior": "理解四號餐=套餐四，call add_to_cart 後系統回 ok:false 追問溫度"
   },
   {
     "id": "combo_b_toast",
