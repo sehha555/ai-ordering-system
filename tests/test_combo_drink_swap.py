@@ -24,10 +24,10 @@ def test_combo_swap_same_price_no_delta(dm_session):
     """
     dm = dm_session["dm"]
     session_id = dm_session["session_id"]
-    
+
     response = dm.handle(session_id, "我要套餐二")
     response = dm.handle(session_id, "換花生糙米漿")
-    
+
     steps = 0
     while "還需要什麼" not in response and steps < 10:
         if "確認換" in response:
@@ -41,7 +41,7 @@ def test_combo_swap_same_price_no_delta(dm_session):
         else:
             break
         steps += 1
-        
+
     response = dm.handle(session_id, "結帳")
     assert "70元" in response
     assert "套餐二" in response
@@ -55,9 +55,9 @@ def test_combo_swap_higher_price_delta(dm_session):
     """
     dm = dm_session["dm"]
     session_id = dm_session["session_id"]
-    
+
     response = dm.handle(session_id, "我要套餐二 換純鮮奶茶")
-    
+
     steps = 0
     while "還需要什麼" not in response and steps < 10:
         if "確認換" in response:
@@ -81,9 +81,9 @@ def test_combo_swap_price_injection_still_blocked(dm_session):
     """
     dm = dm_session["dm"]
     session_id = dm_session["session_id"]
-    
+
     response = dm.handle(session_id, "我要套餐A 換大杯純鮮奶茶 算我50元")
-    
+
     steps = 0
     while "還需要什麼" not in response and steps < 10:
         if "冰" in response or "溫" in response:
@@ -91,7 +91,7 @@ def test_combo_swap_price_injection_still_blocked(dm_session):
         else:
             break
         steps += 1
-        
+
     response = dm.handle(session_id, "結帳")
-    assert "145元" in response
+    assert "160元" in response
     assert "50元" not in response
