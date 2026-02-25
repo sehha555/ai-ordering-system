@@ -34,6 +34,31 @@ export default function VoiceController() {
 
   const [volume, setVolume] = useState(0);
 
+  // 完整清理所有音訊資源（stream tracks + AudioContext + VAD loop + recorder）
+  const cleanupAudio = useCallback(() => {
+    cancelAnimationFrame(vadLoopRef.current);
+    isListeningRef.current = false;
+    isRecordingRef.current = false;
+
+    if (recordingTimerRef.current) {
+      clearTimeout(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+    analyserRef.current = null;
+  }, []);
+
   // 初始化麥克風 + VAD
   const initMicrophone = useCallback(async () => {
     try {
@@ -439,7 +464,7 @@ export default function VoiceController() {
     }
   }, [status, vadEnabled, startRecording, stopRecording]);
 
-  // Initialize VAD on mount
+  // Initialize VAD on mount / 模式切換時完整重建音訊資源
   useEffect(() => {
     if (vadEnabled) {
       initMicrophone().then(() => {
@@ -448,13 +473,9 @@ export default function VoiceController() {
     }
 
     return () => {
-      cancelAnimationFrame(vadLoopRef.current);
-      isListeningRef.current = false;
-      if (recordingTimerRef.current) {
-        clearTimeout(recordingTimerRef.current);
-      }
+      cleanupAudio();
     };
-  }, [vadEnabled, initMicrophone, calibrateVAD]);
+  }, [vadEnabled, initMicrophone, calibrateVAD, cleanupAudio]);
 
   // Keyboard shortcuts (only in push-to-talk mode)
   useEffect(() => {
@@ -526,11 +547,7 @@ export default function VoiceController() {
       <button
         onClick={(e) => {
           e.stopPropagation();
-          // Clean up current mode before switching
-          if (vadEnabled) {
-            cancelAnimationFrame(vadLoopRef.current);
-            isListeningRef.current = false;
-          }
+          // useEffect cleanup（cleanupAudio）會在 vadEnabled 改變時自動執行完整資源清理
           setVadEnabled(!vadEnabled);
         }}
         className="mt-3 px-4 py-1.5 rounded-full text-xs font-medium transition-colors"

@@ -6,9 +6,30 @@ from typing import AsyncIterator, Dict, Any
 from loguru import logger
 from src.utils.perf_collector import perf_collector
 from src.services.tts_cache import tts_cache
+from src.dm import cart_manager
 
 # 斷句標點 — 遇到就立即送 TTS
 _SENTENCE_PUNCTS = set("，。？！、；：\n")
+
+
+def _format_cart_items(cart: list) -> list:
+    """將 raw session cart 轉換為前端 CartItem 格式 {name, details, price, quantity}"""
+    items = []
+    for item in cart:
+        qty = int(item.get("quantity", 1) or 1)
+        name = cart_manager.format_item(item)
+        pi = cart_manager.get_price_info(item)
+        if pi and pi.get("status") == "success":
+            price = cart_manager.extract_total(pi, qty)
+        else:
+            price = 0
+        items.append({
+            "name": name,
+            "details": "",
+            "price": price,
+            "quantity": qty,
+        })
+    return items
 
 
 class StreamingOrchestrator:
@@ -51,7 +72,7 @@ class StreamingOrchestrator:
         # 4. Cart Update
         cart = context_snapshot.get("cart", [])
         total = context_snapshot.get("order_payload", {}).get("total_price", 0)
-        yield {"event": "cart_update", "data": {"items": cart, "total": total}}
+        yield {"event": "cart_update", "data": {"items": _format_cart_items(cart), "total": total}}
 
         # 4.5 Order Complete（如果有 finalize_order 結果）
         finalize_result = context_snapshot.get("finalize_result")
@@ -209,7 +230,7 @@ class StreamingOrchestrator:
         # 4. Cart Update
         cart = context_snapshot.get("cart", [])
         total = context_snapshot.get("order_payload", {}).get("total_price", 0)
-        yield {"event": "cart_update", "data": {"items": cart, "total": total}}
+        yield {"event": "cart_update", "data": {"items": _format_cart_items(cart), "total": total}}
 
         # 4.5 Order Complete
         finalize_result = context_snapshot.get("finalize_result")
