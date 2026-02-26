@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<title>Benchmark 啟動器</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Segoe UI", system-ui, sans-serif; background: #f4f7f8; color: #333; padding: 2rem; max-width: 800px; margin: 0 auto; }
+  h1 { color: #729DAD; margin-bottom: 1.5rem; font-size: 1.5rem; }
+  .controls { display: flex; gap: .75rem; flex-wrap: wrap; align-items: end; margin-bottom: 1rem; }
+  .field { display: flex; flex-direction: column; gap: .25rem; }
+  .field label { font-size: .8rem; color: #666; font-weight: 600; }
+  select, button { padding: .5rem .75rem; border-radius: 6px; border: 1px solid #ccc; font-size: .9rem; }
+  select:focus { outline: 2px solid #729DAD; border-color: transparent; }
+  button { cursor: pointer; border: none; font-weight: 600; transition: opacity .15s; }
+  button:hover { opacity: .85; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-run { background: #729DAD; color: #fff; }
+  .btn-fast { background: #4a9d68; color: #fff; }
+  .btn-stop { background: #c45c5c; color: #fff; }
+  #output {
+    background: #1e1e1e; color: #d4d4d4; font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+    font-size: .82rem; line-height: 1.5; padding: 1rem; border-radius: 8px;
+    height: 420px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
+  }
+  #output:empty::before { content: "按下按鈕開始 benchmark..."; color: #666; }
+  .status { font-size: .8rem; color: #666; margin-bottom: .5rem; }
+  .line-ok { color: #6a9955; }
+  .line-fail { color: #f44747; }
+  .line-info { color: #569cd6; }
+  .line-done { color: #dcdcaa; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<h1>⚡ Benchmark 啟動器</h1>
+
+<div class="controls">
+  <div class="field">
+    <label>類型</label>
+    <select id="type">
+      <option value="llm">LLM</option>
+      <option value="asr">ASR</option>
+      <option value="tts">TTS</option>
+      <option value="e2e">E2E</option>
+      <option value="all">全部</option>
+    </select>
+  </div>
+  <div class="field">
+    <label>模型</label>
+    <select id="model"><option value="">全部模型</option></select>
+  </div>
+  <div class="field">
+    <label>Workers</label>
+    <select id="workers">
+      <option value="">Config 預設</option>
+      <option value="1">1（序列）</option>
+      <option value="2">2</option>
+      <option value="3">3</option>
+      <option value="4">4</option>
+    </select>
+  </div>
+  <button class="btn-run" id="btnRun" onclick="run(false)">▶ 全跑</button>
+  <button class="btn-fast" id="btnFast" onclick="run(true)">⚡ 快速 (20題)</button>
+  <button class="btn-stop" id="btnStop" onclick="stop()" disabled>■ 停止</button>
+</div>
+
+<div class="status" id="status"></div>
+<div id="output"></div>
+
+<script>
+let modelsData = {};
+let evtSource = null;
+let startTime = 0;
+
+// 載入模型清單
+fetch("/api/models").then(r => r.json()).then(data => {
+  modelsData = data;
+  updateModelSelect();
+});
+
+document.getElementById("type").addEventListener("change", updateModelSelect);
+
+function updateModelSelect() {
+  const type = document.getElementById("type").value;
+  const sel = document.getElementById("model");
+  sel.innerHTML = '<option value="">全部模型</option>';
+  if (type === "all") return;
+  const models = modelsData[type] || [];
+  models.forEach(m => {
+    sel.innerHTML += `<option value="${m.id}">${m.name}</option>`;
+  });
+}
+
+function setRunning(on) {
+  document.getElementById("btnRun").disabled = on;
+  document.getElementById("btnFast").disabled = on;
+  document.getElementById("btnStop").disabled = !on;
+}
+
+function run(fast) {
+  const type = document.getElementById("type").value;
+  const model = document.getElementById("model").value;
+  const workers = document.getElementById("workers").value;
+
+  let url = `/api/run?type=${type}`;
+  if (model) url += `&model=${model}`;
+  if (fast) url += "&fast=1";
+  if (workers) url += `&workers=${workers}`;
+
+  document.getElementById("output").innerHTML = "";
+  startTime = Date.now();
+  setRunning(true);
+  updateStatus("執行中...");
+
+  evtSource = new EventSource(url);
+
+  evtSource.addEventListener("log", e => {
+    appendLine(e.data);
+  });
+
+  evtSource.addEventListener("done", e => {
+    appendLine(e.data, "line-done");
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    updateStatus(`完成 — 總耗時 ${elapsed}s`);
+    cleanup();
+  });
+
+  evtSource.addEventListener("error", e => {
+    if (evtSource.readyState === EventSource.CLOSED) {
+      updateStatus("連線已關閉");
+      cleanup();
+    }
+  });
+}
+
+function stop() {
+  if (evtSource) {
+    evtSource.close();
+    appendLine("⛔ 已手動停止", "line-fail");
+    updateStatus("已停止");
+    cleanup();
+  }
+}
+
+function cleanup() {
+  if (evtSource) { evtSource.close(); evtSource = null; }
+  setRunning(false);
+}
+
+function appendLine(text, cls) {
+  const out = document.getElementById("output");
+  const span = document.createElement("span");
+  if (!cls) {
+    if (text.includes("✓") || text.includes("✅") || text.includes("完成")) cls = "line-ok";
+    else if (text.includes("✗") || text.includes("錯誤") || text.includes("失敗")) cls = "line-fail";
+    else if (text.includes("🚀") || text.includes("🔥") || text.includes("⏱") || text.includes("📊")) cls = "line-info";
+  }
+  if (cls) span.className = cls;
+  span.textContent = text + "\n";
+  out.appendChild(span);
+  out.scrollTop = out.scrollHeight;
+}
+
+function updateStatus(msg) {
+  document.getElementById("status").textContent = msg;
+}
+</script>
+</body>
+</html>
