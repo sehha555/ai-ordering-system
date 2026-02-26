@@ -1,19 +1,23 @@
 {
   "permissions": {
     "allow": [
-      "Bash(uv run pytest:*)",
-      "Bash(uv run python:*)",
-      "Bash(test:*)",
-      "Bash(gh run list:*)",
-      "Bash(gh run view:*)",
-      "Bash(uv lock:*)",
-      "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(git push:*)",
-      "Bash(python -m pytest:*)",
-      "Bash(pip install:*)",
-      "Bash(ffmpeg:*)",
-      "Bash(python:*)"
+      "Bash",
+      "Edit",
+      "Write",
+      "Read",
+      "Glob",
+      "Grep",
+      "WebSearch",
+      "WebFetch"
+    ],
+    "deny": [
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git branch -D:*)",
+      "Bash(rm -rf:*)",
+      "Bash(DROP TABLE:*)",
+      "Bash(drop table:*)"
     ]
   }
 }
