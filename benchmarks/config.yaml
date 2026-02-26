@@ -73,6 +73,7 @@ e2e:
   metrics: [e2e_latency, accuracy, audio_quality]
 
 benchmark:
-  repeat: 2        # 每個測試案例跑幾次取平均
+  repeat: 1        # 每個測試案例跑幾次取平均（快速模式用 1）
   timeout: 60      # 單次測試超時秒數
+  concurrency: 2   # 平行 workers 數（--workers 未指定時讀此值）
   output_dir: reports
