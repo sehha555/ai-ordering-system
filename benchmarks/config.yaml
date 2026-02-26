@@ -40,13 +40,6 @@ tts:
 
 llm:
   models:
-    - id: qwen25-14b
-      name: "Qwen2.5-14B-Instruct"
-      adapter: openai_compatible
-      params:
-        base_url: "http://127.0.0.1:1234/v1"
-        model: "qwen2.5-14b-instruct-1m"
-        temperature: 0.0
     - id: qwen3-30b-a3b
       name: "Qwen3-30B-A3B"
       adapter: openai_compatible

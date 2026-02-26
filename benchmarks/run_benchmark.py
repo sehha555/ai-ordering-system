@@ -153,6 +153,34 @@ def run_single_benchmark(
     return results
 
 
+def _collect_env_info() -> dict:
+    """收集執行環境資訊（GPU、模型載入狀態等）"""
+    import subprocess
+    env = {}
+    try:
+        out = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=name,memory.total,memory.used,memory.free",
+             "--format=csv,noheader,nounits"],
+            text=True, timeout=5,
+        ).strip()
+        parts = [p.strip() for p in out.split(",")]
+        if len(parts) >= 4:
+            env["gpu"] = {
+                "name": parts[0],
+                "vram_total_mb": int(parts[1]),
+                "vram_used_mb": int(parts[2]),
+                "vram_free_mb": int(parts[3]),
+            }
+    except Exception:
+        pass
+    try:
+        out = subprocess.check_output(["ollama", "ps"], text=True, timeout=5).strip()
+        env["ollama_ps"] = out
+    except Exception:
+        pass
+    return env
+
+
 def save_report(all_results: list[dict], benchmark_type: str, output_dir: Path) -> dict:
     output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -161,6 +189,7 @@ def save_report(all_results: list[dict], benchmark_type: str, output_dir: Path) 
     report = {
         "benchmark_type": benchmark_type,
         "timestamp": datetime.now().isoformat(),
+        "environment": _collect_env_info(),
         "results": all_results,
         "comparison": generate_comparison(all_results),
     }
@@ -190,29 +219,51 @@ def print_comparison(report: dict):
     if not comp:
         return
 
-    print(f"\n{'='*60}")
-    print(f"  {report['benchmark_type'].upper()} 模型比較")
-    print(f"{'='*60}")
+    # 環境資訊
+    env = report.get("environment", {})
+    if env.get("gpu"):
+        gpu = env["gpu"]
+        print(f"\n  GPU: {gpu['name']} | VRAM: {gpu['vram_used_mb']}/{gpu['vram_total_mb']} MB ({gpu['vram_free_mb']} MB free)")
+    if env.get("ollama_ps"):
+        for line in env["ollama_ps"].split("\n")[1:]:  # 跳過 header
+            if line.strip():
+                print(f"  Ollama: {line.strip()}")
 
-    all_metrics = set()
-    for metrics in comp.values():
-        all_metrics.update(metrics.keys())
-
-    header = f"{'模型':<25}"
-    for m in sorted(all_metrics):
-        header += f"{m:<18}"
-    print(header)
-    print("-" * len(header))
+    print(f"\n{'='*70}")
+    print(f"  {report['benchmark_type'].upper()} Benchmark 結果")
+    print(f"{'='*70}")
 
     for model_id, metrics in comp.items():
-        row = f"{model_id:<25}"
-        for m in sorted(all_metrics):
-            val = metrics.get(m, "N/A")
-            if isinstance(val, float):
-                row += f"{val:<18.4f}"
-            else:
-                row += f"{str(val):<18}"
-        print(row)
+        print(f"\n  模型: {model_id}")
+        print(f"  {'─'*50}")
+
+        # 通過率 + 成功率
+        pass_rate = metrics.get("scenario_pass_rate", 0)
+        success = metrics.get("success_count", 0)
+        total = metrics.get("total_runs", 0)
+        timeouts = metrics.get("timeout_count", 0)
+        errors = metrics.get("error_count", 0)
+        print(f"  通過率:  {pass_rate:.0%} ({int(pass_rate * total)}/{total})")
+        print(f"  成功率:  {success}/{total} | Timeout: {timeouts} | Error: {errors}")
+
+        # 延遲
+        print(f"  延遲:    avg={metrics.get('avg_latency', 0):.1f}s | p50={metrics.get('latency_p50', 0):.1f}s | p90={metrics.get('latency_p90', 0):.1f}s | min={metrics.get('latency_min', 0):.1f}s | max={metrics.get('latency_max', 0):.1f}s")
+
+        # Token
+        print(f"  Token:   prompt={metrics.get('avg_prompt_tokens', 0):.0f} | completion={metrics.get('avg_completion_tokens', 0):.0f} | total={metrics.get('avg_tokens', 0):.0f} | {metrics.get('tokens_per_sec', 0):.1f} tok/s")
+
+        # 準確率
+        print(f"  Tool F1: {metrics.get('tool_call_f1', 0):.2f} (P={metrics.get('tool_call_precision', 0):.2f} R={metrics.get('tool_call_recall', 0):.2f})")
+
+        # 每案判定
+        verdicts = metrics.get("case_verdicts", [])
+        if verdicts:
+            failed = [v for v in verdicts if not v["passed"]]
+            if failed:
+                print(f"\n  失敗案例 ({len(failed)}):")
+                for v in failed:
+                    reason = v.get("fail_reason", "unknown")
+                    print(f"    ✗ {v['case_id']}: {reason}")
 
 
 def main():

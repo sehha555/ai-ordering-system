@@ -35,32 +35,58 @@ def response_quality_check(response: str, expected_contains: list[str]) -> float
     return matched / len(expected_contains)
 
 
+def _percentile(values: list[float], p: int) -> float:
+    """計算百分位數（p=50 → 中位數）"""
+    if not values:
+        return 0.0
+    sorted_v = sorted(values)
+    idx = (len(sorted_v) - 1) * p / 100
+    lo = int(idx)
+    hi = min(lo + 1, len(sorted_v) - 1)
+    frac = idx - lo
+    return sorted_v[lo] * (1 - frac) + sorted_v[hi] * frac
+
+
 def compute_llm_metrics(test_cases: list[dict], test_data: list[dict], pass_threshold: float = 0.8) -> dict:
-    total_latency = 0.0
     total_f1 = 0.0
     total_precision = 0.0
     total_recall = 0.0
     total_response_quality = 0.0
     total_tokens = 0
+    total_prompt_tokens = 0
+    total_completion_tokens = 0
     success_count = 0
+    timeout_count = 0
+    error_count = 0
     total_runs = 0
     scenario_pass = 0
     scenario_total = 0
 
+    latencies_all = []      # 所有 run 的延遲（含 timeout）
+    latencies_success = []  # 成功 run 的延遲
+
     expected_map = {d["id"]: d for d in test_data}
+
+    # 每案判定結果
+    case_verdicts = []
 
     for case in test_cases:
         case_data = expected_map.get(case["case_id"], {})
         expected_tools = case_data.get("expected_tools", [])
         expected_contains = case_data.get("expected_response_contains", [])
         case_passed = False
+        case_fail_reason = None
 
         for run in case["runs"]:
             total_runs += 1
+            latencies_all.append(run["latency"])
+
             if run["success"]:
                 success_count += 1
-                total_latency += run["latency"]
+                latencies_success.append(run["latency"])
                 total_tokens += run.get("tokens", 0)
+                total_prompt_tokens += run.get("prompt_tokens", 0)
+                total_completion_tokens += run.get("completion_tokens", 0)
 
                 scores = tool_call_match(run.get("tool_calls", []), expected_tools)
                 total_f1 += scores["f1"]
@@ -72,18 +98,57 @@ def compute_llm_metrics(test_cases: list[dict], test_data: list[dict], pass_thre
 
                 if scores["f1"] >= pass_threshold:
                     case_passed = True
+                else:
+                    case_fail_reason = f"tool_call_f1={scores['f1']:.2f} < {pass_threshold}"
+            else:
+                error_msg = run.get("error", "unknown")
+                if "timed out" in error_msg.lower() or "timeout" in error_msg.lower():
+                    timeout_count += 1
+                    case_fail_reason = "timeout"
+                else:
+                    error_count += 1
+                    case_fail_reason = error_msg
 
         scenario_total += 1
         if case_passed:
             scenario_pass += 1
 
+        case_verdicts.append({
+            "case_id": case["case_id"],
+            "passed": case_passed,
+            "fail_reason": case_fail_reason if not case_passed else None,
+        })
+
     n = max(success_count, 1)
+
+    # tokens/sec（只算成功的 run）
+    total_time_success = sum(latencies_success) if latencies_success else 1.0
+    tokens_per_sec = total_completion_tokens / total_time_success if total_completion_tokens > 0 else 0.0
+
     return {
-        "avg_latency": total_latency / n,
+        # 延遲
+        "avg_latency": sum(latencies_success) / n if latencies_success else 0.0,
+        "latency_p50": _percentile(latencies_success, 50),
+        "latency_p90": _percentile(latencies_success, 90),
+        "latency_min": min(latencies_success) if latencies_success else 0.0,
+        "latency_max": max(latencies_success) if latencies_success else 0.0,
+        # Token 用量
         "avg_tokens": total_tokens / n,
+        "avg_prompt_tokens": total_prompt_tokens / n,
+        "avg_completion_tokens": total_completion_tokens / n,
+        "tokens_per_sec": round(tokens_per_sec, 1),
+        # 準確率
         "tool_call_f1": total_f1 / n,
         "tool_call_precision": total_precision / n,
         "tool_call_recall": total_recall / n,
         "response_quality": total_response_quality / n,
+        # 通過率
         "scenario_pass_rate": scenario_pass / max(scenario_total, 1),
+        "success_rate": success_count / max(total_runs, 1),
+        "total_runs": total_runs,
+        "success_count": success_count,
+        "timeout_count": timeout_count,
+        "error_count": error_count,
+        # 每案判定
+        "case_verdicts": case_verdicts,
     }

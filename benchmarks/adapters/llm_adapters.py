@@ -157,10 +157,13 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
                     pass
             response_text = response_text.strip()
 
+        usage = data.get("usage", {})
         return {
             "response": response_text,
             "tool_calls": tool_calls,
-            "tokens": data.get("usage", {}).get("total_tokens", 0),
+            "tokens": usage.get("total_tokens", 0),
+            "prompt_tokens": usage.get("prompt_tokens", 0),
+            "completion_tokens": usage.get("completion_tokens", 0),
         }
 
 
