@@ -43,3 +43,6 @@ IMPLEMENTATION_BLUEPRINT.md
 
 # Benchmark 報告（跑測試產生的結果）
 benchmarks/reports/
+
+# Agent Team 暫存紀錄
+.claude/team-chat.jsonl
