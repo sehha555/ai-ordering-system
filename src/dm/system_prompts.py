@@ -42,23 +42,8 @@ class SystemPromptBuilder:
         return self._base_prompt
 
     def _generate_tool_usage_rules(self) -> str:
-        """生成工具使用規則（精簡版）"""
-        return """# 工具使用
-
-當收集到足夠資訊時，系統會自動調用工具：
-- add_to_cart：添加品項（需要 item_type + 對應必填欄位）
-- remove_from_cart：刪除品項
-- get_cart_summary：查詢購物車
-- checkout：結帳
-
-## 必填欄位
-- 飯糰(riceball)：flavor + rice（米種）
-- 飲料(drink)：flavor + size（杯型）+ temp（溫度）
-- 蛋餅(egg_pancake)：flavor
-- 載體(carrier)：carrier（吐司/漢堡/饅頭）+ flavor
-- 套餐(combo)：combo_name
-
-## 常用別名
+        """生成工具使用規則（精簡版，與 system_prompt.md 互補不重複）"""
+        return """# 常用別名
 - 飯糰：傳統=源味傳統、培根=香燻培根、火腿=風味火腿
 - 飲料：豆=有糖豆漿、清=無糖豆漿、奶=純鮮奶茶、大冰豆=大杯冰有糖豆漿
 - 蛋餅：蛋餅=原味蛋餅、蔬菜蛋餅=高麗菜蛋餅"""
