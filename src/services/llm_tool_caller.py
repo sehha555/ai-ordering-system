@@ -1,4 +1,5 @@
-﻿import json
+﻿import asyncio
+import json
 import re
 import time
 from typing import Any, AsyncIterator, Dict, List, Callable, Optional
@@ -64,6 +65,30 @@ class LLMToolCaller:
                     continue
                 raise
         raise last_exc  # type: ignore[misc]
+
+    async def _post_async(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """非阻塞版 POST：把同步 _post 包進 asyncio.to_thread，不阻塞 event loop。"""
+        return await asyncio.to_thread(self._post, payload)
+
+    async def call_llm_async(
+        self,
+        *,
+        messages: List[Dict[str, Any]],
+        tools_schema: Optional[List[Dict[str, Any]]] = None,
+        tool_choice: Optional[str] = None,
+        temperature: float = 0.0,
+    ) -> Dict[str, Any]:
+        """call_llm 的非阻塞版，用於 async context（如 run_turn_stream）。"""
+        payload: Dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+        }
+        if tools_schema is not None:
+            payload["tools"] = tools_schema
+        if tool_choice is not None:
+            payload["tool_choice"] = tool_choice
+        return await self._post_async(payload)
 
     def call_llm(
         self,
@@ -236,6 +261,7 @@ class LLMToolCaller:
         *,
         messages: List[Dict[str, Any]],
         temperature: float = 0.0,
+        max_tokens: Optional[int] = None,
     ) -> AsyncIterator[str]:
         """串流呼叫 LLM，逐 token yield content delta。僅用於最終文字回覆（無 tools）。"""
         payload = {
@@ -244,6 +270,8 @@ class LLMToolCaller:
             "temperature": temperature,
             "stream": True,
         }
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             async with client.stream("POST", self.base_url, json=payload) as resp:
                 resp.raise_for_status()
@@ -292,33 +320,27 @@ class LLMToolCaller:
 
         for _ in range(self.max_steps):
             with PerfTimer("llm_api_call"):
-                resp = self.call_llm(
+                resp = await self.call_llm_async(
                     messages=messages,
                     tools_schema=tools_schema,
                     tool_choice="auto",
                     temperature=0.0,
                 )
+
             msg = resp["choices"][0]["message"]
             tool_call = self.pick_first_tool_call(resp)
 
             if not tool_call:
-                # 最終回覆 — 改用串流
-                # 先拿非串流的 content 作為 fallback（如果太短就直接用）
-                non_stream_text = msg.get("content") or ""
+                # Phase 2：用 Phase 1 已取得的完整回覆，按標點切段 yield
+                full_text = msg.get("content") or ""
 
-                if len(non_stream_text) <= 5:
-                    # 非常短的回覆，不值得串流，直接輸出
-                    if non_stream_text:
-                        yield {"type": "text_delta", "content": non_stream_text}
-                    full_text = non_stream_text
+                if len(full_text) <= 5:
+                    if full_text:
+                        yield {"type": "text_delta", "content": full_text}
                 else:
-                    # 用串流重新呼叫（不帶 tools，讓模型只產生文字）
-                    # 但我們已經有完整回覆了，直接分段 yield 即可
-                    full_text = non_stream_text
-                    # 模擬逐句串流：按標點切分
                     _PUNCT = set("，。？！、；：\n")
                     buf = ""
-                    for ch in non_stream_text:
+                    for ch in full_text:
                         buf += ch
                         if ch in _PUNCT:
                             yield {"type": "text_delta", "content": buf}
@@ -338,7 +360,7 @@ class LLMToolCaller:
                 }
                 return
 
-            # Tool calling 輪次（同步）
+            # Tool calling 輪次
             messages.append({
                 "role": "assistant",
                 "content": msg.get("content"),

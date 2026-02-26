@@ -443,6 +443,10 @@ export default function VoiceController() {
           useStore.getState().setOrderResult(result);
           break;
         }
+        case 'status': {
+          setStatus('processing');
+          break;
+        }
         case 'audio_chunk': {
           const audioData = JSON.parse(dataStr);
           audioQueueRef.current.push(audioData);

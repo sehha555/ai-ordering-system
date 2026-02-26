@@ -11,6 +11,20 @@ from src.dm import cart_manager
 # 斷句標點 — 遇到就立即送 TTS
 _SENTENCE_PUNCTS = set("，。？！、；：\n")
 
+# 自適應分句閾值
+_MIN_SENTENCE_CHARS = 4   # 太短不送（繼續累積）
+_MAX_SENTENCE_CHARS = 40  # 超長強制切（不等標點）
+
+# tool call 中間狀態訊息
+_TOOL_STATUS_MAP = {
+    "add_to_cart": "正在加入購物車...",
+    "finalize_order": "正在確認訂單...",
+    "query_menu": "正在查詢菜單...",
+    "get_price": "正在查詢價格...",
+    "remove_from_cart": "正在移除品項...",
+    "get_cart_summary": "正在整理購物車...",
+}
+
 
 def _format_cart_items(cart: list) -> list:
     """將 raw session cart 轉換為前端 CartItem 格式 {name, details, price, quantity}"""
@@ -155,28 +169,59 @@ class StreamingOrchestrator:
             evt_type = event.get("type")
 
             if evt_type == "tool_call":
-                # tool call 期間不產生音訊，但可以通知前端
-                pass
+                # 送 status event 給前端顯示（純文字，不發 TTS 音訊）
+                tool_name = event.get("tool_call", {}).get("function", {}).get("name", "")
+                status_msg = _TOOL_STATUS_MAP.get(tool_name, "處理中...")
+                yield {"event": "status", "data": {"message": status_msg}}
+                logger.info("[SSE-v2] tool_call status: {} → {}", tool_name, status_msg)
 
             elif evt_type == "text_delta":
                 content = event.get("content", "")
                 buffer += content
                 full_text += content
 
-                # 檢查是否有完整句子可以送 TTS
+                # 自適應分句：標點切分 + MIN/MAX 字數閾值
                 while buffer:
-                    # 找第一個斷句標點
-                    cut_idx = -1
-                    for i, ch in enumerate(buffer):
-                        if ch in _SENTENCE_PUNCTS:
-                            cut_idx = i
-                            break
+                    # 強制切：buffer 超過最大字數，不等標點
+                    if len(buffer) >= _MAX_SENTENCE_CHARS:
+                        # 找最近的標點（在 MAX 範圍內）
+                        cut_idx = -1
+                        for i, ch in enumerate(buffer[:_MAX_SENTENCE_CHARS]):
+                            if ch in _SENTENCE_PUNCTS:
+                                cut_idx = i
+                        if cut_idx == -1:
+                            # 沒有標點，強制在 MAX 處截斷
+                            cut_idx = _MAX_SENTENCE_CHARS - 1
+                        sentence = buffer[:cut_idx + 1]
+                        buffer = buffer[cut_idx + 1:]
+                    else:
+                        # 找第一個斷句標點
+                        cut_idx = -1
+                        for i, ch in enumerate(buffer):
+                            if ch in _SENTENCE_PUNCTS:
+                                cut_idx = i
+                                break
 
-                    if cut_idx == -1:
-                        break  # 還沒湊成一句，繼續累積
+                        if cut_idx == -1:
+                            break  # 還沒湊成一句，繼續累積
 
-                    sentence = buffer[:cut_idx + 1]
-                    buffer = buffer[cut_idx + 1:]
+                        sentence = buffer[:cut_idx + 1]
+
+                        # 最小字數檢查：太短就繼續累積，等下一個標點
+                        if len(sentence.strip()) < _MIN_SENTENCE_CHARS:
+                            # 把下一段也納進來再找下一個標點
+                            next_cut = -1
+                            for i, ch in enumerate(buffer[cut_idx + 1:]):
+                                if ch in _SENTENCE_PUNCTS:
+                                    next_cut = cut_idx + 1 + i
+                                    break
+                            if next_cut == -1:
+                                break  # 後面還沒有標點，繼續累積
+                            # 合併到下一個標點
+                            sentence = buffer[:next_cut + 1]
+                            cut_idx = next_cut
+
+                        buffer = buffer[cut_idx + 1:]
 
                     if not sentence.strip():
                         continue
