@@ -189,16 +189,22 @@ class LLMToolCaller:
         tools_schema: List[Dict[str, Any]],
         tool_map: Dict[str, Callable[..., Dict[str, Any]]],
         allowed_args: Dict[str, set],
+        context: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         一個「回合」：允許 0~N 次工具呼叫，最後產出給使用者的回覆文字。
         history 由外部保存（你可以存在 SessionManager / in-memory / Redis）。
+
+        context: 動態上下文（如購物車狀態），插在 history 之後、user 之前，
+                 避免破壞 system prompt + priming 的 prefix cache。
         """
         logger.info("[LLM] 開始 run_turn: '{}'", user_text)
 
         messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
         messages.extend(_PRIMING_MESSAGES)  # few-shot priming 讓模型學會用 tool_calls
         messages.extend(history)
+        if context:
+            messages.append({"role": "system", "content": context})
         messages.append({"role": "user", "content": user_text})
 
         last_tool_trace: List[Dict[str, Any]] = []
@@ -299,6 +305,7 @@ class LLMToolCaller:
         tools_schema: List[Dict[str, Any]],
         tool_map: Dict[str, Callable[..., Dict[str, Any]]],
         allowed_args: Dict[str, set],
+        context: Optional[str] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         串流版 run_turn：
@@ -308,12 +315,16 @@ class LLMToolCaller:
           {"type": "tool_call", "tool_call": ..., "exec": ...}
           {"type": "text_delta", "content": "..."}
           {"type": "done", "history": [...], "tool_trace": [...]}
+
+        context: 動態上下文（如購物車狀態），插在 history 之後、user 之前。
         """
         logger.info("[LLM] 開始 run_turn_stream: '{}'", user_text)
 
         messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
         messages.extend(_PRIMING_MESSAGES)  # few-shot priming 讓模型學會用 tool_calls
         messages.extend(history)
+        if context:
+            messages.append({"role": "system", "content": context})
         messages.append({"role": "user", "content": user_text})
 
         last_tool_trace: List[Dict[str, Any]] = []

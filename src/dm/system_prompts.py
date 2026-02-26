@@ -95,15 +95,14 @@ class SystemPromptBuilder:
 
         return "\n".join(lines)
 
-    def build(self, session_context: Optional[SessionContext] = None) -> str:
+    def build(self) -> str:
         """
-        構建最終的系統提示
+        構建純靜態系統提示（不含動態狀態，確保 prefix cache 命中）
 
         結構：
         1. 基礎提示（從 prompts/system_prompt.md）
         2. 工具使用規則
         3. 菜單摘要
-        4. 當前狀態（動態）
         """
         parts = [
             self._load_base_prompt(),
@@ -113,15 +112,26 @@ class SystemPromptBuilder:
             self._generate_menu_summary(),
         ]
 
-        session_info = self._format_session_context(session_context)
-        if session_info:
-            parts.append("")
-            parts.append(session_info)
-
         return "\n".join(parts)
 
+    def build_context_message(self, session_context: Optional[SessionContext]) -> Optional[str]:
+        """
+        構建動態上下文訊息（購物車/待補槽），作為獨立 message 注入
 
-def build_system_prompt(session_context: Optional[SessionContext] = None) -> str:
-    """便利函數 - 直接構建系統提示"""
+        放在 history 之後、user message 之前，避免破壞 prefix cache。
+        回傳 None 表示無需注入。
+        """
+        text = self._format_session_context(session_context)
+        return text if text else None
+
+
+def build_system_prompt() -> str:
+    """便利函數 - 構建靜態系統提示"""
     builder = SystemPromptBuilder()
-    return builder.build(session_context)
+    return builder.build()
+
+
+def build_context_message(session_context: Optional[SessionContext]) -> Optional[str]:
+    """便利函數 - 構建動態上下文訊息"""
+    builder = SystemPromptBuilder()
+    return builder.build_context_message(session_context)

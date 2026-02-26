@@ -55,12 +55,17 @@ class StreamingDMAdapter:
     async def process_input_stream(self, text: str):
         """串流版：逐 token yield LLM 回應，提供給 orchestrator 做分段 TTS"""
         from src.api.app import _session_store, _llm_caller, _tool_registry, _dialogue_manager, SYSTEM_PROMPT
+        from src.dm.system_prompts import build_context_message
+        from src.dm.session_context import SessionContext
 
         _tool_registry.set_session_id(self._session_id)
         session = _session_store.get(self._session_id)
         session.setdefault("llm_history", [])
 
         logger.info("[VOICE-STREAM] LLM 串流處理: '{}', 購物車: {} 項", text, len(session.get('cart', [])))
+
+        # 構建動態上下文（購物車/待補槽）
+        ctx = build_context_message(SessionContext.from_session(session))
 
         full_text = ""
         tool_trace = []
@@ -72,6 +77,7 @@ class StreamingDMAdapter:
             tools_schema=_tool_registry.get_tools_schema(),
             tool_map=_tool_registry.get_tool_map(),
             allowed_args=_tool_registry.get_allowed_args(),
+            context=ctx,
         ):
             evt_type = event.get("type")
 
@@ -121,11 +127,17 @@ class StreamingDMAdapter:
 def _do_dm_sync(session_id, text, _session_store, _llm_caller, _tool_registry, _dialogue_manager, SYSTEM_PROMPT):
     """非串流 DM 處理（共用邏輯）"""
     try:
+        from src.dm.system_prompts import build_context_message
+        from src.dm.session_context import SessionContext
+
         _tool_registry.set_session_id(session_id)
         session = _session_store.get(session_id)
         session.setdefault("llm_history", [])
 
         logger.info("[VOICE] LLM 處理: '{}', 當前購物車: {} 項", text, len(session.get('cart', [])))
+
+        # 構建動態上下文（購物車/待補槽）
+        ctx = build_context_message(SessionContext.from_session(session))
 
         result = _llm_caller.run_turn(
             system_prompt=SYSTEM_PROMPT,
@@ -134,6 +146,7 @@ def _do_dm_sync(session_id, text, _session_store, _llm_caller, _tool_registry, _
             tools_schema=_tool_registry.get_tools_schema(),
             tool_map=_tool_registry.get_tool_map(),
             allowed_args=_tool_registry.get_allowed_args(),
+            context=ctx,
         )
 
         if result.get("ok"):

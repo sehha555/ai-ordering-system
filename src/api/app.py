@@ -390,6 +390,9 @@ async def text_dialogue(request: Request, body: TextDialogueRequest, api_key: st
     文本對話端點（文字輸入，文字輸出）
     使用 LLM + Function Calling 處理點餐邏輯
     """
+    from src.dm.system_prompts import build_context_message
+    from src.dm.session_context import SessionContext
+
     try:
         session_id = body.session_id
         user_text = body.text
@@ -403,6 +406,9 @@ async def text_dialogue(request: Request, body: TextDialogueRequest, api_key: st
         session = _session_store.get(session_id)
         session.setdefault("llm_history", [])
 
+        # 構建動態上下文（購物車/待補槽）
+        ctx = build_context_message(SessionContext.from_session(session))
+
         # 調用 LLM
         result = _llm_caller.run_turn(
             system_prompt=SYSTEM_PROMPT,
@@ -411,6 +417,7 @@ async def text_dialogue(request: Request, body: TextDialogueRequest, api_key: st
             tools_schema=_tool_registry.get_tools_schema(),
             tool_map=_tool_registry.get_tool_map(),
             allowed_args=_tool_registry.get_allowed_args(),
+            context=ctx,
         )
 
         if result.get("ok"):
@@ -454,6 +461,9 @@ async def llm_dialogue(request: Request, body: TextDialogueRequest, api_key: str
           -H "Content-Type: application/json" \
           -d '{"session_id": "user123", "text": "我要一個紫米傳統飯糰"}'
     """
+    from src.dm.system_prompts import build_context_message
+    from src.dm.session_context import SessionContext
+
     try:
         session_id = body.session_id
         user_text = body.text
@@ -467,6 +477,9 @@ async def llm_dialogue(request: Request, body: TextDialogueRequest, api_key: str
         session = _session_store.get(session_id)
         session.setdefault("llm_history", [])
 
+        # 構建動態上下文（購物車/待補槽）
+        ctx = build_context_message(SessionContext.from_session(session))
+
         # 調用 LLM
         result = _llm_caller.run_turn(
             system_prompt=SYSTEM_PROMPT,
@@ -475,6 +488,7 @@ async def llm_dialogue(request: Request, body: TextDialogueRequest, api_key: str
             tools_schema=_tool_registry.get_tools_schema(),
             tool_map=_tool_registry.get_tool_map(),
             allowed_args=_tool_registry.get_allowed_args(),
+            context=ctx,
         )
 
         logger.info("[LLM] 結果: ok={}, tool_trace={} calls", result.get('ok'), len(result.get('tool_trace', [])))
@@ -614,6 +628,11 @@ async def voice_dialogue(
             session = _session_store.get(session_id)
             session.setdefault("llm_history", [])
 
+            # 構建動態上下文（購物車/待補槽）
+            from src.dm.system_prompts import build_context_message
+            from src.dm.session_context import SessionContext
+            ctx = build_context_message(SessionContext.from_session(session))
+
             llm_result = _llm_caller.run_turn(
                 system_prompt=SYSTEM_PROMPT,
                 user_text=user_text,
@@ -621,6 +640,7 @@ async def voice_dialogue(
                 tools_schema=_tool_registry.get_tools_schema(),
                 tool_map=_tool_registry.get_tool_map(),
                 allowed_args=_tool_registry.get_allowed_args(),
+                context=ctx,
             )
 
             if llm_result.get("ok"):

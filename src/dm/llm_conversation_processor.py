@@ -59,9 +59,10 @@ class LLMConversationProcessor:
             # 2. 設置工具註冊表的會話 ID
             self.tool_registry.set_session_id(session_id)
 
-            # 3. 構建系統提示
+            # 3. 構建靜態系統提示 + 動態上下文
+            system_prompt = self.system_prompt_builder.build()
             session_context = SessionContext.from_session(session)
-            system_prompt = self.system_prompt_builder.build(session_context)
+            context = self.system_prompt_builder.build_context_message(session_context)
 
             # 4. 構建對話歷史（轉換為 OpenAI 格式）
             history = self._build_message_history(session)
@@ -79,6 +80,7 @@ class LLMConversationProcessor:
                 tools_schema=tools_schema,
                 tool_map=tool_map,
                 allowed_args=allowed_args,
+                context=context,
             )
 
             # 7. 處理返回結果
