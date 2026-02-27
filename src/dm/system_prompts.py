@@ -3,7 +3,7 @@ from typing import Optional, Dict
 import os
 import re
 from src.dm.session_context import SessionContext
-from src.tools.menu.menu_price_service import get_raw_menu
+from src.config.settings import settings
 
 # 分類 key → 中文名稱對應表（用於售完資訊注入，僅列具代表性的分類）
 _CATEGORY_KEY_TO_LABEL: Dict[str, str] = {
@@ -126,6 +126,7 @@ class SystemPromptBuilder:
             flags=re.DOTALL
         )
 
+        content = content.replace("{store_name}", settings.STORE_NAME)
         self._base_prompt = content.strip()
         return self._base_prompt
 
@@ -290,8 +291,6 @@ class SystemPromptBuilder:
             self._load_base_prompt(),
             "",
             self._generate_tool_usage_rules(),
-            "",
-            self._generate_menu_summary(),
         ]
 
         # 動態內容放最尾段（避免插入中間破壞 prefix cache）

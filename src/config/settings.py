@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "qwen/qwen3-30b-a3b-2507"
     LLM_TIMEOUT: int = 120
 
+    # --- 店家設定 ---
+    STORE_NAME: str = "源飯糰"
+
     # --- 認證 ---
     API_KEY: str | None = None
 

@@ -38,9 +38,8 @@ def reset_state(tmp_path, monkeypatch):
 def builder():
     """回傳一個新的 SystemPromptBuilder，base prompt 用 mock 替換"""
     b = SystemPromptBuilder()
-    # mock _load_base_prompt 和 _generate_menu_summary 避免讀檔
+    # mock _load_base_prompt 避免讀檔
     b._base_prompt = "# 測試基礎提示"
-    b._menu_summary = "# 菜單類別\n- 飯糰：5 項"
     return b
 
 
@@ -249,10 +248,8 @@ class TestBuildWithSoldOut:
         result = builder.build()
         sold_out_pos = result.index("【售完資訊】")
         base_prompt_pos = result.index("# 測試基礎提示")
-        menu_summary_pos = result.index("# 菜單類別")
-        # 售完資訊必須在基礎提示和菜單摘要之後
+        # 售完資訊必須在基礎提示之後
         assert sold_out_pos > base_prompt_pos
-        assert sold_out_pos > menu_summary_pos
 
     def test_售完資訊不含冗餘提示語(self, builder):
         """售完處理規則已在 system_prompt.md，注入區塊只列資訊不重複指令"""
