@@ -5,6 +5,94 @@ import re
 from src.dm.session_context import SessionContext
 from src.tools.menu.menu_price_service import get_raw_menu
 
+# 分類 key → 中文名稱對應表（用於售完資訊注入，僅列具代表性的分類）
+_CATEGORY_KEY_TO_LABEL: Dict[str, str] = {
+    "carrier_toast": "吐司",
+    "carrier_burger": "漢堡",
+    "carrier_thick_toast": "厚片吐司",
+    "rice_purple": "紫米",
+    "rice_white": "白米",
+    "scallion_pancake": "蔥抓餅",
+}
+
+# 饅頭種類 key → 可選名稱（用於選項限制描述）
+_MANTOU_KEY_TO_NAME: Dict[str, str] = {
+    "mantou_black_sugar": "黑糖饅頭",
+    "mantou_white": "白饅頭",
+    "mantou_black_sugar_roll": "黑糖花捲",
+    "mantou_white_roll": "白花捲",
+    "mantou_taro": "芋頭饅頭",
+}
+
+
+def _format_rice_restriction(rice_status: dict) -> str:
+    """
+    根據米種可用狀態產生選項限制描述文字。
+
+    rice_status 格式：{"purple": bool, "white": bool, "mixed": bool}
+    回傳空字串表示無限制（三種米都可用）。
+    """
+    purple_ok = rice_status.get("purple", True)
+    white_ok = rice_status.get("white", True)
+    mixed_ok = rice_status.get("mixed", True)
+
+    # 三種都可用，不需要限制說明
+    if purple_ok and white_ok and mixed_ok:
+        return ""
+
+    # 收集不可選的米種名稱
+    unavailable = []
+    if not purple_ok:
+        unavailable.append("紫米")
+    if not white_ok:
+        unavailable.append("白米")
+    # mixed_ok 由 purple_ok AND white_ok 決定，紫米或白米缺就會連帶影響混米
+    if not mixed_ok and purple_ok and white_ok:
+        # 理論上不會到這裡（混米 = 紫米 AND 白米）
+        unavailable.append("混米")
+
+    if not unavailable:
+        return ""
+
+    # 判斷剩餘可選的米種
+    available = []
+    if purple_ok:
+        available.append("紫米")
+    if white_ok:
+        available.append("白米")
+    if mixed_ok:
+        available.append("混米")
+
+    if not available:
+        # 三種米全部不可選
+        return "飯糰米種：紫米、白米和混米均不可選（米種已全部售完）"
+
+    unavailable_str = "、".join(unavailable)
+    # 只有紫米或白米缺時，混米也受影響（混米需要兩種米）
+    if not mixed_ok:
+        available_str = "、".join(available)
+        return f"飯糰米種：{unavailable_str}不可選，混米也不可選（因原料不足），僅{available_str}可用"
+    return f"飯糰米種：{unavailable_str}不可選，僅{'、'.join(available)}可用"
+
+
+def _get_available_mantou(sold_cats: Dict[str, bool]) -> Optional[list]:
+    """
+    計算目前可用的饅頭種類。
+
+    回傳值：
+      None  — 全部 5 種都可選（不需要注入選項限制）
+      list  — 部分售完，回傳仍可選的名稱清單
+    """
+    available = [
+        name
+        for key, name in _MANTOU_KEY_TO_NAME.items()
+        if not sold_cats.get(key, False)
+    ]
+    # 全部可選時回傳 None，表示不需要限制說明
+    if len(available) == len(_MANTOU_KEY_TO_NAME):
+        return None
+    return available
+
 
 class SystemPromptBuilder:
     """構建和管理動態系統提示的類"""
@@ -95,14 +183,93 @@ class SystemPromptBuilder:
 
         return "\n".join(lines)
 
+    def _format_sold_out_info(self) -> str:
+        """
+        從 menu_state_service 讀取售完狀態，格式化為注入文字。
+
+        使用 lazy import 避免循環依賴。
+        只在有售完品項時才產生內容，零售完回傳空字串。
+        """
+        # lazy import — 避免模組層級循環依賴
+        from src.tools.menu import menu_state_service  # noqa: PLC0415
+
+        # 取得有效售完品項（含連動規則展開後的完整清單）
+        effective_items = menu_state_service.get_effective_sold_out()
+        # 取得分類售完狀態
+        sold_cats = menu_state_service.get_sold_out_categories()
+        # 取得套餐狀態
+        combo_status = menu_state_service.get_effective_combo_status()
+
+        # 判斷哪些分類已售完（有對應中文標籤的才顯示為「售完分類」）
+        sold_category_labels = [
+            label
+            for key, label in _CATEGORY_KEY_TO_LABEL.items()
+            if sold_cats.get(key, False)
+        ]
+
+        # 判斷不可用套餐
+        unavailable_combos = [
+            name for name, status in combo_status.items()
+            if not status["available"]
+        ]
+
+        # 判斷饅頭選項限制（部分饅頭種類售完，尚有剩餘可選者）
+        mantou_available = _get_available_mantou(sold_cats)
+        mantou_restriction = ""
+        if mantou_available is not None:
+            # mantou_available 為 None 表示全部可選（無限制）
+            if mantou_available:
+                mantou_restriction = f"饅頭目前只有{'、'.join(mantou_available)}可選"
+            # 空 list 表示所有饅頭都售完，由 effective_items 處理，此處不重複
+
+        # 判斷鐵板麵麵種限制
+        noodle_oil_off = sold_cats.get("noodle_oil", False)
+        noodle_udon_off = sold_cats.get("noodle_udon", False)
+        noodle_restriction = ""
+        if noodle_oil_off and not noodle_udon_off:
+            noodle_restriction = "鐵板麵目前只能選烏龍麵"
+        elif noodle_udon_off and not noodle_oil_off:
+            noodle_restriction = "鐵板麵目前只能選油麵"
+        # 兩種都關的情況由 effective_items 顯示，不另列選項限制
+
+        # 判斷飯糰米種選項限制（米種是點餐選項，不是獨立品項，需要以選項限制格式告知 LLM）
+        rice_status = menu_state_service.get_rice_options_status()
+        rice_restriction = _format_rice_restriction(rice_status)
+
+        # 收集所有選項限制行
+        option_restrictions = [r for r in [mantou_restriction, noodle_restriction, rice_restriction] if r]
+
+        # 完全沒有任何售完資訊 → 回傳空字串（零售完不佔 token）
+        if not (effective_items or sold_category_labels or unavailable_combos or option_restrictions):
+            return ""
+
+        lines = ["【售完資訊】"]
+
+        if effective_items:
+            lines.append(f"售完品項：{'、'.join(effective_items)}")
+
+        if sold_category_labels:
+            lines.append(f"售完分類：{'、'.join(sold_category_labels)}（相關品項不可點）")
+
+        if unavailable_combos:
+            lines.append(f"不可用套餐：{'、'.join(unavailable_combos)}")
+
+        for restriction in option_restrictions:
+            lines.append(f"選項限制：{restriction}")
+
+        lines.append("顧客點售完品項時，請告知已售完。")
+
+        return "\n".join(lines)
+
     def build(self) -> str:
         """
-        構建純靜態系統提示（不含動態狀態，確保 prefix cache 命中）
+        構建系統提示（靜態部分確保 prefix cache 命中，售完資訊附加尾段）
 
         結構：
         1. 基礎提示（從 prompts/system_prompt.md）
         2. 工具使用規則
         3. 菜單摘要
+        4. 售完資訊（動態，只在有售完時出現，放最尾段避免破壞前段 cache）
         """
         parts = [
             self._load_base_prompt(),
@@ -111,6 +278,12 @@ class SystemPromptBuilder:
             "",
             self._generate_menu_summary(),
         ]
+
+        # 售完資訊放最尾段（動態內容，避免插入中間破壞 prefix cache）
+        sold_out_info = self._format_sold_out_info()
+        if sold_out_info:
+            parts.append("")
+            parts.append(sold_out_info)
 
         return "\n".join(parts)
 

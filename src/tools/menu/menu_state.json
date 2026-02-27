@@ -1,0 +1,23 @@
+{
+  "sold_out_items": [],
+  "sold_out_categories": {
+    "carrier_toast": false,
+    "carrier_burger": false,
+    "carrier_thick_toast": false,
+    "rice_purple": false,
+    "rice_white": false,
+    "mantou_black_sugar": false,
+    "mantou_white": false,
+    "mantou_black_sugar_roll": false,
+    "mantou_white_roll": false,
+    "mantou_taro": false,
+    "noodle_oil": false,
+    "noodle_udon": false,
+    "scallion_pancake": false
+  },
+  "business_hours": {
+    "open": "06:00",
+    "close": "14:00"
+  },
+  "is_open_override": null
+}

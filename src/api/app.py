@@ -67,6 +67,7 @@ STORE_CONFIG = load_store_config()
 SYSTEM_PROMPT = load_system_prompt(STORE_CONFIG)
 from src.api.voice_router import router as voice_router
 from src.api.health import router as health_router
+from src.api.admin_router import router as admin_router
 
 from contextlib import asynccontextmanager
 
@@ -139,6 +140,7 @@ app.add_middleware(
 # 註冊路由
 app.include_router(health_router)
 app.include_router(voice_router, prefix="/api", tags=["voice"])
+app.include_router(admin_router)
 
 # 掛載靜態檔案（如果目錄存在）
 _frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")
