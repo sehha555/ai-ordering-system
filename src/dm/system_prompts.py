@@ -183,6 +183,21 @@ class SystemPromptBuilder:
 
         return "\n".join(lines)
 
+    def _format_business_status(self) -> str:
+        """
+        格式化營業狀態注入文字。
+
+        營業中不注入（預設假設），非營業時間才提示 LLM。
+        """
+        from src.tools.menu import menu_state_service  # noqa: PLC0415
+
+        is_open = menu_state_service.is_currently_open()
+        hours = menu_state_service.get_business_hours()
+
+        if not is_open:
+            return f"【營業狀態】目前非營業時間（營業 {hours['open']}-{hours['close']}），請告知客人目前沒有營業。"
+        return ""
+
     def _format_sold_out_info(self) -> str:
         """
         從 menu_state_service 讀取售完狀態，格式化為注入文字。
@@ -219,7 +234,7 @@ class SystemPromptBuilder:
         if mantou_available is not None:
             # mantou_available 為 None 表示全部可選（無限制）
             if mantou_available:
-                mantou_restriction = f"饅頭目前只有{'、'.join(mantou_available)}可選"
+                mantou_restriction = f"饅頭只剩{'、'.join(mantou_available)}"
             # 空 list 表示所有饅頭都售完，由 effective_items 處理，此處不重複
 
         # 判斷鐵板麵麵種限制
@@ -227,9 +242,9 @@ class SystemPromptBuilder:
         noodle_udon_off = sold_cats.get("noodle_udon", False)
         noodle_restriction = ""
         if noodle_oil_off and not noodle_udon_off:
-            noodle_restriction = "鐵板麵目前只能選烏龍麵"
+            noodle_restriction = "鐵板麵只能選烏龍麵"
         elif noodle_udon_off and not noodle_oil_off:
-            noodle_restriction = "鐵板麵目前只能選油麵"
+            noodle_restriction = "鐵板麵只能選油麵"
         # 兩種都關的情況由 effective_items 顯示，不另列選項限制
 
         # 判斷飯糰米種選項限制（米種是點餐選項，不是獨立品項，需要以選項限制格式告知 LLM）
@@ -246,7 +261,7 @@ class SystemPromptBuilder:
         lines = ["【售完資訊】"]
 
         if effective_items:
-            lines.append(f"售完品項：{'、'.join(effective_items)}")
+            lines.append(f"售完：{'、'.join(effective_items)}")
 
         if sold_category_labels:
             lines.append(f"售完分類：{'、'.join(sold_category_labels)}（相關品項不可點）")
@@ -254,22 +269,22 @@ class SystemPromptBuilder:
         if unavailable_combos:
             lines.append(f"不可用套餐：{'、'.join(unavailable_combos)}")
 
-        for restriction in option_restrictions:
-            lines.append(f"選項限制：{restriction}")
-
-        lines.append("顧客點售完品項時，請告知已售完。")
+        if option_restrictions:
+            lines.append(f"選項限制：{'；'.join(option_restrictions)}")
 
         return "\n".join(lines)
 
     def build(self) -> str:
         """
-        構建系統提示（靜態部分確保 prefix cache 命中，售完資訊附加尾段）
+        構建系統提示（靜態部分確保 prefix cache 命中，動態資訊附加尾段）
 
         結構：
         1. 基礎提示（從 prompts/system_prompt.md）
         2. 工具使用規則
         3. 菜單摘要
-        4. 售完資訊（動態，只在有售完時出現，放最尾段避免破壞前段 cache）
+        4. 營業狀態（動態，非營業時間才出現）
+        5. 售完資訊（動態，只在有售完時出現）
+        — 4+5 放最尾段避免破壞前段 prefix cache
         """
         parts = [
             self._load_base_prompt(),
@@ -279,7 +294,12 @@ class SystemPromptBuilder:
             self._generate_menu_summary(),
         ]
 
-        # 售完資訊放最尾段（動態內容，避免插入中間破壞 prefix cache）
+        # 動態內容放最尾段（避免插入中間破壞 prefix cache）
+        business_status = self._format_business_status()
+        if business_status:
+            parts.append("")
+            parts.append(business_status)
+
         sold_out_info = self._format_sold_out_info()
         if sold_out_info:
             parts.append("")

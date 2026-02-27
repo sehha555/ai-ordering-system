@@ -123,13 +123,12 @@ class TestFormatSoldOutInfo:
         assert result == ""
 
     def test_有售完品項_注入格式正確(self, builder):
-        """品項級售完 → 出現「售完品項：」行"""
+        """品項級售完 → 出現「售完：」行"""
         menu_state_service.set_item_sold_out("甜飯糰", True)
         result = builder._format_sold_out_info()
         assert "【售完資訊】" in result
-        assert "售完品項：" in result
+        assert "售完：" in result
         assert "甜飯糰" in result
-        assert "顧客點售完品項時，請告知已售完。" in result
 
     def test_有售完分類_注入售完分類行(self, builder):
         """分類級售完（吐司）→ 出現「售完分類：」行"""
@@ -154,7 +153,7 @@ class TestFormatSoldOutInfo:
         menu_state_service.set_category_sold_out("mantou_taro", True)
         result = builder._format_sold_out_info()
         assert "選項限制：" in result
-        assert "饅頭目前只有" in result
+        assert "饅頭只剩" in result
         # 剩餘可選的饅頭應出現
         assert "白饅頭" in result
         assert "白花捲" in result
@@ -167,21 +166,21 @@ class TestFormatSoldOutInfo:
             menu_state_service.set_category_sold_out(key, True)
         result = builder._format_sold_out_info()
         # 不應有「選項限制：饅頭」行（空 list 情況不注入選項限制）
-        assert "饅頭目前只有" not in result
+        assert "饅頭只剩" not in result
 
     def test_只有油麵售完_注入只能選烏龍麵(self, builder):
         """油麵售完、烏龍可用 → 選項限制顯示只能選烏龍麵"""
         menu_state_service.set_category_sold_out("noodle_oil", True)
         result = builder._format_sold_out_info()
         assert "選項限制：" in result
-        assert "鐵板麵目前只能選烏龍麵" in result
+        assert "鐵板麵只能選烏龍麵" in result
 
     def test_只有烏龍售完_注入只能選油麵(self, builder):
         """烏龍麵售完、油麵可用 → 選項限制顯示只能選油麵"""
         menu_state_service.set_category_sold_out("noodle_udon", True)
         result = builder._format_sold_out_info()
         assert "選項限制：" in result
-        assert "鐵板麵目前只能選油麵" in result
+        assert "鐵板麵只能選油麵" in result
 
     def test_紫米售完_注入米種選項限制(self, builder):
         """紫米售完 → 顯示紫米不可選且混米不可選"""
@@ -217,15 +216,15 @@ class TestFormatSoldOutInfo:
         menu_state_service.set_category_sold_out("noodle_oil", True)
         menu_state_service.set_category_sold_out("noodle_udon", True)
         result = builder._format_sold_out_info()
-        # 不應出現「鐵板麵目前只能選」行
-        assert "鐵板麵目前只能選" not in result
+        # 不應出現「鐵板麵只能選」行
+        assert "鐵板麵只能選" not in result
 
     def test_多種售完同時注入(self, builder):
         """品項售完 + 分類售完 + 套餐不可用 同時出現"""
         menu_state_service.set_item_sold_out("甜飯糰", True)
         menu_state_service.set_category_sold_out("carrier_toast", True)
         result = builder._format_sold_out_info()
-        assert "售完品項：" in result
+        assert "售完：" in result
         assert "售完分類：" in result
         assert "不可用套餐：" in result
 
@@ -255,8 +254,26 @@ class TestBuildWithSoldOut:
         assert sold_out_pos > base_prompt_pos
         assert sold_out_pos > menu_summary_pos
 
-    def test_售完資訊包含結尾提示語(self, builder):
-        """確認結尾「請告知已售完」提示語存在"""
+    def test_售完資訊不含冗餘提示語(self, builder):
+        """售完處理規則已在 system_prompt.md，注入區塊只列資訊不重複指令"""
         menu_state_service.set_item_sold_out("甜飯糰", True)
         result = builder.build()
-        assert "顧客點售完品項時，請告知已售完。" in result
+        # 注入區塊不再有結尾提示語（規則已搬到 system_prompt.md）
+        assert "顧客點售完品項時" not in result
+        # 但售完資訊本身還在
+        assert "甜飯糰" in result
+
+    def test_非營業時間_注入營業狀態(self, builder, monkeypatch):
+        """非營業時間 → build() 輸出含營業狀態提示"""
+        monkeypatch.setattr(menu_state_service, "is_currently_open", lambda: False)
+        monkeypatch.setattr(menu_state_service, "get_business_hours",
+                            lambda: {"open": "06:00", "close": "14:00"})
+        result = builder.build()
+        assert "【營業狀態】" in result
+        assert "非營業時間" in result
+
+    def test_營業時間內_不注入營業狀態(self, builder, monkeypatch):
+        """營業中 → build() 輸出不含營業狀態提示"""
+        monkeypatch.setattr(menu_state_service, "is_currently_open", lambda: True)
+        result = builder.build()
+        assert "【營業狀態】" not in result
