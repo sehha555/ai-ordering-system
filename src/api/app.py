@@ -67,7 +67,7 @@ STORE_CONFIG = load_store_config()
 SYSTEM_PROMPT = load_system_prompt(STORE_CONFIG)
 from src.api.voice_router import router as voice_router
 from src.api.health import router as health_router
-from src.api.admin_router import router as admin_router
+from src.api.admin_router import router as admin_router, _CATEGORY_ICONS, _CATEGORY_ORDER
 
 from contextlib import asynccontextmanager
 
@@ -255,21 +255,6 @@ async def get_menu(request: Request):
     with open(menu_path, "r", encoding="utf-8-sig") as f:
         menu_items = json.load(f)
 
-    # 分類圖示對應
-    category_icons = {
-        "飯糰": "🍙",
-        "蛋餅": "🥞",
-        "吐司": "🍞",
-        "漢堡": "🍔",
-        "饅頭": "🥟",
-        "蔥抓餅": "🫓",
-        "鐵板麵": "🍝",
-        "點心": "🍟",
-        "果醬吐司": "🍯",
-        "飲品": "🥤",
-        "套餐": "🍱",
-    }
-
     # 按分類組織
     categories_dict = {}
     for item in menu_items:
@@ -277,7 +262,7 @@ async def get_menu(request: Request):
         if cat not in categories_dict:
             categories_dict[cat] = {
                 "name": cat,
-                "icon": category_icons.get(cat, "📦"),
+                "icon": _CATEGORY_ICONS.get(cat, "📦"),
                 "items": []
             }
         categories_dict[cat]["items"].append({
@@ -286,9 +271,8 @@ async def get_menu(request: Request):
         })
 
     # 按固定順序排列分類
-    category_order = ["飯糰", "蛋餅", "吐司", "漢堡", "饅頭", "蔥抓餅", "鐵板麵", "點心", "果醬吐司", "飲品", "套餐"]
     categories = []
-    for cat_name in category_order:
+    for cat_name in _CATEGORY_ORDER:
         if cat_name in categories_dict:
             categories.append(categories_dict[cat_name])
 
