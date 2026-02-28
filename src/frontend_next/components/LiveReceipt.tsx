@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../store/useStore';
 
 export default function LiveReceipt() {
-  const { cart, total, checkoutStep, setCheckoutStep } = useStore();
+  const { cart, total, setCheckoutStep } = useStore();
 
   return (
     <div className="w-full flex flex-col">

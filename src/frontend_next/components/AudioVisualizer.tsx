@@ -36,6 +36,10 @@ export default function AudioVisualizer({ status, volume = 0, size = 'large' }: 
 
     const width = canvas.width;
     const height = canvas.height;
+
+    // 元素不可見（display:none）時 dimensions 為 0，暫停繪製，不排下一幀
+    if (width === 0 || height === 0) return;
+
     const centerX = width / 2;
     const centerY = height / 2;
 
@@ -133,22 +137,32 @@ export default function AudioVisualizer({ status, volume = 0, size = 'large' }: 
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // 設置 canvas 解析度
     const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
 
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.scale(dpr, dpr);
-    }
+    const updateCanvasSize = () => {
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      const ctx = canvas.getContext('2d');
+      if (ctx) ctx.scale(dpr, dpr);
+    };
+
+    updateCanvasSize();
+
+    // 元素從 hidden → visible 時重啟 rAF（ResizeObserver 偵測尺寸恢復）
+    const observer = new ResizeObserver(() => {
+      updateCanvasSize();
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = requestAnimationFrame(draw);
+    });
+    observer.observe(canvas);
 
     // 開始動畫
     animationRef.current = requestAnimationFrame(draw);
 
     return () => {
       cancelAnimationFrame(animationRef.current);
+      observer.disconnect();
     };
   }, [draw]);
 
@@ -164,6 +178,8 @@ export default function AudioVisualizer({ status, volume = 0, size = 'large' }: 
     return (
       <canvas
         ref={canvasRef}
+        width={canvasSize}
+        height={canvasSize}
         style={{ width: canvasSize, height: canvasSize }}
       />
     );
@@ -173,6 +189,8 @@ export default function AudioVisualizer({ status, volume = 0, size = 'large' }: 
     <div className="flex flex-col items-center gap-4">
       <canvas
         ref={canvasRef}
+        width={256}
+        height={256}
         className="w-64 h-64 cursor-pointer"
         style={{ width: 256, height: 256 }}
       />
