@@ -366,9 +366,9 @@ class ToolRegistry:
                     name = item.get("flavor") or item.get(item_type) or item_type
 
                 # 計算價格
-                price_info = self.dm.get_price_info(item)
+                price_info = cart_manager.get_price_info(item)
                 if price_info and price_info.get("status") == "success":
-                    item_total = self.dm.extract_total(price_info, qty)
+                    item_total = cart_manager.extract_total(price_info, qty)
                     total_price += item_total
                     price_str = f" {item_total}元"
                 else:
@@ -497,7 +497,7 @@ class ToolRegistry:
                 "extra_egg": extra_egg,
             }
 
-            price_info = self.dm.get_price_info(item)
+            price_info = cart_manager.get_price_info(item)
 
             if not price_info:
                 return {
@@ -543,7 +543,7 @@ class ToolRegistry:
             # 驗證所有品項都能正確定價
             unpriceable_items = []
             for item in cart:
-                pi = self.dm.get_price_info(item)
+                pi = cart_manager.get_price_info(item)
                 if not pi or pi.get("status") != "success":
                     unpriceable_items.append(cart_manager.format_item(item))
             if unpriceable_items:
@@ -576,8 +576,8 @@ class ToolRegistry:
             items_payload = []
             for item in cart:
                 qty = int(item.get("quantity", 1) or 1)
-                pi = self.dm.get_price_info(item)
-                item_total = self.dm.extract_total(pi, qty)
+                pi = cart_manager.get_price_info(item)
+                item_total = cart_manager.extract_total(pi, qty)
                 unit_price = item_total // qty if qty > 0 else 0
                 items_payload.append({
                     "name": cart_manager.format_item(item),

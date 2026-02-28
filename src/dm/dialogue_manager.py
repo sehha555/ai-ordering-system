@@ -15,17 +15,6 @@ from src.dm import cart_manager
 from src.dm.clarify_policy import recompute_missing_slots, clarify_message
 
 
-class _SessionsProxy:
-    def __init__(self, store: SessionStore):
-        self._store = store
-
-    def get(self, session_id: str, default: Optional[dict] = None) -> dict:
-        try:
-            return self._store.get(session_id)
-        except TypeError:
-            return self._store.get(session_id, default)
-
-
 class DialogueManager:
     def __init__(
         self,
@@ -35,22 +24,13 @@ class DialogueManager:
     ):
         self.llm = llm
         self.store = store or InMemorySessionStore()
-        self.sessions = _SessionsProxy(self.store)
         self.split_keywords = sorted(
             ["、", "，", "跟", "還要", "再來", "再給我", "再一個", "再一份"],
             key=len, reverse=True
         )
 
-    # ─── 公開介面（delegate，保持向後相容） ───
-
-    def get_price_info(self, item):
-        return cart_manager.get_price_info(item)
-
-    def extract_total(self, pi, qty):
-        return cart_manager.extract_total(pi, qty)
-
     def get_order_summary(self, session_id):
-        session = self.sessions.get(session_id, {})
+        session = self.store.get(session_id, {})
         return cart_manager.get_order_summary(session.get("cart", []))
 
     def get_clarify_message(self, rtype, missing, pending_frame=None):

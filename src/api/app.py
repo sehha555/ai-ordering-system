@@ -14,8 +14,10 @@ from loguru import logger
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from src.config.logging_config import setup_logging
+from src.config.request_context import request_id_var
 from src.config.settings import settings
 from src.repository.order_repository import order_repo
 from src.utils.db_backup import backup_database
@@ -119,6 +121,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class RequestIdMiddleware(BaseHTTPMiddleware):
+    """為每個 HTTP 請求生成短 UUID，存入 ContextVar 供日誌追蹤"""
+
+    async def dispatch(self, request, call_next):
+        rid = str(uuid.uuid4())[:8]
+        request_id_var.set(rid)
+        response = await call_next(request)
+        response.headers["X-Request-Id"] = rid
+        return response
+
+
+app.add_middleware(RequestIdMiddleware)
 
 # 註冊路由
 app.include_router(health_router)
@@ -293,9 +309,9 @@ async def get_cart_summary(
             name = cart_manager.format_item(item)
 
             # 計算價格
-            price_info = _dialogue_manager.get_price_info(item)
+            price_info = cart_manager.get_price_info(item)
             if price_info and price_info.get("status") == "success":
-                item_total = _dialogue_manager.extract_total(price_info, qty)
+                item_total = cart_manager.extract_total(price_info, qty)
                 total_price += item_total
                 price_str = f"${item_total}"
             else:
