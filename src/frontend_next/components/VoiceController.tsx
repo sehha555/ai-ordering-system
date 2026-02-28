@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useRef, useState, useCallback, useEffect, RefObject } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../store/useStore';
 import AudioVisualizer from './AudioVisualizer';
@@ -13,7 +13,12 @@ const VAD_THRESHOLD_MULTIPLIER = 2; // 閾值 = 環境噪音平均值 × 倍數
 const VAD_MIN_THRESHOLD = 10; // 最低閾值
 const MAX_RECORDING_DURATION = 30000; // 最大錄音時長 30 秒
 
-export default function VoiceController() {
+interface VoiceControllerProps {
+  // 外部觸發點擊的 ref（push-to-talk 模式，供 page.tsx 的大波形 onClick 使用）
+  triggerRef?: RefObject<(() => void) | null>;
+}
+
+export default function VoiceController({ triggerRef }: VoiceControllerProps = {}) {
   const { status, setStatus, setCart, setTranscript, transcript, vadEnabled, setVadEnabled, sessionId, setAiReply } = useStore();
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -472,6 +477,11 @@ export default function VoiceController() {
       stopRecording();
     }
   }, [status, vadEnabled, startRecording, stopRecording]);
+
+  // 將 handleClick 掛到 triggerRef，供外部（page.tsx 大波形）直接呼叫
+  useEffect(() => {
+    if (triggerRef) triggerRef.current = handleClick;
+  }, [triggerRef, handleClick]);
 
   // Initialize VAD on mount / 模式切換時完整重建音訊資源
   useEffect(() => {

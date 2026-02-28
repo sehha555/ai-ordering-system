@@ -13,16 +13,11 @@ export default function Home() {
   const { checkoutStep, cart, status, vadEnabled } = useStore();
   const hasItems = cart.length > 0;
 
-  // 隱藏的 VoiceController 內部 click 目標的 ref
-  const voiceControllerClickRef = useRef<HTMLDivElement>(null);
+  // VoiceController 暴露的 handleClick ref（push-to-talk 模式）
+  const triggerRef = useRef<(() => void) | null>(null);
 
-  // 點擊大波形時，轉發 click 到 VoiceController 內層有 onClick 的 div（push-to-talk 模式）
-  // VoiceController 結構：根 div > 子 div[select-none, onClick=handleClick] > AudioVisualizer
   const handleLargeVisualizerClick = () => {
-    if (vadEnabled) return; // VAD 模式下不需要手動 click
-    // 找第一個有 select-none class 的 div（即綁了 handleClick 的那個）
-    const clickTarget = voiceControllerClickRef.current?.querySelector<HTMLDivElement>('.select-none');
-    clickTarget?.click();
+    triggerRef.current?.();
   };
 
   return (
@@ -124,11 +119,9 @@ export default function Home() {
         )}
       </div>
 
-      {/* 隱藏的 VoiceController：保留所有邏輯，ref 指向它的可點擊 div */}
+      {/* 隱藏的 VoiceController：保留所有邏輯，triggerRef 暴露 handleClick */}
       <div className="hidden">
-        <div ref={voiceControllerClickRef}>
-          <VoiceController />
-        </div>
+        <VoiceController triggerRef={triggerRef} />
       </div>
     </div>
   );
