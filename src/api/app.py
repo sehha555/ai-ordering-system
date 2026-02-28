@@ -23,6 +23,7 @@ from src.utils.perf_collector import perf_collector
 from src.dm.dialogue_manager import DialogueManager
 from src.dm.session_store import create_session_store
 from src.dm import cart_manager
+from src.dm.system_prompts import SystemPromptBuilder
 from src.services.asr_service import create_asr_service
 from src.config.models import ASR_BACKEND
 from src.services.tts_service import TTSService
@@ -44,27 +45,8 @@ def load_store_config():
     with open(config_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
-def load_system_prompt(config):
-    """從檔案載入系統提示詞"""
-    prompt_cfg = config.get("prompt", {})
-
-    # 優先使用檔案路徑
-    if "file_path" in prompt_cfg:
-        prompt_path = prompt_cfg["file_path"]
-        # 支援相對路徑（從專案根目錄）
-        if not os.path.isabs(prompt_path):
-            prompt_path = os.path.join(os.path.dirname(__file__), "..", "..", prompt_path)
-
-        with open(prompt_path, "r", encoding="utf-8") as f:
-            return f.read()
-
-    # 否則使用預設提示詞
-    store_name = config["store"]["name"]
-    return f"你是「{store_name}」的點餐助手，負責幫客人點餐。請使用繁體中文回覆。"
-
 # 載入設定
 STORE_CONFIG = load_store_config()
-SYSTEM_PROMPT = load_system_prompt(STORE_CONFIG)
 from src.api.voice_router import router as voice_router
 from src.api.health import router as health_router
 from src.api.admin_router import router as admin_router
@@ -370,7 +352,7 @@ async def text_dialogue(request: Request, body: TextDialogueRequest, api_key: st
 
         # 調用 LLM
         result = _llm_caller.run_turn(
-            system_prompt=SYSTEM_PROMPT,
+            system_prompt=SystemPromptBuilder().build(),
             user_text=user_text,
             history=session["llm_history"],
             tools_schema=_tool_registry.get_tools_schema(),
@@ -441,7 +423,7 @@ async def llm_dialogue(request: Request, body: TextDialogueRequest, api_key: str
 
         # 調用 LLM
         result = _llm_caller.run_turn(
-            system_prompt=SYSTEM_PROMPT,
+            system_prompt=SystemPromptBuilder().build(),
             user_text=user_text,
             history=session["llm_history"],
             tools_schema=_tool_registry.get_tools_schema(),
@@ -593,7 +575,7 @@ async def voice_dialogue(
             ctx = build_context_message(SessionContext.from_session(session))
 
             llm_result = _llm_caller.run_turn(
-                system_prompt=SYSTEM_PROMPT,
+                system_prompt=SystemPromptBuilder().build(),
                 user_text=user_text,
                 history=session["llm_history"],
                 tools_schema=_tool_registry.get_tools_schema(),

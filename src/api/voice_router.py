@@ -41,9 +41,9 @@ class StreamingDMAdapter:
 
     async def process_input_stream(self, text: str):
         """串流版：逐 token yield LLM 回應，提供給 orchestrator 做分段 TTS"""
-        from src.api.app import _session_store, _llm_caller, _tool_registry, SYSTEM_PROMPT
+        from src.api.app import _session_store, _llm_caller, _tool_registry
         from src.dm import cart_manager
-        from src.dm.system_prompts import build_context_message
+        from src.dm.system_prompts import build_context_message, SystemPromptBuilder
         from src.dm.session_context import SessionContext
 
         _tool_registry.set_session_id(self._session_id)
@@ -59,7 +59,7 @@ class StreamingDMAdapter:
         tool_trace = []
 
         async for event in _llm_caller.run_turn_stream(
-            system_prompt=SYSTEM_PROMPT,
+            system_prompt=SystemPromptBuilder().build(),
             user_text=text,
             history=session["llm_history"],
             tools_schema=_tool_registry.get_tools_schema(),
