@@ -194,6 +194,39 @@ class TextDialogueResponse(BaseModel):
     response: str
     status: str = "ok"
 
+
+async def _run_dialogue_turn(session_id: str, user_text: str) -> tuple:
+    """執行一輪對話核心邏輯，回傳 (result, session) 供各端點自行處理回傳格式。
+
+    包含：set_session_id → get session → setdefault llm_history →
+    build_context_message → run_turn → update history → redis 回寫
+    """
+    from src.dm.system_prompts import build_context_message
+    from src.dm.session_context import SessionContext
+
+    _tool_registry.set_session_id(session_id)
+
+    session = _session_store.get(session_id)
+    session.setdefault("llm_history", [])
+
+    ctx = build_context_message(SessionContext.from_session(session))
+
+    result = _llm_caller.run_turn(
+        system_prompt=SystemPromptBuilder().build(),
+        user_text=user_text,
+        history=session["llm_history"],
+        tools_schema=_tool_registry.get_tools_schema(),
+        tool_map=_tool_registry.get_tool_map(),
+        allowed_args=_tool_registry.get_allowed_args(),
+        context=ctx,
+    )
+
+    if result.get("ok"):
+        session["llm_history"] = result.get("history", session["llm_history"])
+        _session_store.set(session_id, session)  # Redis 回寫
+
+    return result, session
+
 API_KEY = settings.API_KEY
 if not API_KEY:
     logger.warning("[AUTH] API_KEY 未設定，API Key 驗證已停用（僅限開發環境）")
@@ -354,63 +387,29 @@ async def text_dialogue(request: Request, body: TextDialogueRequest, api_key: st
     文本對話端點（文字輸入，文字輸出）
     使用 LLM + Function Calling 處理點餐邏輯
     """
-    from src.dm.system_prompts import build_context_message
-    from src.dm.session_context import SessionContext
-
     try:
         session_id = body.session_id
         user_text = body.text
 
         logger.info("[TEXT] 收到文字: '{}'", user_text)
 
-        # 設置當前會話
-        _tool_registry.set_session_id(session_id)
-
-        # 確保會話存在
-        session = _session_store.get(session_id)
-        session.setdefault("llm_history", [])
-
-        # 構建動態上下文（購物車/待補槽）
-        ctx = build_context_message(SessionContext.from_session(session))
-
-        # 調用 LLM
-        result = _llm_caller.run_turn(
-            system_prompt=SystemPromptBuilder().build(),
-            user_text=user_text,
-            history=session["llm_history"],
-            tools_schema=_tool_registry.get_tools_schema(),
-            tool_map=_tool_registry.get_tool_map(),
-            allowed_args=_tool_registry.get_allowed_args(),
-            context=ctx,
-        )
+        result, _session = await _run_dialogue_turn(session_id, user_text)
 
         if result.get("ok"):
-            session["llm_history"] = result.get("history", [])
-            _session_store.set(session_id, session)  # Redis 回寫
-            response_text = result.get("assistant_text", "")
-            if not response_text:
-                response_text = "好的，還需要什麼嗎？"
+            response_text = result.get("assistant_text", "") or "好的，還需要什麼嗎？"
             logger.info("[TEXT] LLM 回應: '{}'", response_text)
-            return TextDialogueResponse(
-                session_id=session_id,
-                response=response_text,
-                status="ok"
-            )
+            return TextDialogueResponse(session_id=session_id, response=response_text, status="ok")
         else:
             logger.error("[TEXT] LLM 錯誤: {}", result.get('error'))
             return TextDialogueResponse(
                 session_id=session_id,
                 response="抱歉，系統暫時無法處理，請稍後再試。",
-                status="error"
+                status="error",
             )
 
     except Exception as e:
         logger.exception("[TEXT] 異常")
-        return TextDialogueResponse(
-            session_id=body.session_id,
-            response=f"錯誤: {str(e)}",
-            status="error"
-        )
+        return TextDialogueResponse(session_id=body.session_id, response=f"錯誤: {str(e)}", status="error")
 
 
 @app.post("/dialogue/llm")
@@ -425,48 +424,18 @@ async def llm_dialogue(request: Request, body: TextDialogueRequest, api_key: str
           -H "Content-Type: application/json" \
           -d '{"session_id": "user123", "text": "我要一個紫米傳統飯糰"}'
     """
-    from src.dm.system_prompts import build_context_message
-    from src.dm.session_context import SessionContext
-
     try:
         session_id = body.session_id
         user_text = body.text
 
         logger.info("[LLM] 收到請求: session={}, text={}", session_id, user_text)
 
-        # 設置當前會話
-        _tool_registry.set_session_id(session_id)
-
-        # 確保會話存在
-        session = _session_store.get(session_id)
-        session.setdefault("llm_history", [])
-
-        # 構建動態上下文（購物車/待補槽）
-        ctx = build_context_message(SessionContext.from_session(session))
-
-        # 調用 LLM
-        result = _llm_caller.run_turn(
-            system_prompt=SystemPromptBuilder().build(),
-            user_text=user_text,
-            history=session["llm_history"],
-            tools_schema=_tool_registry.get_tools_schema(),
-            tool_map=_tool_registry.get_tool_map(),
-            allowed_args=_tool_registry.get_allowed_args(),
-            context=ctx,
-        )
+        result, _session = await _run_dialogue_turn(session_id, user_text)
 
         logger.info("[LLM] 結果: ok={}, tool_trace={} calls", result.get('ok'), len(result.get('tool_trace', [])))
 
         if result.get("ok"):
-            # 更新歷史
-            session["llm_history"] = result.get("history", [])
-            _session_store.set(session_id, session)  # Redis 回寫
-            response_text = result.get("assistant_text", "")
-
-            # 如果 LLM 沒有回覆，給一個預設回覆
-            if not response_text:
-                response_text = "好的，還需要什麼嗎？"
-
+            response_text = result.get("assistant_text", "") or "好的，還需要什麼嗎？"
             return {
                 "session_id": session_id,
                 "response": response_text,
@@ -586,33 +555,10 @@ async def voice_dialogue(
 
             # 調用 LLM 對話
             logger.info("[VOICE] 調用 LLM 處理: '{}'", user_text)
-            _tool_registry.set_session_id(session_id)
-
-            # 確保會話存在
-            session = _session_store.get(session_id)
-            session.setdefault("llm_history", [])
-
-            # 構建動態上下文（購物車/待補槽）
-            from src.dm.system_prompts import build_context_message
-            from src.dm.session_context import SessionContext
-            ctx = build_context_message(SessionContext.from_session(session))
-
-            llm_result = _llm_caller.run_turn(
-                system_prompt=SystemPromptBuilder().build(),
-                user_text=user_text,
-                history=session["llm_history"],
-                tools_schema=_tool_registry.get_tools_schema(),
-                tool_map=_tool_registry.get_tool_map(),
-                allowed_args=_tool_registry.get_allowed_args(),
-                context=ctx,
-            )
+            llm_result, _session = await _run_dialogue_turn(session_id, user_text)
 
             if llm_result.get("ok"):
-                session["llm_history"] = llm_result.get("history", [])
-                _session_store.set(session_id, session)  # Redis 回寫
-                dialogue_response = llm_result.get("assistant_text", "")
-                if not dialogue_response:
-                    dialogue_response = "好的，還需要什麼嗎？"
+                dialogue_response = llm_result.get("assistant_text", "") or "好的，還需要什麼嗎？"
                 logger.info("[VOICE] LLM 回應: '{}'", dialogue_response)
             else:
                 logger.error("[VOICE] LLM 錯誤: {}", llm_result.get('error'))
