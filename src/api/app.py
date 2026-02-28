@@ -67,7 +67,8 @@ STORE_CONFIG = load_store_config()
 SYSTEM_PROMPT = load_system_prompt(STORE_CONFIG)
 from src.api.voice_router import router as voice_router
 from src.api.health import router as health_router
-from src.api.admin_router import router as admin_router, _CATEGORY_ICONS, _CATEGORY_ORDER
+from src.api.admin_router import router as admin_router
+from src.config.menu_constants import build_menu_categories
 
 from contextlib import asynccontextmanager
 
@@ -248,35 +249,7 @@ async def get_menu(request: Request):
     取得完整菜單供前端渲染
     按分類組織，包含圖示
     """
-    import json
-
-    # 讀取菜單數據
-    menu_path = os.path.join(os.path.dirname(__file__), "..", "tools", "menu", "menu_all.json")
-    with open(menu_path, "r", encoding="utf-8-sig") as f:
-        menu_items = json.load(f)
-
-    # 按分類組織
-    categories_dict = {}
-    for item in menu_items:
-        cat = item["category"]
-        if cat not in categories_dict:
-            categories_dict[cat] = {
-                "name": cat,
-                "icon": _CATEGORY_ICONS.get(cat, "📦"),
-                "items": []
-            }
-        categories_dict[cat]["items"].append({
-            "name": item["name"],
-            "price": item["price"]
-        })
-
-    # 按固定順序排列分類
-    categories = []
-    for cat_name in _CATEGORY_ORDER:
-        if cat_name in categories_dict:
-            categories.append(categories_dict[cat_name])
-
-    return {"categories": categories}
+    return {"categories": build_menu_categories()}
 
 @app.get("/orders/{order_id}")
 @limiter.limit(settings.RATE_LIMIT_QUERY)
@@ -803,13 +776,7 @@ async def checkout(request: Request, body: CheckoutRequest):
         logger.info("[CHECKOUT] 購物車: {} 項", len(cart))
 
         # 2. 計算總價
-        total_price = 0
-        for item in cart:
-            qty = int(item.get("quantity", 1) or 1)
-            price_info = _dialogue_manager.get_price_info(item)
-            if price_info and price_info.get("status") == "success":
-                item_total = _dialogue_manager.extract_total(price_info, qty)
-                total_price += item_total
+        total_price = cart_manager.calculate_cart_total(cart)
 
         logger.info("[CHECKOUT] 總計: ${}", total_price)
 

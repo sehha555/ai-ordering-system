@@ -27,13 +27,6 @@ async def get_api_key_optional(api_key: str = Depends(api_key_header)):
     return api_key
 
 
-async def event_generator(orchestrator: StreamingOrchestrator, audio_bytes: bytes, session_id: str):
-    """將 orchestrator 事件轉換為 SSE 格式"""
-    async for event in orchestrator.process_audio_stream(audio_bytes, session_id=session_id):
-        # Format as SSE
-        yield f"event: {event['event']}\ndata: {json.dumps(event['data'], ensure_ascii=False)}\n\n"
-
-
 async def event_generator_v2(orchestrator: StreamingOrchestrator, audio_bytes: bytes, session_id: str):
     """串流版 SSE — 使用 process_audio_stream_v2"""
     async for event in orchestrator.process_audio_stream_v2(audio_bytes, session_id=session_id):
@@ -46,15 +39,10 @@ class StreamingDMAdapter:
     def __init__(self, session_id: str):
         self._session_id = session_id
 
-    def process_input(self, text: str):
-        """向後相容：非串流版"""
-        # 延遲導入
-        from src.api.app import _session_store, _llm_caller, _tool_registry, _dialogue_manager, SYSTEM_PROMPT
-        return _do_dm_sync(self._session_id, text, _session_store, _llm_caller, _tool_registry, _dialogue_manager, SYSTEM_PROMPT)
-
     async def process_input_stream(self, text: str):
         """串流版：逐 token yield LLM 回應，提供給 orchestrator 做分段 TTS"""
-        from src.api.app import _session_store, _llm_caller, _tool_registry, _dialogue_manager, SYSTEM_PROMPT
+        from src.api.app import _session_store, _llm_caller, _tool_registry, SYSTEM_PROMPT
+        from src.dm import cart_manager
         from src.dm.system_prompts import build_context_message
         from src.dm.session_context import SessionContext
 
@@ -98,13 +86,7 @@ class StreamingDMAdapter:
 
                 # 讀取購物車
                 cart = session.get("cart", [])
-                total_price = 0
-                for item in cart:
-                    qty = int(item.get("quantity", 1) or 1)
-                    price_info = _dialogue_manager.get_price_info(item)
-                    if price_info and price_info.get("status") == "success":
-                        item_total = _dialogue_manager.extract_total(price_info, qty)
-                        total_price += item_total
+                total_price = cart_manager.calculate_cart_total(cart)
 
                 # 檢查 finalize_order
                 finalize_result = None
@@ -122,75 +104,6 @@ class StreamingDMAdapter:
                     "order_payload": {"total_price": total_price},
                     "finalize_result": finalize_result,
                 }
-
-
-def _do_dm_sync(session_id, text, _session_store, _llm_caller, _tool_registry, _dialogue_manager, SYSTEM_PROMPT):
-    """非串流 DM 處理（共用邏輯）"""
-    try:
-        from src.dm.system_prompts import build_context_message
-        from src.dm.session_context import SessionContext
-
-        _tool_registry.set_session_id(session_id)
-        session = _session_store.get(session_id)
-        session.setdefault("llm_history", [])
-
-        logger.info("[VOICE] LLM 處理: '{}', 當前購物車: {} 項", text, len(session.get('cart', [])))
-
-        # 構建動態上下文（購物車/待補槽）
-        ctx = build_context_message(SessionContext.from_session(session))
-
-        result = _llm_caller.run_turn(
-            system_prompt=SYSTEM_PROMPT,
-            user_text=text,
-            history=session["llm_history"],
-            tools_schema=_tool_registry.get_tools_schema(),
-            tool_map=_tool_registry.get_tool_map(),
-            allowed_args=_tool_registry.get_allowed_args(),
-            context=ctx,
-        )
-
-        if result.get("ok"):
-            session["llm_history"] = result.get("history", [])
-            _session_store.set(session_id, session)  # Redis 回寫
-            response_text = result.get("assistant_text", "")
-            if not response_text:
-                response_text = "好的，還需要什麼嗎？"
-
-            cart = session.get("cart", [])
-            total_price = 0
-            for item in cart:
-                qty = int(item.get("quantity", 1) or 1)
-                price_info = _dialogue_manager.get_price_info(item)
-                if price_info and price_info.get("status") == "success":
-                    item_total = _dialogue_manager.extract_total(price_info, qty)
-                    total_price += item_total
-
-            finalize_result = None
-            for trace in result.get("tool_trace", []):
-                tool_call = trace.get("tool_call", {})
-                if tool_call.get("function", {}).get("name") == "finalize_order":
-                    exec_result = trace.get("exec", {})
-                    if exec_result.get("ok"):
-                        finalize_result = exec_result
-                        break
-
-            return (response_text, {
-                "cart": cart,
-                "order_payload": {"total_price": total_price},
-                "finalize_result": finalize_result,
-            })
-        else:
-            logger.error("[VOICE] LLM 錯誤: {}", result.get('error'))
-            return ("抱歉，系統暫時無法處理，請稍後再試。", {
-                "cart": [],
-                "order_payload": {"total_price": 0}
-            })
-    except Exception as e:
-        logger.exception("[VOICE] DMAdapter 異常")
-        return (f"錯誤: {str(e)}", {
-            "cart": [],
-            "order_payload": {"total_price": 0}
-        })
 
 
 @router.post("/voice-chat")
@@ -213,7 +126,7 @@ async def voice_chat(
 
     # 取得服務實例（從 app.py 導入）
     # 這裡使用延遲導入避免循環依賴
-    from src.api.app import _asr_service, _dialogue_manager, _session_store, _llm_caller, _tool_registry, SYSTEM_PROMPT
+    from src.api.app import _asr_service
 
     # 使用啟動時已載入的 TTS 實例
     streaming_tts = _streaming_tts
@@ -252,39 +165,15 @@ async def voice_chat(
                     if os.path.exists(p):
                         os.unlink(p)
 
-    # 建立 DM 適配器 - 整合真正的 LLM
-    class DMAdapter:
-        def __init__(self, session_id: str):
-            self._session_id = session_id
-
-        def process_input(self, text: str):
-            return _do_dm_sync(self._session_id, text, _session_store, _llm_caller, _tool_registry, _dialogue_manager, SYSTEM_PROMPT)
-
     asr_adapter = ASRAdapter(_asr_service)
-
-    # 檢查是否使用串流模式
-    use_stream = True  # 預設啟用串流
-    if use_stream:
-        dm_adapter = StreamingDMAdapter(session_id)
-        orchestrator = StreamingOrchestrator(asr_adapter, dm_adapter, streaming_tts, session_id=session_id)
-        return StreamingResponse(
-            event_generator_v2(orchestrator, audio_bytes, session_id),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            }
-        )
-    else:
-        dm_adapter = DMAdapter(session_id)
-        orchestrator = StreamingOrchestrator(asr_adapter, dm_adapter, streaming_tts, session_id=session_id)
-        return StreamingResponse(
-            event_generator(orchestrator, audio_bytes, session_id),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            }
-        )
+    dm_adapter = StreamingDMAdapter(session_id)
+    orchestrator = StreamingOrchestrator(asr_adapter, dm_adapter, streaming_tts, session_id=session_id)
+    return StreamingResponse(
+        event_generator_v2(orchestrator, audio_bytes, session_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )

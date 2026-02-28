@@ -16,7 +16,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from src.tools.menu import menu_state_service
-from src.tools.menu.menu_price_service import get_raw_menu
+from src.config.menu_constants import build_menu_categories
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -61,62 +61,6 @@ class OpenOverrideRequest(BaseModel):
 
 # ── 端點 ─────────────────────────────────────────────────────────────────
 
-# 分類圖示對應表
-_CATEGORY_ICONS = {
-    "飯糰": "🍙",
-    "蛋餅": "🥞",
-    "吐司": "🍞",
-    "漢堡": "🍔",
-    "饅頭": "🥟",
-    "蔥抓餅": "🫓",
-    "鐵板麵": "🍝",
-    "點心": "🍟",
-    "果醬吐司": "🍯",
-    "飲品": "🥤",
-    "套餐": "🍱",
-}
-
-# 分類固定排列順序
-_CATEGORY_ORDER = [
-    "飯糰", "蛋餅", "吐司", "漢堡", "饅頭",
-    "蔥抓餅", "鐵板麵", "點心", "果醬吐司", "飲品", "套餐",
-]
-
-
-def _build_categories() -> list:
-    """
-    從 menu_all.json 讀取菜單，按分類分組並加上 icon。
-    格式與 /api/menu 端點一致：[{name, icon, items: [{name, price}]}]
-    """
-    menu_items = get_raw_menu()
-
-    # 按分類分組
-    categories_dict: dict = {}
-    for item in menu_items:
-        cat = item.get("category", "其他")
-        if cat not in categories_dict:
-            categories_dict[cat] = {
-                "name": cat,
-                "icon": _CATEGORY_ICONS.get(cat, "📦"),
-                "items": [],
-            }
-        categories_dict[cat]["items"].append({
-            "name": item["name"],
-            "price": item["price"],
-        })
-
-    # 按固定順序排列，未知分類附加在尾端
-    categories = []
-    for cat_name in _CATEGORY_ORDER:
-        if cat_name in categories_dict:
-            categories.append(categories_dict[cat_name])
-    # 補上不在預設順序中的分類（避免資料遺漏）
-    for cat_name, cat_data in categories_dict.items():
-        if cat_name not in _CATEGORY_ORDER:
-            categories.append(cat_data)
-
-    return categories
-
 
 @router.get("/menu/state")
 async def get_menu_state():
@@ -137,7 +81,7 @@ async def get_menu_state():
     effective = menu_state_service.get_effective_sold_out()
     combo_status = menu_state_service.get_effective_combo_status()
     currently_open = menu_state_service.is_currently_open()
-    categories = _build_categories()
+    categories = build_menu_categories()
 
     return {
         "sold_out_items": state.get("sold_out_items", []),

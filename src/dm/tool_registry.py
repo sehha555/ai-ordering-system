@@ -96,66 +96,39 @@ class ToolRegistry:
 
     # ============ 別名解析輔助方法 ============
 
+    def _resolve_alias(self, value: Optional[str], aliases: dict, sort_by_len: bool = True) -> Optional[str]:
+        """通用別名解析：在 aliases 中找匹配項，回傳標準名稱；無匹配則原樣回傳"""
+        if value is None:
+            return None
+        candidates = sorted(aliases.keys(), key=len, reverse=True) if sort_by_len else list(aliases.keys())
+        for alias in candidates:
+            if alias == value or alias in value:
+                return aliases[alias]
+        return value
+
     def _resolve_riceball_flavor(self, flavor: Optional[str]) -> Optional[str]:
         """將飯糰口味別名轉換為標準名稱"""
-        if not flavor:
-            return None
-        # 長字優先匹配
-        for alias in sorted(RICEBALL_ALIASES.keys(), key=len, reverse=True):
-            if alias == flavor or alias in flavor:
-                return RICEBALL_ALIASES[alias]
-        return flavor
+        return self._resolve_alias(flavor, RICEBALL_ALIASES)
 
     def _resolve_drink_flavor(self, flavor: Optional[str]) -> Optional[str]:
         """將飲料別名轉換為標準名稱"""
-        if not flavor:
-            return None
-        # 長字優先匹配
-        for alias in sorted(DRINK_ALIASES.keys(), key=len, reverse=True):
-            if alias == flavor or alias in flavor:
-                return DRINK_ALIASES[alias]
-        return flavor
+        return self._resolve_alias(flavor, DRINK_ALIASES)
 
     def _resolve_drink_size(self, size: Optional[str]) -> Optional[str]:
         """將飲料杯型轉換為標準名稱"""
-        if not size:
-            return None
-        for alias, canonical in DRINK_SIZE_MAP.items():
-            if alias == size or alias in size:
-                return canonical
-        # 已經是標準格式
-        if size in ["大杯", "中杯"]:
-            return size
-        return size
+        return self._resolve_alias(size, DRINK_SIZE_MAP, sort_by_len=False)
 
     def _resolve_drink_temp(self, temp: Optional[str]) -> Optional[str]:
         """將飲料溫度轉換為標準名稱"""
-        if not temp:
-            return None
-        for alias, canonical in DRINK_TEMP_MAP.items():
-            if alias == temp or alias in temp:
-                return canonical
-        return temp
+        return self._resolve_alias(temp, DRINK_TEMP_MAP, sort_by_len=False)
 
     def _resolve_egg_pancake_flavor(self, flavor: Optional[str]) -> Optional[str]:
         """將蛋餅口味別名轉換為標準名稱"""
-        if not flavor:
-            return None
-        # 長字優先匹配
-        for alias in sorted(EGG_PANCAKE_ALIASES.keys(), key=len, reverse=True):
-            if alias == flavor or alias in flavor:
-                return EGG_PANCAKE_ALIASES[alias]
-        return flavor
+        return self._resolve_alias(flavor, EGG_PANCAKE_ALIASES)
 
     def _resolve_snack_flavor(self, flavor: Optional[str]) -> Optional[str]:
         """將點心別名轉換為標準名稱"""
-        if not flavor:
-            return None
-        # 長字優先匹配
-        for alias in sorted(SNACK_ALIASES.keys(), key=len, reverse=True):
-            if alias == flavor or alias in flavor:
-                return SNACK_ALIASES[alias]
-        return flavor
+        return self._resolve_alias(flavor, SNACK_ALIASES)
 
     # ============ 工具實現 ============
 

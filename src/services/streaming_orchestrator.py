@@ -1,5 +1,4 @@
 # src/services/streaming_orchestrator.py
-import asyncio
 import base64
 import time
 from typing import AsyncIterator, Dict, Any
@@ -52,85 +51,6 @@ class StreamingOrchestrator:
         self.dm = dialogue_manager
         self.tts = tts_service
         self.session_id = session_id
-
-    async def process_audio_stream(self, audio_bytes: bytes, session_id: str = None) -> AsyncIterator[Dict[str, Any]]:
-        """原有流程（非串流 DM）— 保持向後相容"""
-        if session_id:
-            self.session_id = session_id
-
-        request_start = time.perf_counter()
-        logger.info("[SSE] 開始處理音訊串流, session_id={}", self.session_id)
-
-        # 1. Thinking
-        yield {"event": "thinking", "data": {}}
-
-        # 2. ASR
-        asr_start = time.perf_counter()
-        text = await self.asr.transcribe(audio_bytes)
-        asr_elapsed = time.perf_counter() - asr_start
-        logger.info("[PERF] asr_transcribe 耗時 {:.3f}s", asr_elapsed)
-        yield {"event": "transcription", "data": {"text": text}}
-
-        if not text:
-            logger.warning("[SSE] ASR 無法識別語音，中止處理")
-            yield {"event": "error", "data": {"message": "無法識別語音內容，請再試一次"}}
-            return
-
-        # 3. DM
-        dm_start = time.perf_counter()
-        loop = asyncio.get_event_loop()
-        response_text, context_snapshot = await loop.run_in_executor(None, self.dm.process_input, text)
-        dm_elapsed = time.perf_counter() - dm_start
-        logger.info("[PERF] dm_process 耗時 {:.3f}s", dm_elapsed)
-
-        # 3.5 送出 AI 回覆文字給前端橫幅顯示
-        yield {"event": "tts_text", "data": {"text": response_text}}
-
-        # 4. Cart Update
-        cart = context_snapshot.get("cart", [])
-        total = context_snapshot.get("order_payload", {}).get("total_price", 0)
-        yield {"event": "cart_update", "data": {"items": _format_cart_items(cart), "total": total}}
-
-        # 4.5 Order Complete（如果有 finalize_order 結果）
-        finalize_result = context_snapshot.get("finalize_result")
-        if finalize_result:
-            yield {"event": "order_complete", "data": finalize_result}
-
-        # 5. TTS — 先查快取，命中就直接 yield
-        tts_start = time.perf_counter()
-        ttfa_elapsed = None
-        first_chunk = True
-
-        cached = tts_cache.get(response_text)
-        if cached:
-            logger.info("[TTS-Cache] 命中快取: '{}'", response_text[:30])
-            b64_audio = base64.b64encode(cached).decode('utf-8')
-            yield {"event": "audio_chunk", "data": b64_audio}
-            ttfa_elapsed = time.perf_counter() - request_start
-            logger.info("[PERF] TTFA 首個音訊 {:.3f}s (快取命中)", ttfa_elapsed)
-        else:
-            async for chunk in self.tts.run_stream(response_text):
-                b64_audio = base64.b64encode(chunk).decode('utf-8')
-                yield {"event": "audio_chunk", "data": b64_audio}
-                if first_chunk:
-                    ttfa_elapsed = time.perf_counter() - request_start
-                    logger.info("[PERF] TTFA 首個音訊 {:.3f}s", ttfa_elapsed)
-                    first_chunk = False
-
-        tts_elapsed = time.perf_counter() - tts_start
-        logger.info("[PERF] tts_stream 耗時 {:.3f}s", tts_elapsed)
-
-        total_elapsed = time.perf_counter() - request_start
-        logger.info("[PERF] 端對端 SSE 總耗時 {:.3f}s", total_elapsed)
-
-        # 記錄到效能收集器
-        perf_collector.record(
-            asr_s=asr_elapsed,
-            dm_s=dm_elapsed,
-            ttfa_s=ttfa_elapsed,
-            tts_s=tts_elapsed,
-            total_s=total_elapsed,
-        )
 
     async def process_audio_stream_v2(self, audio_bytes: bytes, session_id: str = None) -> AsyncIterator[Dict[str, Any]]:
         """

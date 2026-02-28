@@ -293,12 +293,6 @@ class SystemPromptBuilder:
         return text if text else None
 
 
-def build_system_prompt() -> str:
-    """便利函數 - 構建靜態系統提示"""
-    builder = SystemPromptBuilder()
-    return builder.build()
-
-
 def build_context_message(session_context: Optional[SessionContext]) -> Optional[str]:
     """便利函數 - 構建動態上下文訊息"""
     builder = SystemPromptBuilder()
