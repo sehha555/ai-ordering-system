@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Search, RotateCcw, Lock, Clock, Store, AlertCircle } from 'lucide-react';
+import { Search, RotateCcw, Clock, Store, AlertCircle, RefreshCw } from 'lucide-react';
 
-// ───────────────────────────── 型別定義（admin-only）─────────────────────────────
+// ───────────────────────────── 型別定義 ─────────────────────────────
 
 interface MenuItem {
   name: string;
@@ -56,7 +56,11 @@ const CATEGORY_CONTROLS: CategoryControl[] = [
   { key: 'scallion_pancake', label: '蔥抓餅', group: '其他' },
 ];
 
-const CATEGORY_GROUPS = ['載體', '米種', '饅頭', '鐵板麵', '其他'];
+// 分類 → 相關備料 key 的對應（只有真正有「選項」概念的分類才顯示 chips）
+const CATEGORY_RELATED_CONTROLS: Record<string, string[]> = {
+  '飯糰':   ['rice_purple', 'rice_white'],
+  '鐵板麵': ['noodle_oil', 'noodle_udon'],
+};
 
 // ───────────────────────────── 子元件 ─────────────────────────────
 
@@ -89,38 +93,32 @@ function ToggleSwitch({
   );
 }
 
-function SegmentControl({
-  options,
-  value,
-  onChange,
+// 備料 chip — 顯示在分類頂部，點擊切換售完
+function OptionChip({
+  label,
+  isSoldOut,
+  onToggle,
 }: {
-  options: Array<{ label: string; value: boolean | null }>;
-  value: boolean | null;
-  onChange: (v: boolean | null) => void;
+  label: string;
+  isSoldOut: boolean;
+  onToggle: () => void;
 }) {
   return (
-    <div
-      className="flex rounded-xl p-0.5"
-      style={{ backgroundColor: '#e8eef0' }}
+    <button
+      onClick={onToggle}
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all active:scale-95"
+      style={{
+        backgroundColor: isSoldOut ? '#fde8e8' : '#dcf0e4',
+        color: isSoldOut ? '#c45c5c' : '#4a9d68',
+        border: `1px solid ${isSoldOut ? '#f5c0c0' : '#b4dfc4'}`,
+      }}
     >
-      {options.map((opt) => {
-        const isActive = value === opt.value;
-        return (
-          <button
-            key={String(opt.value)}
-            onClick={() => onChange(opt.value)}
-            className="flex-1 py-1.5 rounded-[10px] text-xs font-medium transition-all"
-            style={{
-              backgroundColor: isActive ? 'white' : 'transparent',
-              color: isActive ? '#2c3e42' : '#5a6b70',
-              boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-            }}
-          >
-            {opt.label}
-          </button>
-        );
-      })}
-    </div>
+      <span
+        className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
+        style={{ backgroundColor: isSoldOut ? '#c45c5c' : '#4a9d68' }}
+      />
+      {label}
+    </button>
   );
 }
 
@@ -130,62 +128,118 @@ export default function AdminMenuPage() {
   const [state, setState] = useState<AdminMenuState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<string>('全部');
   const [editingHours, setEditingHours] = useState(false);
   const [hoursInput, setHoursInput] = useState({ open: '', close: '' });
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeCategory, setActiveCategory] = useState<string>('');
 
   // ── 載入狀態 ──
-  const fetchState = useCallback(async () => {
+  const fetchState = useCallback(async (): Promise<AdminMenuState | null> => {
     try {
       const res = await fetch('/admin/menu/state');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: AdminMenuState = await res.json();
       setState(data);
+      setActiveCategory((prev) => prev || data.categories[0]?.name || '');
       setError(null);
+      return data;
     } catch (e) {
       setError('無法連線到後端，請確認後端服務正在執行');
       console.error('載入菜單狀態失敗:', e);
+      return null;
     } finally {
       setLoading(false);
     }
   }, []);
 
+  // ── 套餐連動：將 combo_status.available=false 的套餐同步寫入 sold_out_items ──
+  const syncComboStatus = useCallback(async (newState: AdminMenuState) => {
+    const toClose: string[] = [];
+    for (const [comboKey, comboEntry] of Object.entries(newState.combo_status)) {
+      if (comboEntry.available) continue;
+      for (const cat of newState.categories) {
+        for (const item of cat.items) {
+          if (item.name.startsWith(comboKey) && !newState.sold_out_items.includes(item.name)) {
+            toClose.push(item.name);
+          }
+        }
+      }
+    }
+    if (toClose.length === 0) return;
+    try {
+      await Promise.all(
+        toClose.map((name) =>
+          fetch('/admin/menu/sold-out/item', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, sold_out: true }),
+          })
+        )
+      );
+      await fetchState();
+    } catch (e) {
+      console.error('套餐連動同步失敗:', e);
+      await fetchState();
+    }
+  }, [fetchState]);
+
   useEffect(() => { fetchState(); }, [fetchState]);
 
-  // ── 品項售完 toggle（樂觀更新）──
+  // ── 取得同飲品的所有尺寸變體（如「有糖豆漿(中)」→「有糖豆漿(大)」）──
+  const getSizeVariants = useCallback((itemName: string): string[] => {
+    if (!state) return [itemName];
+    const sizeMatch = itemName.match(/^(.+)\((中|大|小)\)$/);
+    if (!sizeMatch) return [itemName];
+    const base = sizeMatch[1];
+    const variants: string[] = [];
+    for (const cat of state.categories) {
+      for (const item of cat.items) {
+        if (item.name.match(/^(.+)\((中|大|小)\)$/)
+          && item.name.startsWith(base + '(')) {
+          variants.push(item.name);
+        }
+      }
+    }
+    return variants.length > 0 ? variants : [itemName];
+  }, [state]);
+
+  // ── 品項售完 toggle（樂觀更新，標記售完時連動同款其他尺寸 + 套餐連動）──
   const toggleItem = useCallback(async (itemName: string, currentSoldOut: boolean) => {
     if (!state) return;
     const newSoldOut = !currentSoldOut;
+    // 標記售完時，連動同款其他尺寸
+    const targets = newSoldOut ? getSizeVariants(itemName) : [itemName];
+
     setState((prev) => {
       if (!prev) return prev;
-      const sold_out_items = newSoldOut
-        ? [...prev.sold_out_items, itemName]
-        : prev.sold_out_items.filter((n) => n !== itemName);
+      let sold_out_items = [...prev.sold_out_items];
+      for (const name of targets) {
+        if (newSoldOut && !sold_out_items.includes(name)) {
+          sold_out_items.push(name);
+        } else if (!newSoldOut) {
+          sold_out_items = sold_out_items.filter((n) => n !== name);
+        }
+      }
       return { ...prev, sold_out_items };
     });
     try {
-      const res = await fetch('/admin/menu/sold-out/item', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: itemName, sold_out: newSoldOut }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      await fetchState();
+      await Promise.all(targets.map((name) =>
+        fetch('/admin/menu/sold-out/item', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, sold_out: newSoldOut }),
+        })
+      ));
+      const newState = await fetchState();
+      if (newState) await syncComboStatus(newState);
     } catch (e) {
       console.error('更新品項售完狀態失敗:', e);
-      setState((prev) => {
-        if (!prev) return prev;
-        const sold_out_items = currentSoldOut
-          ? [...prev.sold_out_items, itemName]
-          : prev.sold_out_items.filter((n) => n !== itemName);
-        return { ...prev, sold_out_items };
-      });
+      await fetchState();
     }
-  }, [state, fetchState]);
+  }, [state, fetchState, getSizeVariants, syncComboStatus]);
 
-  // ── 分類售完 toggle（樂觀更新）──
+  // ── 備料/選項 toggle（樂觀更新 + 套餐連動）──
   const toggleCategory = useCallback(async (key: string, currentSoldOut: boolean) => {
     if (!state) return;
     const newSoldOut = !currentSoldOut;
@@ -200,7 +254,8 @@ export default function AdminMenuPage() {
         body: JSON.stringify({ key, sold_out: newSoldOut }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      await fetchState();
+      const newState = await fetchState();
+      if (newState) await syncComboStatus(newState);
     } catch (e) {
       console.error('更新分類售完狀態失敗:', e);
       setState((prev) => {
@@ -208,7 +263,32 @@ export default function AdminMenuPage() {
         return { ...prev, sold_out_categories: { ...prev.sold_out_categories, [key]: currentSoldOut } };
       });
     }
-  }, [state, fetchState]);
+  }, [state, fetchState, syncComboStatus]);
+
+  // ── 一鍵切換單一分類所有品項（全售完 ↔ 全恢復）+ 套餐連動 ──
+  const toggleAllItems = useCallback(async (items: MenuItem[], targetSoldOut: boolean) => {
+    if (!state) return;
+    const toChange = items.filter(
+      (item) => state.sold_out_items.includes(item.name) !== targetSoldOut
+    );
+    if (toChange.length === 0) return;
+    try {
+      await Promise.all(
+        toChange.map((item) =>
+          fetch('/admin/menu/sold-out/item', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: item.name, sold_out: targetSoldOut }),
+          })
+        )
+      );
+      const newState = await fetchState();
+      if (newState) await syncComboStatus(newState);
+    } catch (e) {
+      console.error('批次更新售完狀態失敗:', e);
+      await fetchState();
+    }
+  }, [state, fetchState, syncComboStatus]);
 
   // ── 一鍵恢復全部 ──
   const resetAllSoldOut = useCallback(async () => {
@@ -243,8 +323,16 @@ export default function AdminMenuPage() {
     }
   }, [hoursInput, fetchState]);
 
-  // ── 手動 override 營業狀態 ──
+  // ── 營業狀態切換 ──
   const setOpenOverride = useCallback(async (override: boolean | null) => {
+    setState((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        is_open_override: override,
+        is_currently_open: override !== null ? override : prev.is_currently_open,
+      };
+    });
     try {
       const res = await fetch('/admin/menu/open-override', {
         method: 'PUT',
@@ -257,36 +345,6 @@ export default function AdminMenuPage() {
       console.error('設定營業狀態失敗:', e);
     }
   }, [fetchState]);
-
-  // ── 計算每分類的售完數量 ──
-  const getSoldOutCount = useCallback((catName: string): number => {
-    if (!state) return 0;
-    const cat = state.categories.find((c) => c.name === catName);
-    if (!cat) return 0;
-    return cat.items.filter((item) => state.effective_sold_out.includes(item.name)).length;
-  }, [state]);
-
-  // ── 總售完數量 ──
-  const totalSoldOut = state
-    ? state.sold_out_items.length + Object.values(state.sold_out_categories).filter(Boolean).length
-    : 0;
-
-  // ── 搜尋 + 分類過濾 ──
-  const isSearching = searchQuery.trim().length > 0;
-  const filteredCategories = state
-    ? isSearching
-      ? state.categories
-          .map((cat) => ({
-            ...cat,
-            items: cat.items.filter((item) =>
-              item.name.toLowerCase().includes(searchQuery.toLowerCase())
-            ),
-          }))
-          .filter((cat) => cat.items.length > 0)
-      : selectedCategory === '全部'
-        ? state.categories
-        : state.categories.filter((c) => c.name === selectedCategory)
-    : [];
 
   // ───────── Loading / Error ─────────
 
@@ -316,7 +374,28 @@ export default function AdminMenuPage() {
     );
   }
 
-  const categoryNames = ['全部', ...state.categories.map((c) => c.name)];
+  // ── 衍生狀態 ──
+  const totalSoldOut = state.sold_out_items.length +
+    Object.values(state.sold_out_categories).filter(Boolean).length;
+  const isOverrideActive = state.is_open_override !== null;
+  const searchLower = searchQuery.toLowerCase().trim();
+  const isSearching = searchLower.length > 0;
+
+  // 搜尋時跨分類顯示，否則只顯示目前 tab
+  const visibleCategories = isSearching
+    ? state.categories
+        .map((cat) => ({ ...cat, items: cat.items.filter((i) => i.name.toLowerCase().includes(searchLower)) }))
+        .filter((cat) => cat.items.length > 0)
+    : state.categories.filter((c) => c.name === activeCategory);
+
+  const categoryNames = state.categories.map((c) => c.name);
+
+  // 取得某分類的售完數量
+  const getSoldOutCount = (catName: string) => {
+    const cat = state.categories.find((c) => c.name === catName);
+    if (!cat) return 0;
+    return cat.items.filter((item) => state.effective_sold_out.includes(item.name)).length;
+  };
 
   // ───────────────────────────── 渲染 ─────────────────────────────
 
@@ -325,8 +404,8 @@ export default function AdminMenuPage() {
 
       {/* ─── Sticky Header ─── */}
       <header
-        className="sticky top-0 z-20 px-4 pt-4 pb-3"
-        style={{ backgroundColor: '#f4f7f8' }}
+        className="sticky z-20 px-4 pt-4 pb-3"
+        style={{ top: '52px', backgroundColor: '#f4f7f8' }}
       >
         <div
           className="rounded-2xl p-4"
@@ -336,13 +415,11 @@ export default function AdminMenuPage() {
             boxShadow: '0 2px 12px rgba(114, 157, 173, 0.12)',
           }}
         >
-          {/* 第一列：店名 + 狀態 */}
+          {/* 店名 + 狀態 badge */}
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Store size={18} color="#729DAD" />
-              <h1 className="text-lg font-bold" style={{ color: '#2c3e42' }}>
-                菜單管理
-              </h1>
+              <h1 className="text-lg font-bold" style={{ color: '#2c3e42' }}>菜單管理</h1>
             </div>
             <span
               className="text-xs font-semibold px-3 py-1 rounded-full"
@@ -355,8 +432,29 @@ export default function AdminMenuPage() {
             </span>
           </div>
 
-          {/* 第二列：營業時間 */}
-          <div className="flex items-center gap-2 mb-3">
+          {/* 營業 toggle + 重設自動 */}
+          <div className="flex items-center gap-3 mb-3">
+            <ToggleSwitch
+              checked={state.is_currently_open}
+              onChange={() => setOpenOverride(state.is_currently_open ? false : true)}
+            />
+            <span className="text-sm" style={{ color: '#4a5a60' }}>
+              {state.is_currently_open ? '目前營業中' : '目前休息中'}
+            </span>
+            {isOverrideActive && (
+              <button
+                onClick={() => setOpenOverride(null)}
+                className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg ml-auto active:scale-95 transition-transform"
+                style={{ backgroundColor: '#e8eef0', color: '#729DAD' }}
+              >
+                <RefreshCw size={11} />
+                重設自動
+              </button>
+            )}
+          </div>
+
+          {/* 營業時間 */}
+          <div className="flex items-center gap-2">
             <Clock size={14} color="#8a9a9f" />
             {editingHours ? (
               <>
@@ -409,20 +507,9 @@ export default function AdminMenuPage() {
               </>
             )}
           </div>
-
-          {/* 第三列：手動 override — iOS segment control */}
-          <SegmentControl
-            options={[
-              { label: '自動', value: null },
-              { label: '強制營業', value: true },
-              { label: '強制休息', value: false },
-            ]}
-            value={state.is_open_override}
-            onChange={setOpenOverride}
-          />
         </div>
 
-        {/* 售完 Banner（有售完才顯示）*/}
+        {/* 售完 Banner */}
         {totalSoldOut > 0 && (
           <div
             className="mt-2 rounded-xl px-4 py-2.5 flex items-center justify-between"
@@ -431,13 +518,13 @@ export default function AdminMenuPage() {
             <div className="flex items-center gap-2">
               <AlertCircle size={15} color="#c49a30" />
               <span className="text-sm font-medium" style={{ color: '#8a6420' }}>
-                {totalSoldOut} 項售完
+                {totalSoldOut} 項售完中
               </span>
             </div>
             <button
               onClick={resetAllSoldOut}
               disabled={saving}
-              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg"
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg active:scale-95"
               style={{ backgroundColor: '#c49a30', color: 'white', opacity: saving ? 0.6 : 1 }}
             >
               <RotateCcw size={12} />
@@ -447,256 +534,198 @@ export default function AdminMenuPage() {
         )}
       </header>
 
-      {/* ─── 主體：響應式雙欄 ─── */}
-      <div className="flex max-w-2xl mx-auto px-4 gap-4 pb-10">
+      {/* ─── 主體 ─── */}
+      <div className="max-w-2xl mx-auto px-4 pb-10">
 
-        {/* ─── 左側分類欄（平板才顯示）─── */}
-        <aside className="hidden md:block w-44 shrink-0 pt-4">
+        {/* 搜尋列 */}
+        <div
+          className="flex items-center gap-2 px-3 py-2.5 rounded-xl mb-3"
+          style={{ backgroundColor: 'white', border: '1px solid #d0dce0' }}
+        >
+          <Search size={16} color="#8a9a9f" className="shrink-0" />
+          <input
+            type="text"
+            placeholder="搜尋備料或品項名稱..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="flex-1 text-sm bg-transparent focus:outline-none"
+            style={{ color: '#2c3e42' }}
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="text-xs shrink-0"
+              style={{ color: '#8a9a9f' }}
+            >
+              清除
+            </button>
+          )}
+        </div>
+
+        {/* 分類 tabs（搜尋時隱藏）*/}
+        {!isSearching && (
           <div
-            className="rounded-2xl overflow-hidden sticky top-44"
+            className="mb-3 overflow-x-auto"
+            style={{ scrollbarWidth: 'none' }}
+          >
+            <div className="flex gap-2 pb-1" style={{ width: 'max-content' }}>
+              {categoryNames.map((catName) => {
+                const isSelected = activeCategory === catName;
+                const soldOut = getSoldOutCount(catName);
+                return (
+                  <button
+                    key={catName}
+                    onClick={() => setActiveCategory(catName)}
+                    className="px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors"
+                    style={{
+                      backgroundColor: isSelected ? '#729DAD' : '#e8eef0',
+                      color: isSelected ? 'white' : '#5a6b70',
+                    }}
+                  >
+                    {catName}
+                    {soldOut > 0 && (
+                      <span
+                        className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full"
+                        style={{
+                          backgroundColor: isSelected ? 'rgba(255,255,255,0.3)' : '#fde8e8',
+                          color: isSelected ? 'white' : '#c45c5c',
+                        }}
+                      >
+                        {soldOut}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* 搜尋無結果 */}
+        {isSearching && visibleCategories.length === 0 && (
+          <div
+            className="rounded-2xl p-8 text-center"
             style={{ backgroundColor: 'white', border: '1px solid #d0dce0' }}
           >
-            {categoryNames.map((catName) => {
-              const isSelected = !isSearching && selectedCategory === catName;
-              const soldOut = catName !== '全部' ? getSoldOutCount(catName) : 0;
-              return (
-                <button
-                  key={catName}
-                  onClick={() => { setSelectedCategory(catName); setSearchQuery(''); }}
-                  className="w-full flex items-center justify-between px-3 py-2.5 text-sm transition-colors"
-                  style={{
-                    backgroundColor: isSelected ? 'rgba(114,157,173,0.1)' : 'transparent',
-                    color: isSelected ? '#729DAD' : '#3a4d52',
-                    fontWeight: isSelected ? 600 : 400,
-                    borderLeft: isSelected ? '3px solid #729DAD' : '3px solid transparent',
-                  }}
+            <Search size={32} color="#d0dce0" className="mx-auto mb-2" />
+            <p style={{ color: '#8a9a9f' }}>找不到「{searchQuery}」</p>
+          </div>
+        )}
+
+        {/* 品項列表 */}
+        <div className="space-y-3">
+          {visibleCategories.map((cat) => {
+            const soldOutInCat = getSoldOutCount(cat.name);
+            const totalInCat = cat.items.length;
+            const relatedKeys = CATEGORY_RELATED_CONTROLS[cat.name] ?? [];
+            const relatedControls = CATEGORY_CONTROLS.filter((c) => relatedKeys.includes(c.key));
+            // 品項售完狀態
+            const anyItemsSoldOut = cat.items.some((i) => state.sold_out_items.includes(i.name));
+
+            return (
+              <section
+                key={cat.name}
+                className="rounded-2xl overflow-hidden"
+                style={{ backgroundColor: 'white', border: '1px solid #d0dce0' }}
+              >
+                {/* 分類標題 */}
+                <div
+                  className="px-4 py-3 flex items-center gap-2"
+                  style={{ borderBottom: '1px solid #f0f4f5', backgroundColor: '#fafcfd' }}
                 >
-                  <span className="truncate">{catName}</span>
-                  {soldOut > 0 && (
-                    <span
-                      className="ml-1 text-xs px-1.5 py-0.5 rounded-full shrink-0"
-                      style={{ backgroundColor: '#fde8e8', color: '#c45c5c' }}
-                    >
-                      {soldOut}
+                  <span className="font-semibold text-sm flex-1" style={{ color: '#2c3e42' }}>
+                    {cat.name}
+                  </span>
+                  {soldOutInCat > 0 && (
+                    <span className="text-xs font-medium" style={{ color: '#c45c5c' }}>
+                      {soldOutInCat} / {totalInCat} 售完
                     </span>
                   )}
-                </button>
-              );
-            })}
-          </div>
-        </aside>
+                  <button
+                    onClick={() => toggleAllItems(cat.items, !anyItemsSoldOut)}
+                    className="text-xs px-2.5 py-1 rounded-full active:scale-95 transition-transform"
+                    style={anyItemsSoldOut
+                      ? { backgroundColor: '#dcf0e4', color: '#4a9d68' }
+                      : { backgroundColor: '#fde8e8', color: '#c45c5c' }
+                    }
+                  >
+                    {anyItemsSoldOut ? '全部恢復' : '全部售完'}
+                  </button>
+                </div>
 
-        {/* ─── 右側主內容 ─── */}
-        <div className="flex-1 min-w-0 pt-4">
+                {/* 備料 & 選項 chips（有對應備料才顯示）*/}
+                {relatedControls.length > 0 && (
+                  <div
+                    className="px-4 py-3 flex flex-wrap items-center gap-2"
+                    style={{ borderBottom: '1px solid #f0f4f5', backgroundColor: '#fbfcfd' }}
+                  >
+                    {relatedControls.map((ctrl) => {
+                      const isSoldOut = state.sold_out_categories[ctrl.key] ?? false;
+                      return (
+                        <OptionChip
+                          key={ctrl.key}
+                          label={ctrl.label}
+                          isSoldOut={isSoldOut}
+                          onToggle={() => toggleCategory(ctrl.key, isSoldOut)}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
 
-          {/* 搜尋列 */}
-          <div
-            className="flex items-center gap-2 px-3 py-2.5 rounded-xl mb-3"
-            style={{ backgroundColor: 'white', border: '1px solid #d0dce0' }}
-          >
-            <Search size={16} color="#8a9a9f" className="shrink-0" />
-            <input
-              type="text"
-              placeholder="搜尋品項名稱..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1 text-sm bg-transparent focus:outline-none"
-              style={{ color: '#2c3e42' }}
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="text-xs shrink-0"
-                style={{ color: '#8a9a9f' }}
-              >
-                清除
-              </button>
-            )}
-          </div>
+                {/* 品項列表 */}
+                <div className="divide-y" style={{ borderColor: '#f0f4f5' }}>
+                  {cat.items.map((item) => {
+                    const isManualSoldOut = state.sold_out_items.includes(item.name);
+                    const isEffectiveSoldOut = state.effective_sold_out.includes(item.name);
 
-          {/* 分類控制 Chip 區 */}
-          <div
-            className="rounded-2xl p-4 mb-3"
-            style={{ backgroundColor: 'white', border: '1px solid #d0dce0' }}
-          >
-            <p className="text-xs font-semibold mb-3" style={{ color: '#729DAD' }}>
-              選項控制
-            </p>
-            <div className="space-y-3">
-              {CATEGORY_GROUPS.map((group) => {
-                const controls = CATEGORY_CONTROLS.filter((c) => c.group === group);
-                return (
-                  <div key={group}>
-                    <p className="text-xs mb-1.5" style={{ color: '#8a9a9f' }}>{group}</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {controls.map(({ key, label }) => {
-                        const isSoldOut = state.sold_out_categories[key] ?? false;
-                        return (
-                          <button
-                            key={key}
-                            onClick={() => toggleCategory(key, isSoldOut)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
+                    return (
+                      <div
+                        key={item.name}
+                        className="flex items-center px-4 py-2.5 gap-3"
+                        style={{
+                          backgroundColor: isEffectiveSoldOut ? '#fefafa' : 'transparent',
+                        }}
+                      >
+                        {/* 品項名稱 + 價格（inline）*/}
+                        <div className="flex-1 min-w-0 flex items-baseline gap-1.5">
+                          <span
+                            className="text-sm font-medium"
                             style={{
-                              backgroundColor: isSoldOut ? '#fde8e8' : '#dcf0e4',
-                              color: isSoldOut ? '#c45c5c' : '#4a9d68',
+                              color: isEffectiveSoldOut ? '#b0b8bc' : '#2c3e42',
+                              textDecoration: isManualSoldOut ? 'line-through' : 'none',
                             }}
                           >
+                            {item.name}
+                          </span>
+                          {item.price > 0 && (
                             <span
-                              className="inline-block w-1.5 h-1.5 rounded-full"
-                              style={{ backgroundColor: isSoldOut ? '#c45c5c' : '#4a9d68' }}
-                            />
-                            {label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+                              className="text-xs shrink-0"
+                              style={{ color: isEffectiveSoldOut ? '#c8d0d4' : '#8fb3c0' }}
+                            >
+                              ${item.price}
+                            </span>
+                          )}
+                        </div>
 
-          {/* 分類 tabs（手機才顯示）*/}
-          {!isSearching && (
-            <div className="md:hidden -mx-0 mb-3 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-              <div className="flex gap-2 pb-1" style={{ width: 'max-content' }}>
-                {categoryNames.map((catName) => {
-                  const isSelected = selectedCategory === catName;
-                  const soldOut = catName !== '全部' ? getSoldOutCount(catName) : 0;
-                  return (
-                    <button
-                      key={catName}
-                      onClick={() => setSelectedCategory(catName)}
-                      className="px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors"
-                      style={{
-                        backgroundColor: isSelected ? '#729DAD' : '#e8eef0',
-                        color: isSelected ? 'white' : '#5a6b70',
-                      }}
-                    >
-                      {catName}
-                      {soldOut > 0 && (
-                        <span
-                          className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full"
-                          style={{
-                            backgroundColor: isSelected ? 'rgba(255,255,255,0.3)' : '#fde8e8',
-                            color: isSelected ? 'white' : '#c45c5c',
-                          }}
-                        >
-                          {soldOut}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+                        {/* 連動售完提示（非手動但被連動到）*/}
+                        {isEffectiveSoldOut && !isManualSoldOut && (
+                          <span className="text-xs shrink-0" style={{ color: '#c45c5c' }}>
+                            連動
+                          </span>
+                        )}
 
-          {/* 品項列表 */}
-          {isSearching && filteredCategories.length === 0 ? (
-            <div
-              className="rounded-2xl p-8 text-center"
-              style={{ backgroundColor: 'white', border: '1px solid #d0dce0' }}
-            >
-              <Search size={32} color="#d0dce0" className="mx-auto mb-2" />
-              <p style={{ color: '#8a9a9f' }}>找不到「{searchQuery}」</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {filteredCategories.map((cat) => {
-                const soldOutInCat = getSoldOutCount(cat.name);
-                return (
-                  <section
-                    key={cat.name}
-                    className="rounded-2xl overflow-hidden"
-                    style={{ backgroundColor: 'white', border: '1px solid #d0dce0' }}
-                  >
-                    {/* 分類標題 */}
-                    <div
-                      className="px-4 py-3 flex items-center gap-2"
-                      style={{ borderBottom: '1px solid #f0f4f5', backgroundColor: '#fafcfd' }}
-                    >
-                      <span className="text-base">{cat.icon}</span>
-                      <span className="font-semibold text-sm flex-1" style={{ color: '#2c3e42' }}>
-                        {cat.name}
-                      </span>
-                      <span className="text-xs" style={{ color: '#8a9a9f' }}>
-                        {cat.items.length} 項
-                      </span>
-                      {soldOutInCat > 0 && (
-                        <span
-                          className="text-xs px-2 py-0.5 rounded-full"
-                          style={{ backgroundColor: '#fde8e8', color: '#c45c5c' }}
-                        >
-                          {soldOutInCat} 售完
-                        </span>
-                      )}
-                    </div>
-
-                    {/* 品項列表 */}
-                    <div className="divide-y" style={{ borderColor: '#f0f4f5' }}>
-                      {cat.items.map((item) => {
-                        const comboMatch = Object.entries(state.combo_status).find(
-                          ([key]) => item.name.startsWith(key)
-                        );
-                        const comboEntry = comboMatch
-                          ? (comboMatch[1] as ComboStatusEntry)
-                          : undefined;
-                        const isComboLocked = comboEntry !== undefined && !comboEntry.available;
-                        const isManualSoldOut = state.sold_out_items.includes(item.name);
-                        const isEffectiveSoldOut = state.effective_sold_out.includes(item.name);
-
-                        return (
-                          <div
-                            key={item.name}
-                            className="flex items-center px-4 py-3 gap-3 transition-opacity"
-                            style={{ opacity: isEffectiveSoldOut ? 0.45 : 1 }}
-                          >
-                            {/* 品項資訊 */}
-                            <div className="flex-1 min-w-0">
-                              <p
-                                className="text-sm"
-                                style={{ color: '#2c3e42' }}
-                              >
-                                {item.name}
-                              </p>
-                              {isComboLocked && comboEntry?.reason && (
-                                <p className="text-xs mt-0.5 flex items-center gap-1" style={{ color: '#c45c5c' }}>
-                                  <Lock size={10} />
-                                  {comboEntry.reason}
-                                </p>
-                              )}
-                              {item.price > 0 && (
-                                <p className="text-xs mt-0.5 font-medium" style={{ color: '#729DAD' }}>
-                                  ${item.price}
-                                </p>
-                              )}
-                            </div>
-
-                            {/* Toggle 或鎖定 */}
-                            {isComboLocked ? (
-                              <div
-                                className="w-8 h-8 rounded-xl flex items-center justify-center"
-                                style={{ backgroundColor: '#fde8e8' }}
-                                title={comboEntry?.reason ?? '連動鎖定'}
-                              >
-                                <Lock size={14} color="#c45c5c" />
-                              </div>
-                            ) : (
-                              <ToggleSwitch
-                                checked={!isManualSoldOut}
-                                onChange={() => toggleItem(item.name, isManualSoldOut)}
-                              />
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </section>
-                );
-              })}
-            </div>
-          )}
+                        <ToggleSwitch
+                          checked={!isManualSoldOut}
+                          onChange={() => toggleItem(item.name, isManualSoldOut)}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
         </div>
       </div>
     </div>

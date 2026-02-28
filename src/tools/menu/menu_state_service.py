@@ -39,7 +39,7 @@ _DEFAULT_CATEGORIES = {
 _TOAST_ITEMS = [
     "煎蛋吐司", "起司蛋吐司", "火腿蛋吐司", "豬肉蛋吐司", "培根蛋吐司",
     "薯餅蛋吐司", "鮪魚蛋吐司", "蜜汁燒肉蛋吐司", "醬燒肉片蛋吐司",
-    "黑椒肉片蛋吐司", "原味咔啦雞蛋吐司", "醬燒肉片總匯吐司",
+    "黑椒肉片蛋吐司", "原味咔啦雞蛋吐司", "無骨雞排蛋吐司", "醬燒肉片總匯吐司",
 ]
 
 # ── 薄片果醬吐司（carrier_toast 關掉後連動）─────────────────────────────
@@ -58,7 +58,7 @@ _JAM_TOAST_THICK = [
 _BURGER_ITEMS = [
     "火腿蛋漢堡", "起司蛋漢堡", "豬肉蛋漢堡", "薯餅蛋漢堡", "培根蛋漢堡",
     "鮪魚蛋漢堡", "椒鹽雞絲蛋漢堡", "醬燒肉片蛋漢堡", "黑椒肉片蛋漢堡",
-    "原味咔啦雞蛋漢堡",
+    "原味咔啦雞蛋漢堡", "無骨雞排蛋堡",
 ]
 
 # ── 饅頭種類 → 分類 key 對應品項名稱 ──────────────────────────────────
@@ -299,8 +299,14 @@ def get_effective_combo_status() -> dict:
     # 套餐B：厚片關 → 關
     result["套餐B"] = _make(not thick_toast_off, "厚片吐司售完" if thick_toast_off else None)
 
-    # 套餐C：油麵+烏龍都關 → 關
-    result["套餐C"] = _make(not all_noodles_off, "油麵與烏龍麵均售完" if all_noodles_off else None)
+    # 套餐C：油麵+烏龍都關 OR 義大利肉醬麵售完 → 關
+    italian_off = "義大利肉醬麵+蛋" in sold_items
+    comboC_off = all_noodles_off or italian_off
+    if comboC_off:
+        reasonC = "義大利肉醬麵售完" if italian_off else "油麵與烏龍麵均售完"
+        result["套餐C"] = _make(False, reasonC)
+    else:
+        result["套餐C"] = _make(True)
 
     # 套餐D：吐司關 → 關
     result["套餐D"] = _make(not toast_off, "吐司售完" if toast_off else None)

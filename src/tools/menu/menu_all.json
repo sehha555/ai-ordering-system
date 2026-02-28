@@ -56,6 +56,7 @@
   {"category":"吐司","name":"醬燒肉片蛋吐司","price":60},
   {"category":"吐司","name":"黑椒肉片蛋吐司","price":60},
   {"category":"吐司","name":"原味咔啦雞蛋吐司","price":75},
+  {"category":"吐司","name":"無骨雞排蛋吐司","price":75},
   {"category":"吐司","name":"醬燒肉片總匯吐司","price":70},
 
   {"category":"漢堡","name":"火腿蛋漢堡","price":50},
@@ -68,6 +69,7 @@
   {"category":"漢堡","name":"醬燒肉片蛋漢堡","price":65},
   {"category":"漢堡","name":"黑椒肉片蛋漢堡","price":65},
   {"category":"漢堡","name":"原味咔啦雞蛋漢堡","price":80},
+  {"category":"漢堡","name":"無骨雞排蛋堡","price":80},
 
   {"category":"饅頭","name":"鮮肉包","price":15},
   {"category":"饅頭","name":"蔬菜包","price":15},
