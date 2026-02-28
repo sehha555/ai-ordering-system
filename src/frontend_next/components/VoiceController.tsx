@@ -4,6 +4,7 @@ import { useRef, useState, useCallback, useEffect, RefObject } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../store/useStore';
 import AudioVisualizer from './AudioVisualizer';
+import { useAudioPlayback } from '../hooks/useAudioPlayback';
 
 // VAD 設定
 const VAD_DEFAULT_THRESHOLD = 15;
@@ -26,8 +27,8 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const audioQueueRef = useRef<string[]>([]);
-  const isPlayingRef = useRef<boolean>(false);
+
+  const { audioQueueRef, isPlayingRef, playNextAudio, onPlaybackCompleteRef } = useAudioPlayback();
 
   // VAD refs
   const isListeningRef = useRef<boolean>(false);
@@ -271,48 +272,15 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
     }
   }, [setStatus]);
 
-  // Play audio queue
-  const playNextAudio = useCallback(() => {
-    if (audioQueueRef.current.length === 0) {
-      isPlayingRef.current = false;
-      setStatus('idle');
-      // Resume VAD after playback
-      if (vadEnabled && isListeningRef.current) {
-        startVADLoop();
-      }
-      return;
-    }
-
-    isPlayingRef.current = true;
-    const base64Audio = audioQueueRef.current.shift()!;
-
-    try {
-      const binaryString = atob(base64Audio);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-
-      const audioBlob = new Blob([bytes], { type: 'audio/mpeg' });
-      const audioUrl = URL.createObjectURL(audioBlob);
-      const audio = new Audio(audioUrl);
-
-      audio.onended = () => {
-        URL.revokeObjectURL(audioUrl);
-        playNextAudio();
-      };
-
-      audio.onerror = () => {
-        URL.revokeObjectURL(audioUrl);
-        playNextAudio();
-      };
-
-      audio.play().catch(() => playNextAudio());
-    } catch (error) {
-      console.error('Error playing audio:', error);
-      playNextAudio();
+  // 佇列清空時的 callback：恢復 idle 狀態，並在 VAD 模式下重啟監聽
+  // 用 useCallback 穩定參照後寫入 ref，讓 playNextAudio 永遠讀取最新版本
+  const handlePlaybackComplete = useCallback(() => {
+    setStatus('idle');
+    if (vadEnabled && isListeningRef.current) {
+      startVADLoop();
     }
   }, [setStatus, vadEnabled, startVADLoop]);
+  onPlaybackCompleteRef.current = handlePlaybackComplete;
 
   // Send audio to server and handle SSE
   const sendAudioToServer = useCallback(async (audioBlob: Blob) => {
