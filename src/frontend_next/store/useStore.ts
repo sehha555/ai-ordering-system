@@ -23,6 +23,9 @@ export const useStore = create<AppState>((set) => ({
   // 網路連線
   connectionError: null,
 
+  // AI 回覆文字
+  aiReply: '',
+
   // Actions - 語音和訂購
   setStatus: (status: AppStatus) => set({ status }),
   setCart: (cart: CartItem[], total: number) => set({ cart, total }),
@@ -49,8 +52,12 @@ export const useStore = create<AppState>((set) => ({
     checkoutStep: 0,
     orderResult: null,
     connectionError: null,
+    aiReply: '',
   }),
   setVadEnabled: (vadEnabled: boolean) => set({ vadEnabled }),
+
+  // Actions - AI 回覆文字
+  setAiReply: (aiReply: string) => set({ aiReply }),
 
   // Actions - 網路連線
   setConnectionError: (error: string | null) => set({ connectionError: error }),

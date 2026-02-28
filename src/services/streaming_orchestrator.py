@@ -83,6 +83,9 @@ class StreamingOrchestrator:
         dm_elapsed = time.perf_counter() - dm_start
         logger.info("[PERF] dm_process 耗時 {:.3f}s", dm_elapsed)
 
+        # 3.5 送出 AI 回覆文字給前端橫幅顯示
+        yield {"event": "tts_text", "data": {"text": response_text}}
+
         # 4. Cart Update
         cart = context_snapshot.get("cart", [])
         total = context_snapshot.get("order_payload", {}).get("total_price", 0)
@@ -271,6 +274,9 @@ class StreamingOrchestrator:
                     if first_audio:
                         ttfa_elapsed = time.perf_counter() - request_start
                         first_audio = False
+
+        # 3.5 送出 AI 回覆文字給前端橫幅顯示
+        yield {"event": "tts_text", "data": {"text": full_text}}
 
         # 4. Cart Update
         cart = context_snapshot.get("cart", [])

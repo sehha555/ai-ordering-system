@@ -7,7 +7,6 @@ beforeEach(() => {
   useStore.setState({
     cart: [],
     total: 0,
-    transcript: '',
     checkoutStep: 0,
   });
 });
@@ -44,22 +43,15 @@ describe('LiveReceipt', () => {
     it('應顯示每個商品的名稱和價格', () => {
       render(<LiveReceipt />);
       expect(screen.getByText('飯糰（加蛋）')).toBeInTheDocument();
-      expect(screen.getByText('$45')).toBeInTheDocument();
+      expect(screen.getByText('1 × $45')).toBeInTheDocument();
       expect(screen.getByText('豆漿')).toBeInTheDocument();
-      expect(screen.getByText('$25')).toBeInTheDocument();
+      expect(screen.getByText('2 × $25')).toBeInTheDocument();
     });
 
     it('商品有 details 時應顯示細節', () => {
       render(<LiveReceipt />);
       expect(screen.getByText('加蛋')).toBeInTheDocument();
       expect(screen.getByText('大杯')).toBeInTheDocument();
-    });
-
-    it('數量 > 1 時應顯示 x數量', () => {
-      render(<LiveReceipt />);
-      expect(screen.getByText('x2')).toBeInTheDocument();
-      // quantity=1 不顯示
-      expect(screen.queryByText('x1')).not.toBeInTheDocument();
     });
 
     it('應顯示商品數量 badge', () => {
@@ -84,17 +76,4 @@ describe('LiveReceipt', () => {
     });
   });
 
-  describe('語音識別結果', () => {
-    it('有 transcript 時應顯示「你說的是：」區塊', () => {
-      useStore.setState({ transcript: '我要一個飯糰' });
-      render(<LiveReceipt />);
-      expect(screen.getByText('你說的是：')).toBeInTheDocument();
-      expect(screen.getByText('我要一個飯糰')).toBeInTheDocument();
-    });
-
-    it('無 transcript 時不應顯示該區塊', () => {
-      render(<LiveReceipt />);
-      expect(screen.queryByText('你說的是：')).not.toBeInTheDocument();
-    });
-  });
 });

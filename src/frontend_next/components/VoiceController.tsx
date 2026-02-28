@@ -14,7 +14,7 @@ const VAD_MIN_THRESHOLD = 10; // 最低閾值
 const MAX_RECORDING_DURATION = 30000; // 最大錄音時長 30 秒
 
 export default function VoiceController() {
-  const { status, setStatus, setCart, setTranscript, transcript, vadEnabled, setVadEnabled, sessionId } = useStore();
+  const { status, setStatus, setCart, setTranscript, transcript, vadEnabled, setVadEnabled, sessionId, setAiReply } = useStore();
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -447,6 +447,11 @@ export default function VoiceController() {
           setStatus('processing');
           break;
         }
+        case 'tts_text': {
+          const ttsData = JSON.parse(dataStr);
+          setAiReply(ttsData.text || '');
+          break;
+        }
         case 'audio_chunk': {
           const audioData = JSON.parse(dataStr);
           audioQueueRef.current.push(audioData);
@@ -456,7 +461,7 @@ export default function VoiceController() {
     } catch (error) {
       console.error('Error parsing SSE event:', event, error);
     }
-  }, [setStatus, setTranscript, setCart]);
+  }, [setStatus, setTranscript, setCart, setAiReply]);
 
   // Click handler
   const handleClick = useCallback(() => {

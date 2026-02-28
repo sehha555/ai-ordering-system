@@ -58,11 +58,15 @@ export interface AppState {
   // 網路連線
   connectionError: string | null;
 
+  // AI 回覆文字（用於橫幅顯示）
+  aiReply: string;
+
   // Actions - 語音和訂購
   setStatus: (s: AppStatus) => void;
   setCart: (items: CartItem[], total: number) => void;
   setTranscript: (t: string) => void;
   clearCart: () => void;
+  setAiReply: (reply: string) => void;
 
   // Actions - 結帳
   setCheckoutStep: (step: CheckoutStep) => void;
