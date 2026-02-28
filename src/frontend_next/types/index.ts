@@ -29,17 +29,6 @@ export interface OrderResult {
   payment_method: string;
 }
 
-export interface MenuItem {
-  name: string;
-  price: number;
-}
-
-export interface MenuCategory {
-  name: string;
-  icon: string;
-  items: MenuItem[];
-}
-
 export interface AppState {
   // 語音和訂購
   status: AppStatus;
