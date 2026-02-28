@@ -137,30 +137,6 @@ class SystemPromptBuilder:
 - 飲料：豆=有糖豆漿、清=無糖豆漿、奶=純鮮奶茶、大冰豆=大杯冰有糖豆漿
 - 蛋餅：蛋餅=原味蛋餅、蔬菜蛋餅=高麗菜蛋餅"""
 
-    def _generate_menu_summary(self) -> str:
-        """從菜單生成精簡摘要"""
-        if self._menu_summary is not None:
-            return self._menu_summary
-
-        try:
-            menu_data = get_raw_menu()
-        except RuntimeError:
-            self._menu_summary = ""
-            return self._menu_summary
-
-        # 統計各類別數量
-        categories: Dict[str, int] = {}
-        for item in menu_data:
-            cat = item.get("category", "其他")
-            categories[cat] = categories.get(cat, 0) + 1
-
-        lines = ["# 菜單類別"]
-        for cat, count in sorted(categories.items()):
-            lines.append(f"- {cat}：{count} 項")
-
-        self._menu_summary = "\n".join(lines)
-        return self._menu_summary
-
     def _format_session_context(self, session_context: Optional[SessionContext]) -> str:
         """格式化會話上下文信息"""
         if session_context is None:
