@@ -10,6 +10,7 @@ from contextlib import contextmanager
 
 from loguru import logger
 from src.config.settings import settings
+from src.config.request_context import get_request_id
 
 
 # ============================================================================
@@ -108,6 +109,20 @@ def asyncio_iscoroutinefunction(func):
 # 初始化
 # ============================================================================
 
+def _add_request_id(record: dict) -> None:
+    """loguru patcher — 將當前 request_id 注入每筆 log record"""
+    record["extra"]["request_id"] = get_request_id()
+
+
+_CONSOLE_FORMAT = (
+    "<green>{time:HH:mm:ss}</green> | "
+    "<level>{level:<7}</level> | "
+    "<cyan>{extra[request_id]}</cyan> | "
+    "<cyan>{name}</cyan>:<cyan>{function}</cyan> | "
+    "<level>{message}</level>"
+)
+
+
 def setup_logging():
     """初始化日誌系統 — 應用啟動時呼叫一次"""
 
@@ -123,6 +138,9 @@ def setup_logging():
     # 移除 loguru 預設 handler
     logger.remove()
 
+    # 注入 request_id patcher
+    logger.configure(patcher=_add_request_id)
+
     # stderr 輸出
     if log_format == "json":
         logger.add(sys.stderr, level=log_level, serialize=True)
@@ -130,19 +148,31 @@ def setup_logging():
         logger.add(
             sys.stderr,
             level=log_level,
-            format="<green>{time:HH:mm:ss}</green> | <level>{level:<7}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan> | <level>{message}</level>",
+            format=_CONSOLE_FORMAT,
         )
 
     # 檔案輸出 — 每日輪替，保留天數可配置
     log_dir = os.path.join(os.path.dirname(__file__), "..", "..", "logs")
     os.makedirs(log_dir, exist_ok=True)
+
+    # 純文字日誌（含 request_id）
     logger.add(
         os.path.join(log_dir, "app.log"),
         level=log_level,
         rotation="00:00",  # 每日午夜輪替
         retention=f"{retention_days} days",
         encoding="utf-8",
-        serialize=(log_format == "json"),
+        format=_CONSOLE_FORMAT,
+    )
+
+    # JSON 結構化日誌（機器可讀，含 request_id via extra）
+    logger.add(
+        os.path.join(log_dir, "app.json"),
+        level=log_level,
+        rotation="1 day",
+        retention="7 days",
+        encoding="utf-8",
+        serialize=True,
     )
 
     # 攔截標準 logging
