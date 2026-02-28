@@ -173,6 +173,13 @@ _tool_registry = ToolRegistry(_dialogue_manager, _session_store)
 _asr_service = create_asr_service(ASR_BACKEND, language="zh")
 _tts_service = TTSService(voice="female", rate="+0%")
 
+# 同步到服務容器，供其他模組使用（消除循環依賴）
+from src.services import container as _container
+_container.session_store = _session_store
+_container.llm_caller = _llm_caller
+_container.tool_registry = _tool_registry
+_container.asr_service = _asr_service
+
 
 
 class TextDialogueRequest(BaseModel):

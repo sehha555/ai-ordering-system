@@ -41,10 +41,14 @@ class StreamingDMAdapter:
 
     async def process_input_stream(self, text: str):
         """串流版：逐 token yield LLM 回應，提供給 orchestrator 做分段 TTS"""
-        from src.api.app import _session_store, _llm_caller, _tool_registry
+        from src.services import container
         from src.dm import cart_manager
         from src.dm.system_prompts import build_context_message, SystemPromptBuilder
         from src.dm.session_context import SessionContext
+
+        _session_store = container.session_store
+        _llm_caller = container.llm_caller
+        _tool_registry = container.tool_registry
 
         _tool_registry.set_session_id(self._session_id)
         session = _session_store.get(self._session_id)
@@ -124,9 +128,9 @@ async def voice_chat(
     logger.info("[VOICE] 收到語音請求: session_id={}", session_id)
     audio_bytes = await file.read()
 
-    # 取得服務實例（從 app.py 導入）
-    # 這裡使用延遲導入避免循環依賴
-    from src.api.app import _asr_service
+    # 取得服務實例（從服務容器導入）
+    from src.services import container
+    _asr_service = container.asr_service
 
     # 使用啟動時已載入的 TTS 實例
     streaming_tts = _streaming_tts
