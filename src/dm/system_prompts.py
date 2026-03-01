@@ -126,7 +126,9 @@ class SystemPromptBuilder:
             flags=re.DOTALL
         )
 
+        from src.dm.item_rules import generate_item_logic  # noqa: PLC0415
         content = content.replace("{store_name}", settings.STORE_NAME)
+        content = content.replace("{item_logic}", generate_item_logic())
         self._base_prompt = content.strip()
         return self._base_prompt
 
@@ -135,7 +137,22 @@ class SystemPromptBuilder:
         return """# 常用別名
 - 飯糰：傳統=源味傳統、培根=香燻培根、火腿=風味火腿
 - 飲料：豆=有糖豆漿、清=無糖豆漿、奶=純鮮奶茶、大冰豆=大杯冰有糖豆漿
-- 蛋餅：蛋餅=原味蛋餅、蔬菜蛋餅=高麗菜蛋餅"""
+- 蛋餅：蛋餅=原味蛋餅、蔬菜蛋餅=高麗菜蛋餅
+
+## 點餐決策三步驟
+收到點餐請求時依序執行：
+
+步驟一【解析】辨識品項，含別名/簡稱（參照上方別名表）
+步驟二【核對】確認必填欄位是否齊全：
+  飯糰：口味 + 米種（必填）
+  飲料：品名 + 大小 + 溫度（必填）
+  載體：配料口味 + 載體種類（吐司/漢堡/饅頭，必填）
+  蛋餅：口味（必填）
+  點心/套餐：照記，缺資訊由系統追問
+步驟三【行動】
+  齊全 → call tool
+  有缺 → 一次追問所有缺的欄位，不分開問
+  多品項 → 先 call 齊全的，再追問缺的"""
 
     def _format_session_context(self, session_context: Optional[SessionContext]) -> str:
         """格式化會話上下文信息"""

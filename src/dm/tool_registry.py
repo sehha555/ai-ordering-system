@@ -10,61 +10,10 @@ from src.tools.riceball_tool import FLAVOR_ALIASES as RICEBALL_ALIASES
 from src.tools.drink_tool import DRINK_ALIASES, SIZE_MAP as DRINK_SIZE_MAP, TEMP_MAP as DRINK_TEMP_MAP
 from src.tools.egg_pancake_tool import EggPancakeTool
 from src.tools.snack_tool import SNACK_ALIASES
+from src.dm.item_rules import check_combo_required
 
 # 蛋餅別名
 EGG_PANCAKE_ALIASES = EggPancakeTool.FLAVOR_ALIASES
-
-
-# 套餐必填欄位定義（所有套餐都需要飲料溫度）
-_COMBO_REQUIREMENTS = {
-    "套餐二": {"needs_rice": True},
-    "套餐五": {"needs_mantou_flavor": True},
-    "套餐六": {"needs_noodle_flavor": True},
-    "套餐七": {"needs_noodle_flavor": True},
-    "套餐B": {"needs_toast_flavor": True},
-    "兒童餐": {"needs_jam_flavor": True},
-}
-
-
-def _check_combo_required(
-    combo_name: Optional[str],
-    temp: Optional[str],
-    flavor: Optional[str],
-    rice: Optional[str],
-    customization: Optional[str],
-) -> Optional[str]:
-    """檢查套餐必填欄位，回傳缺少的追問訊息，全齊回 None"""
-    if not combo_name:
-        return "套餐名稱是什麼"
-
-    missing_parts = []
-
-    # 所有套餐都需要飲料溫度
-    if not temp:
-        missing_parts.append("飲料冰的還是溫的")
-
-    # 個別套餐的額外需求
-    reqs = _COMBO_REQUIREMENTS.get(combo_name, {})
-
-    if reqs.get("needs_rice") and not rice:
-        missing_parts.append("飯糰要紫米白米還是混米")
-
-    if reqs.get("needs_mantou_flavor") and not flavor:
-        missing_parts.append("饅頭要什麼口味")
-
-    if reqs.get("needs_noodle_flavor") and not flavor:
-        missing_parts.append("鐵板麵要黑椒蘑菇義大利還是咖哩")
-
-    if reqs.get("needs_toast_flavor") and not flavor:
-        missing_parts.append("厚片要什麼口味 花生巧克力奶酥蒜香草莓")
-
-    if reqs.get("needs_jam_flavor") and not flavor:
-        missing_parts.append("果醬吐司要什麼口味 草莓花生巧克力")
-
-    if not missing_parts:
-        return None
-
-    return " ".join(missing_parts)
 
 
 class ToolRegistry:
@@ -226,7 +175,7 @@ class ToolRegistry:
                 if combo_name:
                     item["combo_name"] = combo_name
                 # 檢查套餐必填欄位
-                missing = _check_combo_required(combo_name, temp, flavor, rice, customization)
+                missing = check_combo_required(combo_name, temp, flavor, rice, customization)
                 if missing:
                     return {"ok": False, "message": missing}
                 # 存入追問答案
