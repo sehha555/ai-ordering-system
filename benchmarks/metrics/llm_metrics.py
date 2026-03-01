@@ -1,16 +1,51 @@
 """LLM 評估指標"""
 
 
-def tool_call_match(actual_calls: list[dict], expected_tools: list[str]) -> dict:
-    """計算工具呼叫的 Precision / Recall / F1
+def _arg_value_matches(expected_val: str, actual_val) -> bool:
+    """參數值子串匹配 — expected 出現在 actual 中就算對"""
+    if actual_val is None:
+        return False
+    return expected_val in str(actual_val)
+
+
+def _match_args(expected_args: dict, actual_args: dict) -> bool:
+    """子集匹配 — expected 中每個 key-value 都必須出現在 actual 中"""
+    for key, expected_val in expected_args.items():
+        actual_val = actual_args.get(key)
+        if isinstance(expected_val, bool):
+            # bool 精確匹配
+            if actual_val is not expected_val and actual_val != expected_val:
+                return False
+        elif isinstance(expected_val, str):
+            if not _arg_value_matches(expected_val, actual_val):
+                return False
+        else:
+            # 數字等其他型別精確匹配
+            if actual_val != expected_val:
+                return False
+    return True
+
+
+def tool_call_match(
+    actual_calls: list[dict],
+    expected_tools: list[str],
+    expected_args: list[dict] | None = None,
+) -> dict:
+    """計算工具呼叫的 Precision / Recall / F1，含參數驗證
+
+    Args:
+        actual_calls: 實際 tool calls [{"name": str, "arguments": dict}, ...]
+        expected_tools: 預期 tool 名稱列表 ["add_to_cart", ...]
+        expected_args: 預期參數列表 [{"name": str, "args": dict}, ...]
+            若提供，會額外驗證參數正確率，最終 f1 = name_f1 * args_score
 
     Returns:
-        {"precision": float, "recall": float, "f1": float}
+        {"precision": float, "recall": float, "f1": float, "args_score": float}
     """
     if not expected_tools:
         if not actual_calls:
-            return {"precision": 1.0, "recall": 1.0, "f1": 1.0}
-        return {"precision": 0.0, "recall": 1.0, "f1": 0.0}
+            return {"precision": 1.0, "recall": 1.0, "f1": 1.0, "args_score": 1.0}
+        return {"precision": 0.0, "recall": 1.0, "f1": 0.0, "args_score": 1.0}
 
     actual_names = {tc["name"] for tc in actual_calls}
     expected_set = set(expected_tools)
@@ -18,9 +53,29 @@ def tool_call_match(actual_calls: list[dict], expected_tools: list[str]) -> dict
 
     precision = len(matched) / len(actual_names) if actual_names else 0.0
     recall = len(matched) / len(expected_set)
-    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+    name_f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
 
-    return {"precision": precision, "recall": recall, "f1": f1}
+    # 參數驗證
+    args_score = 1.0
+    if expected_args:
+        # 貪心匹配：每個 expected 找 actual 中 name 相同且 args 命中的
+        remaining_actual = list(actual_calls)
+        matched_count = 0
+        for exp in expected_args:
+            exp_name = exp["name"]
+            exp_args = exp.get("args", {})
+            for i, act in enumerate(remaining_actual):
+                if act["name"] == exp_name:
+                    actual_arguments = act.get("arguments", {})
+                    if _match_args(exp_args, actual_arguments):
+                        matched_count += 1
+                        remaining_actual.pop(i)
+                        break
+        args_score = matched_count / len(expected_args)
+
+    f1 = name_f1 * args_score
+
+    return {"precision": precision, "recall": recall, "f1": f1, "args_score": args_score}
 
 
 def response_quality_check(response: str, expected_contains: list[str]) -> float:
@@ -74,6 +129,7 @@ def compute_llm_metrics(test_cases: list[dict], test_data: list[dict], pass_thre
         case_data = expected_map.get(case["case_id"], {})
         expected_tools = case_data.get("expected_tools", [])
         expected_contains = case_data.get("expected_response_contains", [])
+        case_expected_args = case_data.get("expected_args", None)
         case_passed = False
         case_fail_reason = None
 
@@ -88,7 +144,7 @@ def compute_llm_metrics(test_cases: list[dict], test_data: list[dict], pass_thre
                 total_prompt_tokens += run.get("prompt_tokens", 0)
                 total_completion_tokens += run.get("completion_tokens", 0)
 
-                scores = tool_call_match(run.get("tool_calls", []), expected_tools)
+                scores = tool_call_match(run.get("tool_calls", []), expected_tools, case_expected_args)
                 total_f1 += scores["f1"]
                 total_precision += scores["precision"]
                 total_recall += scores["recall"]

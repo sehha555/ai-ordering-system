@@ -14,6 +14,7 @@
     "category": "basic",
     "messages": [{"role": "user", "content": "兩個玉米蛋餅"}],
     "expected_tools": ["add_to_cart"],
+    "expected_args": [{"name": "add_to_cart", "args": {"item_type": "egg_pancake", "flavor": "玉米蛋餅"}}],
     "expected_response_contains": ["蛋餅"],
     "expected_behavior": "口味齊全應直接 call add_to_cart(egg_pancake, 玉米, qty=2)"
   },
@@ -32,6 +33,7 @@
     "category": "basic",
     "messages": [{"role": "user", "content": "一杯大冰紅茶"}],
     "expected_tools": ["add_to_cart"],
+    "expected_args": [{"name": "add_to_cart", "args": {"item_type": "drink", "flavor": "紅茶", "size": "大杯", "temp": "冰"}}],
     "expected_response_contains": ["紅茶"],
     "expected_behavior": "規格齊全應直接 call add_to_cart(drink, 紅茶, 大, 冰)"
   },
@@ -50,6 +52,7 @@
     "category": "basic",
     "messages": [{"role": "user", "content": "一個蘿蔔糕加蛋"}],
     "expected_tools": ["add_to_cart"],
+    "expected_args": [{"name": "add_to_cart", "args": {"item_type": "snack", "flavor": "蘿蔔糕加蛋"}}],
     "expected_response_contains": ["蘿蔔糕"],
     "expected_behavior": "點心照記不追問，直接 call add_to_cart"
   },
@@ -59,6 +62,7 @@
     "category": "basic",
     "messages": [{"role": "user", "content": "兩份薯餅"}],
     "expected_tools": ["add_to_cart"],
+    "expected_args": [{"name": "add_to_cart", "args": {"item_type": "snack", "flavor": "薯餅"}}],
     "expected_response_contains": ["薯餅"],
     "expected_behavior": "點心照記不追問，直接 call add_to_cart(snack, 薯餅, qty=2)"
   },
@@ -68,6 +72,7 @@
     "category": "query",
     "messages": [{"role": "user", "content": "你們有賣什麼飲料"}],
     "expected_tools": ["query_menu"],
+    "expected_args": [{"name": "query_menu", "args": {"category": "飲品"}}],
     "expected_response_contains": ["飲"],
     "expected_behavior": "應調用 query_menu(category=飲品) 查詢"
   },
@@ -78,6 +83,7 @@
     "category": "basic",
     "messages": [{"role": "user", "content": "一個鮪魚飯糰 紫米 加辣"}],
     "expected_tools": ["add_to_cart"],
+    "expected_args": [{"name": "add_to_cart", "args": {"item_type": "riceball", "flavor": "鮪魚", "rice": "紫米", "spicy": true}}],
     "expected_response_contains": ["鮪魚"],
     "expected_behavior": "資訊齊全應直接 call add_to_cart(riceball, 鮪魚, 紫米, spicy=true)"
   },
@@ -100,6 +106,7 @@
       {"role": "user", "content": "紫米"}
     ],
     "expected_tools": ["add_to_cart"],
+    "expected_args": [{"name": "add_to_cart", "args": {"item_type": "riceball", "flavor": "源味傳統", "rice": "紫米"}}],
     "expected_response_contains": ["飯糰"],
     "expected_behavior": "米種補齊後，預設不加辣，應 call add_to_cart 或追問辣菜脯"
   },
@@ -115,6 +122,7 @@
       {"role": "user", "content": "好"}
     ],
     "expected_tools": ["add_to_cart"],
+    "expected_args": [{"name": "add_to_cart", "args": {"item_type": "riceball", "flavor": "源味傳統", "rice": "紫米", "spicy": true}}],
     "expected_response_contains": ["飯糰"],
     "expected_behavior": "全部資訊補齊後應 call add_to_cart(riceball, 源味傳統, 紫米, spicy=true)"
   },
@@ -138,6 +146,7 @@
       {"role": "user", "content": "吐司"}
     ],
     "expected_tools": ["add_to_cart"],
+    "expected_args": [{"name": "add_to_cart", "args": {"item_type": "carrier", "carrier": "吐司", "flavor": "起司蛋"}}],
     "expected_response_contains": ["吐司"],
     "expected_behavior": "載體補齊後應 call add_to_cart(carrier, 吐司, 起司蛋)"
   },
@@ -147,6 +156,7 @@
     "category": "basic",
     "messages": [{"role": "user", "content": "一個火腿蛋漢堡"}],
     "expected_tools": ["add_to_cart"],
+    "expected_args": [{"name": "add_to_cart", "args": {"item_type": "carrier", "carrier": "漢堡", "flavor": "火腿蛋"}}],
     "expected_response_contains": ["漢堡"],
     "expected_behavior": "載體明確應直接 call add_to_cart(carrier, 漢堡, 火腿蛋)"
   },
@@ -157,6 +167,7 @@
     "category": "intent",
     "messages": [{"role": "user", "content": "兩個蘑菇麵"}],
     "expected_tools": ["add_to_cart"],
+    "expected_args": [{"name": "add_to_cart", "args": {"item_type": "snack", "flavor": "蘑菇"}}],
     "expected_response_contains": ["蘑菇"],
     "expected_behavior": "理解蘑菇麵=蘑菇鐵板麵，call add_to_cart(鐵板麵, 蘑菇, qty=2)"
   },
@@ -166,6 +177,7 @@
     "category": "intent",
     "messages": [{"role": "user", "content": "三個抓餅加蛋"}],
     "expected_tools": ["add_to_cart"],
+    "expected_args": [{"name": "add_to_cart", "args": {"item_type": "snack", "flavor": "蔥抓餅"}}],
     "expected_response_contains": ["抓餅"],
     "expected_behavior": "理解抓餅=蔥抓餅，call add_to_cart(蔥抓餅加蛋, qty=3)"
   },
@@ -184,6 +196,7 @@
     "category": "intent",
     "messages": [{"role": "user", "content": "大冰奶"}],
     "expected_tools": ["add_to_cart"],
+    "expected_args": [{"name": "add_to_cart", "args": {"item_type": "drink", "flavor": "奶茶", "size": "大杯", "temp": "冰"}}],
     "expected_response_contains": ["奶"],
     "expected_behavior": "理解大冰奶=大杯冰奶茶，call add_to_cart(drink, 奶茶, 大, 冰)"
   },
@@ -193,6 +206,7 @@
     "category": "intent",
     "messages": [{"role": "user", "content": "一杯中溫豆漿"}],
     "expected_tools": ["add_to_cart"],
+    "expected_args": [{"name": "add_to_cart", "args": {"item_type": "drink", "flavor": "豆漿", "size": "中杯", "temp": "溫"}}],
     "expected_response_contains": ["豆漿"],
     "expected_behavior": "理解中溫豆漿=中杯溫有糖豆漿，call add_to_cart(drink, 有糖豆漿, 中, 溫)"
   },
@@ -216,6 +230,7 @@
       {"role": "user", "content": "黑糖"}
     ],
     "expected_tools": ["add_to_cart"],
+    "expected_args": [{"name": "add_to_cart", "args": {"item_type": "carrier", "carrier": "饅頭"}}],
     "expected_response_contains": ["饅頭"],
     "expected_behavior": "理解黑糖=黑饅頭口味，call add_to_cart(carrier, 饅頭, 黑糖夾蛋)"
   },
@@ -239,6 +254,11 @@
       {"role": "user", "content": "豆漿大杯一冰一溫 奶茶大冰"}
     ],
     "expected_tools": ["add_to_cart"],
+    "expected_args": [
+      {"name": "add_to_cart", "args": {"item_type": "drink", "flavor": "豆漿", "size": "大杯", "temp": "冰"}},
+      {"name": "add_to_cart", "args": {"item_type": "drink", "flavor": "豆漿", "size": "大杯", "temp": "溫"}},
+      {"name": "add_to_cart", "args": {"item_type": "drink", "flavor": "奶茶", "size": "大", "temp": "冰"}}
+    ],
     "expected_response_contains": ["豆漿", "奶茶"],
     "expected_behavior": "規格補齊後 call add_to_cart ×3（兩杯豆漿+一杯奶茶）"
   },
@@ -252,6 +272,10 @@
       {"role": "user", "content": "一杯大冰 一杯中溫"}
     ],
     "expected_tools": ["add_to_cart"],
+    "expected_args": [
+      {"name": "add_to_cart", "args": {"item_type": "drink", "flavor": "豆漿", "size": "大杯", "temp": "冰"}},
+      {"name": "add_to_cart", "args": {"item_type": "drink", "flavor": "豆漿", "size": "中杯", "temp": "溫"}}
+    ],
     "expected_response_contains": ["豆漿"],
     "expected_behavior": "客人分別指定規格後 call add_to_cart ×2"
   },
@@ -262,6 +286,7 @@
     "category": "combo",
     "messages": [{"role": "user", "content": "一個套餐一"}],
     "expected_tools": ["add_to_cart"],
+    "expected_args": [{"name": "add_to_cart", "args": {"item_type": "combo", "combo_name": "套餐一"}}],
     "expected_response_contains": ["冰", "溫"],
     "expected_behavior": "模型 call add_to_cart，系統回 ok:false 追問飲料溫度"
   },
@@ -271,6 +296,7 @@
     "category": "combo",
     "messages": [{"role": "user", "content": "一個四號餐"}],
     "expected_tools": ["add_to_cart"],
+    "expected_args": [{"name": "add_to_cart", "args": {"item_type": "combo", "combo_name": "套餐四"}}],
     "expected_response_contains": ["冰", "溫"],
     "expected_behavior": "理解四號餐=套餐四，call add_to_cart 後系統回 ok:false 追問溫度"
   },
@@ -284,6 +310,7 @@
       {"role": "user", "content": "花生 冰的"}
     ],
     "expected_tools": ["add_to_cart"],
+    "expected_args": [{"name": "add_to_cart", "args": {"item_type": "combo", "combo_name": "套餐B"}}],
     "expected_response_contains": ["套餐"],
     "expected_behavior": "厚片口味+飲料溫度補齊後 call add_to_cart(combo, 套餐B, 花生, 冰)"
   },
@@ -297,6 +324,7 @@
       {"role": "user", "content": "紫米 溫的"}
     ],
     "expected_tools": ["add_to_cart"],
+    "expected_args": [{"name": "add_to_cart", "args": {"item_type": "combo", "combo_name": "套餐二"}}],
     "expected_response_contains": ["套餐"],
     "expected_behavior": "米種+飲料溫度補齊後 call add_to_cart(combo, 套餐二, 紫米, 溫)"
   },
@@ -306,6 +334,7 @@
     "category": "combo",
     "messages": [{"role": "user", "content": "套餐三 飲料換大冰豆漿"}],
     "expected_tools": ["add_to_cart"],
+    "expected_args": [{"name": "add_to_cart", "args": {"item_type": "combo", "combo_name": "套餐三"}}],
     "expected_response_contains": ["套餐三"],
     "expected_behavior": "套餐三原本含鮮奶茶(大)，飲料換成大冰豆漿應記錄客製化"
   },
@@ -335,6 +364,7 @@
       {"role": "user", "content": "現金"}
     ],
     "expected_tools": ["finalize_order"],
+    "expected_args": [{"name": "finalize_order", "args": {"dine_type": "外帶", "payment_method": "現金"}}],
     "expected_response_contains": ["號"],
     "expected_behavior": "內用外帶+付款方式齊全後 call finalize_order(外帶, 現金)"
   },
@@ -384,6 +414,7 @@
     "category": "intent",
     "messages": [{"role": "user", "content": "一個起絲蛋兵"}],
     "expected_tools": ["add_to_cart"],
+    "expected_args": [{"name": "add_to_cart", "args": {"item_type": "egg_pancake", "flavor": "起司"}}],
     "expected_response_contains": ["蛋餅"],
     "expected_behavior": "理解起絲=起司、蛋兵=蛋餅，正常處理 call add_to_cart"
   },
@@ -394,6 +425,10 @@
     "category": "complex",
     "messages": [{"role": "user", "content": "兩個玉米蛋餅 一個起司蛋 三個抓餅加蛋"}],
     "expected_tools": ["add_to_cart"],
+    "expected_args": [
+      {"name": "add_to_cart", "args": {"item_type": "egg_pancake", "flavor": "玉米蛋餅"}},
+      {"name": "add_to_cart", "args": {"item_type": "snack", "flavor": "蔥抓餅"}}
+    ],
     "expected_response_contains": ["吐司", "漢堡"],
     "expected_behavior": "玉米蛋餅+抓餅 call add_to_cart，起司蛋缺載體應追問吐司還是漢堡"
   },
@@ -425,6 +460,7 @@
       {"role": "user", "content": "現金"}
     ],
     "expected_tools": ["finalize_order"],
+    "expected_args": [{"name": "finalize_order", "args": {"dine_type": "內用", "payment_method": "現金"}}],
     "expected_response_contains": ["號"],
     "expected_behavior": "完整走完結帳流程，call finalize_order(內用, 現金)"
   },
@@ -446,6 +482,7 @@
       {"role": "user", "content": "行動支付"}
     ],
     "expected_tools": ["finalize_order"],
+    "expected_args": [{"name": "finalize_order", "args": {"dine_type": "外帶", "payment_method": "行動"}}],
     "expected_response_contains": ["號"],
     "expected_behavior": "全部品項正確處理，最後 call finalize_order(外帶, 行動支付)"
   },
@@ -461,6 +498,7 @@
       {"role": "user", "content": "那再一杯大冰豆漿 就這樣"}
     ],
     "expected_tools": ["add_to_cart"],
+    "expected_args": [{"name": "add_to_cart", "args": {"item_type": "drink", "flavor": "豆漿", "size": "大杯", "temp": "冰"}}],
     "expected_response_contains": ["豆漿"],
     "expected_behavior": "離題時引導回來，客人回到點餐後正常處理豆漿並問內用外帶"
   }
