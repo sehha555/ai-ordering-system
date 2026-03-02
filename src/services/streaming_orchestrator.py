@@ -16,8 +16,10 @@ _CONV_LOG_DIR = Path(__file__).resolve().parents[2] / "logs" / "conversations"
 _SAFE_ID_RE = _re.compile(r'[^\w\-]')
 
 
-def _append_turn_log(session_id: str, turn: dict) -> None:
+def _append_turn_log(session_id: str | None, turn: dict) -> None:
     """將單輪對話 trace append 到 session 的 JSONL 檔"""
+    if not session_id:
+        return
     _CONV_LOG_DIR.mkdir(parents=True, exist_ok=True)
     safe_id = _SAFE_ID_RE.sub('_', session_id)
     path = _CONV_LOG_DIR / f"{safe_id}.jsonl"
