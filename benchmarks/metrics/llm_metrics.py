@@ -1,4 +1,5 @@
 """LLM 評估指標"""
+from collections import Counter
 
 
 def _arg_value_matches(expected_val: str, actual_val) -> bool:
@@ -47,12 +48,13 @@ def tool_call_match(
             return {"precision": 1.0, "recall": 1.0, "f1": 1.0, "args_score": 1.0}
         return {"precision": 0.0, "recall": 1.0, "f1": 0.0, "args_score": 1.0}
 
-    actual_names = {tc["name"] for tc in actual_calls}
-    expected_set = set(expected_tools)
-    matched = actual_names & expected_set
+    # 用 Counter（multiset）計數，避免 set 去重導致 3 次 add_to_cart 被算成 1 次
+    actual_counter = Counter(tc["name"] for tc in actual_calls)
+    expected_counter = Counter(expected_tools)
+    matched_count = sum((actual_counter & expected_counter).values())
 
-    precision = len(matched) / len(actual_names) if actual_names else 0.0
-    recall = len(matched) / len(expected_set)
+    precision = matched_count / sum(actual_counter.values()) if actual_counter else 0.0
+    recall = matched_count / sum(expected_counter.values())
     name_f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
 
     # 參數驗證

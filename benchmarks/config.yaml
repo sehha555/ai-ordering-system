@@ -45,7 +45,7 @@ llm:
       adapter: openai_compatible
       params:
         base_url: "http://127.0.0.1:1234/v1"
-        model: "qwen/qwen3-30b-a3b-2507"
+        model: "qwen3-30b-a3b"
         temperature: 0.0
     - id: qwen3-14b
       name: "Qwen3-14B"
@@ -67,6 +67,6 @@ e2e:
 
 benchmark:
   repeat: 1        # 每個測試案例跑幾次取平均（快速模式用 1）
-  timeout: 60      # 單次測試超時秒數
+  timeout: 120     # 單次測試超時秒數（tool call loop 最多 4 步，每步 ~15s）
   concurrency: 2   # 平行 workers 數（--workers 未指定時讀此值）
   output_dir: reports
