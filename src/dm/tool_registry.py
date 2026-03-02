@@ -610,6 +610,7 @@ class ToolRegistry:
                             },
                             "size": {
                                 "type": "string",
+                                "enum": ["中杯", "大杯", "薄片", "厚片"],
                                 "description": "飲料杯型(中杯/大杯)或果醬吐司厚度(薄片/厚片)",
                             },
                             "temp": {
@@ -624,7 +625,8 @@ class ToolRegistry:
                             },
                             "combo_name": {
                                 "type": "string",
-                                "description": "套餐名稱如：套餐一、套餐A、兒童餐 - 套餐專用",
+                                "enum": ["套餐一", "套餐二", "套餐三", "套餐四", "套餐A", "套餐B", "兒童餐"],
+                                "description": "套餐名稱 - 套餐專用",
                             },
                             "quantity": {
                                 "type": "integer",
