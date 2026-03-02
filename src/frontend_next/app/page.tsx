@@ -1,136 +1,135 @@
 'use client';
 
 import { useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { useStore } from '../store/useStore';
 import VoiceController from '../components/VoiceController';
 import AudioVisualizer from '../components/AudioVisualizer';
-import LiveReceipt from '../components/LiveReceipt';
 import CheckoutFlow from '../components/CheckoutFlow';
 import Toast from '../components/Toast';
 
 export default function Home() {
-  const { checkoutStep, cart, status, vadEnabled } = useStore();
+  const { checkoutStep, cart, total, status, vadEnabled, setCheckoutStep } = useStore();
   const hasItems = cart.length > 0;
 
-  // VoiceController 暴露的 handleClick ref（push-to-talk 模式）
   const triggerRef = useRef<(() => void) | null>(null);
-
-  const handleLargeVisualizerClick = () => {
-    triggerRef.current?.();
-  };
+  const handleVisualizerClick = () => { triggerRef.current?.(); };
 
   return (
-    <div className="h-screen w-screen flex flex-col overflow-hidden" style={{ backgroundColor: '#f0f5f7' }}>
-      <Toast />
+    <LayoutGroup>
+      <div className="h-screen w-screen flex flex-col overflow-hidden" style={{ backgroundColor: '#f0f5f7' }}>
+        <Toast />
 
-      {/* Header */}
-      <header
-        className="flex items-center justify-between px-6 py-3 shrink-0"
-        style={{
-          backgroundColor: '#ffffff',
-          borderBottom: '1px solid #d0dce0',
-        }}
-      >
-        <div className="flex items-center gap-2">
-          {/* 小波形：只在 active（有購物車品項）時顯示 */}
-          <AnimatePresence>
-            {hasItems && (
-              <motion.div
-                key="header-viz"
-                layoutId="voice-viz"
-                initial={{ opacity: 0, width: 0 }}
-                animate={{ opacity: 1, width: 40 }}
-                exit={{ opacity: 0, width: 0 }}
-                transition={{ duration: 0.4, ease: 'easeInOut' }}
-                className="shrink-0 overflow-hidden"
-              >
-                <AudioVisualizer status={status} size="small" />
-              </motion.div>
-            )}
-          </AnimatePresence>
+        {/* Header */}
+        <header
+          className="flex items-center justify-between px-5 py-3 shrink-0"
+          style={{ backgroundColor: '#ffffff', borderBottom: '1px solid #d0dce0' }}
+        >
+          <div className="flex items-center gap-2">
+            {/* 小球：有品項時出現在左上角 */}
+            <AnimatePresence>
+              {hasItems && (
+                <motion.div
+                  key="header-viz"
+                  layoutId="voice-viz"
+                  className="shrink-0 overflow-hidden cursor-pointer"
+                  onClick={handleVisualizerClick}
+                  initial={{ opacity: 0, width: 0 }}
+                  animate={{ opacity: 1, width: 40 }}
+                  exit={{ opacity: 0, width: 0 }}
+                  transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
+                >
+                  <AudioVisualizer status={status} size="small" />
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-          <span className="text-2xl leading-none">🍙</span>
-          <h1
-            className="text-xl font-bold leading-none"
-            style={{
-              background: 'linear-gradient(90deg, #729DAD, #8fb3c0)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-            }}
-          >
-            源飯糰
-          </h1>
+            <span className="text-2xl leading-none">🍙</span>
+            <h1
+              className="text-xl font-bold leading-none"
+              style={{
+                background: 'linear-gradient(90deg, #729DAD, #8fb3c0)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}
+            >
+              源飯糰
+            </h1>
+          </div>
+          <p className="text-sm" style={{ color: '#5a6b70' }}>語音點餐系統</p>
+        </header>
+
+        {/* 主內容區 */}
+        <div className="flex-1 overflow-hidden relative">
+          {checkoutStep > 0 ? (
+            <CheckoutFlow />
+          ) : (
+            <>
+              {/* 大球：沒有品項時置中 */}
+              <AnimatePresence>
+                {!hasItems && (
+                  <motion.div
+                    key="center-view"
+                    className="absolute inset-0 flex flex-col items-center justify-center gap-4"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.3 }}
+                  >
+                    <motion.div
+                      layoutId="voice-viz"
+                      className="cursor-pointer"
+                      onClick={handleVisualizerClick}
+                      transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
+                    >
+                      <AudioVisualizer status={status} size="large" />
+                    </motion.div>
+                    <p className="text-sm" style={{ color: '#8a9a9f' }}>
+                      {vadEnabled ? '語音自動偵測已啟用，請直接說話' : '點擊或按空白鍵開始說話'}
+                    </p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* 點餐單：有品項時顯示 */}
+              <AnimatePresence>
+                {hasItems && (
+                  <motion.div
+                    key="order-view"
+                    className="h-full flex flex-col overflow-hidden"
+                    initial={{ opacity: 0, y: 30 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 30 }}
+                    transition={{ duration: 0.4, delay: 0.15 }}
+                  >
+                    <AiReplyBanner />
+
+                    <div className="flex-1 overflow-y-auto px-4 py-4">
+                      <OrderTicket
+                        items={cart}
+                        total={total}
+                        onCheckout={() => setCheckoutStep(1)}
+                      />
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </>
+          )}
         </div>
 
-        <p className="text-sm" style={{ color: '#5a6b70' }}>語音點餐系統</p>
-      </header>
-
-      {/* 主內容區 */}
-      <div className="flex-1 overflow-hidden">
-        {checkoutStep > 0 ? (
-          <CheckoutFlow />
-        ) : (
-          <AnimatePresence mode="wait">
-            {!hasItems ? (
-              /* Idle 畫面：大波形置中 */
-              <motion.div
-                key="idle-view"
-                className="h-full flex flex-col items-center justify-center gap-4"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.3 }}
-              >
-                <motion.div
-                  layoutId="voice-viz"
-                  className="cursor-pointer"
-                  onClick={handleLargeVisualizerClick}
-                  transition={{ duration: 0.4, ease: 'easeInOut' }}
-                >
-                  <AudioVisualizer status={status} size="large" />
-                </motion.div>
-
-                <p
-                  className="text-sm"
-                  style={{ color: '#8a9a9f' }}
-                >
-                  {vadEnabled ? '語音自動偵測已啟用，請直接說話' : '點擊或按空白鍵開始說話'}
-                </p>
-              </motion.div>
-            ) : (
-              /* Active 畫面：AI 回覆 Banner + 購物車 */
-              <motion.div
-                key="active-view"
-                className="h-full flex flex-col overflow-hidden"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.3 }}
-              >
-                <AiReplyBanner />
-
-                <div className="flex-1 overflow-y-auto px-6 py-4">
-                  <LiveReceipt />
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        )}
+        {/* 隱藏的 VoiceController */}
+        <div className="hidden">
+          <VoiceController triggerRef={triggerRef} />
+        </div>
       </div>
-
-      {/* 隱藏的 VoiceController：保留所有邏輯，triggerRef 暴露 handleClick */}
-      <div className="hidden">
-        <VoiceController triggerRef={triggerRef} />
-      </div>
-    </div>
+    </LayoutGroup>
   );
 }
 
-/* AI 回覆 Banner */
+/* ─── AI 回覆 Banner ─── */
 function AiReplyBanner() {
   const { aiReply, status } = useStore();
-
   const isVisible = Boolean(aiReply) && (status === 'speaking' || status === 'processing');
 
   return (
@@ -142,7 +141,7 @@ function AiReplyBanner() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -8 }}
           transition={{ duration: 0.25 }}
-          className="mx-6 mt-4 px-5 py-3 rounded-2xl text-base"
+          className="mx-4 mt-3 px-5 py-3 rounded-2xl text-base"
           style={{
             backgroundColor: 'rgba(114, 157, 173, 0.12)',
             color: '#3a5560',
@@ -153,5 +152,110 @@ function AiReplyBanner() {
         </motion.div>
       )}
     </AnimatePresence>
+  );
+}
+
+/* ─── 點餐單（後台風格）─── */
+interface CartItem {
+  name: string;
+  details: string;
+  price: number;
+  quantity: number;
+}
+
+function OrderTicket({
+  items,
+  total,
+  onCheckout,
+}: {
+  items: CartItem[];
+  total: number;
+  onCheckout: () => void;
+}) {
+  return (
+    <div
+      className="rounded-2xl overflow-hidden"
+      style={{
+        backgroundColor: 'white',
+        border: '1px solid #d0dce0',
+        borderLeft: '5px solid #729DAD',
+        boxShadow: '0 2px 16px rgba(114, 157, 173, 0.12)',
+      }}
+    >
+      {/* 標題 */}
+      <div
+        className="px-6 py-5 flex items-center justify-between"
+        style={{ borderBottom: '1px solid #e8eef0' }}
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-3xl font-black" style={{ color: '#2c3e42' }}>
+            點餐中
+          </span>
+          <span
+            className="text-sm font-semibold px-3 py-1 rounded-full"
+            style={{ backgroundColor: '#e8f7ee', color: '#4a9d68' }}
+          >
+            {items.reduce((sum, i) => sum + i.quantity, 0)} 品項
+          </span>
+        </div>
+      </div>
+
+      {/* 品項列表 */}
+      <div className="px-6 py-2">
+        <AnimatePresence mode="popLayout">
+          {items.map((item, index) => (
+            <motion.div
+              key={`${item.name}-${index}`}
+              initial={{ opacity: 0, x: 24 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -24 }}
+              transition={{ duration: 0.25 }}
+            >
+              <div className="flex justify-between items-center py-4">
+                <div className="flex-1 pr-4">
+                  <p className="text-xl font-semibold" style={{ color: '#2c3e42' }}>
+                    {item.name}
+                  </p>
+                  {item.details && (
+                    <p className="text-base mt-1" style={{ color: '#5a6b70' }}>
+                      {item.details}
+                    </p>
+                  )}
+                </div>
+                <div className="text-right shrink-0 flex items-center gap-4">
+                  <span className="text-base font-medium" style={{ color: '#8a9a9f' }}>
+                    ×{item.quantity}
+                  </span>
+                  <span className="text-xl font-bold" style={{ color: '#2c3e42' }}>
+                    ${item.price}
+                  </span>
+                </div>
+              </div>
+              {index < items.length - 1 && (
+                <div style={{ borderBottom: '1px solid #e8eef0' }} />
+              )}
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+
+      {/* 總計 + 結帳 */}
+      <div
+        className="px-6 py-5"
+        style={{ borderTop: '1px solid #d0dce0', background: 'linear-gradient(180deg, #f8fafb 0%, #f0f5f7 100%)' }}
+      >
+        <div className="flex justify-between items-center mb-5">
+          <span className="text-lg font-semibold" style={{ color: '#5a6b70' }}>合計</span>
+          <span className="font-black" style={{ fontSize: '2rem', color: '#729DAD' }}>${total}</span>
+        </div>
+        <button
+          onClick={onCheckout}
+          className="w-full py-4 rounded-xl text-lg font-semibold text-white transition-opacity hover:opacity-90 active:opacity-80"
+          style={{ backgroundColor: '#729DAD' }}
+        >
+          結帳
+        </button>
+      </div>
+    </div>
   );
 }
