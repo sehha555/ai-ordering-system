@@ -11,6 +11,8 @@ from src.tools.drink_tool import DRINK_ALIASES, SIZE_MAP as DRINK_SIZE_MAP, TEMP
 from src.tools.egg_pancake_tool import EggPancakeTool
 from src.tools.snack_tool import SNACK_ALIASES
 from src.dm.item_rules import check_combo_required
+import asyncio
+from src.api.order_broadcaster import order_broadcaster, format_order_for_admin
 
 # 蛋餅別名
 EGG_PANCAKE_ALIASES = EggPancakeTool.FLAVOR_ALIASES
@@ -544,12 +546,21 @@ class ToolRegistry:
                 "items": cart,
                 "items_display": items_payload,
                 "total_price": total_price,
-                "status": "submitted",
+                "status": "SUBMITTED",
                 "created_at": datetime.now().isoformat(),
             }
 
             # 寫入 DB
             order_repo.save_order(order_payload, self._session_id)
+
+            # SSE 廣播到 admin 訂單頁面
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(
+                    order_broadcaster.broadcast(format_order_for_admin(order_payload))
+                )
+            except RuntimeError:
+                pass  # 沒有 running loop（CLI 模式）
 
             # 儲存對話紀錄
             llm_history = session.get("llm_history", [])

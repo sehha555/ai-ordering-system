@@ -10,13 +10,17 @@
 
 import json
 import os
-from typing import Optional
+from datetime import datetime
+from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from src.tools.menu import menu_state_service
 from src.config.menu_constants import build_menu_categories
+from src.repository.order_repository import order_repo
+from src.api.order_broadcaster import order_broadcaster, format_order_for_admin
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -168,3 +172,59 @@ async def update_open_override(body: OpenOverrideRequest):
     """
     menu_state_service.set_open_override(body.override)
     return {"ok": True, "override": body.override}
+
+
+# ── 訂單管理端點 ─────────────────────────────────────────────────────────
+
+
+class StatusUpdateRequest(BaseModel):
+    """訂單狀態更新請求"""
+    status: Literal["SUBMITTED", "IN_PROGRESS", "COMPLETED"]
+
+
+class PaymentUpdateRequest(BaseModel):
+    """付款狀態更新請求"""
+    payment_status: Literal["UNPAID", "PAID"]
+
+
+@router.get("/orders/list")
+async def list_orders(date: Optional[str] = None):
+    """今日訂單列表。可透過 ?date=YYYY-MM-DD 查指定日期。"""
+    if date is None:
+        date = datetime.now().strftime("%Y-%m-%d")
+    raw_orders = order_repo.list_orders(date=date)
+    return {"items": [format_order_for_admin(o) for o in raw_orders]}
+
+
+@router.get("/orders/stream")
+async def order_stream():
+    """SSE 即時推送新訂單。"""
+    return StreamingResponse(
+        order_broadcaster.subscribe(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.patch("/orders/{order_id}/status")
+async def update_order_status(order_id: str, body: StatusUpdateRequest):
+    """更新訂單狀態（SUBMITTED / IN_PROGRESS / COMPLETED）。"""
+    try:
+        order_repo.update_status(order_id, body.status)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"ok": True, "order_id": order_id, "status": body.status}
+
+
+@router.patch("/orders/{order_id}/payment")
+async def update_order_payment(order_id: str, body: PaymentUpdateRequest):
+    """更新付款狀態（UNPAID / PAID）。"""
+    try:
+        order_repo.update_payment_status(order_id, body.payment_status)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"ok": True, "order_id": order_id, "payment_status": body.payment_status}

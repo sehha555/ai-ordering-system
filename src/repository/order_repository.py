@@ -108,6 +108,26 @@ class OrderRepository:
             next_num = (row["cnt"] or 0) + 1
             return f"{next_num:02d}"
 
+    def update_status(self, order_id: str, status: str):
+        """更新訂單狀態（DB status 欄位 + order_payload_json 內的 status）"""
+        with self._connection() as conn:
+            result = conn.execute(
+                "UPDATE orders SET status = ?, order_payload_json = json_set(order_payload_json, '$.status', ?) WHERE order_id = ?",
+                (status, status, order_id),
+            )
+            if result.rowcount == 0:
+                raise ValueError(f"訂單不存在：{order_id}")
+
+    def update_payment_status(self, order_id: str, payment_status: str):
+        """更新 order_payload_json 內的 payment_status 欄位"""
+        with self._connection() as conn:
+            result = conn.execute(
+                "UPDATE orders SET order_payload_json = json_set(order_payload_json, '$.payment_status', ?) WHERE order_id = ?",
+                (payment_status, order_id),
+            )
+            if result.rowcount == 0:
+                raise ValueError(f"訂單不存在：{order_id}")
+
     def save_conversation_log(self, session_id: str, order_number: str, messages: List[Dict[str, Any]]):
         """保存對話紀錄到 SQLite"""
         with self._connection() as conn:
