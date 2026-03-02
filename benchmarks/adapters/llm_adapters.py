@@ -58,13 +58,37 @@ def _build_registry():
     return ToolRegistry(dm, store)
 
 
+def _format_tools_for_text_mode(tools_schema: list[dict]) -> str:
+    """將 tools schema 格式化為 Qwen3 原生 <tools> 文字（text mode 用）"""
+    lines = [
+        "\n# Tools\n",
+        "You may call one or more functions to assist with the user query.\n",
+        "You are provided with function signatures within <tools></tools> XML tags:",
+        "<tools>",
+    ]
+    for tool in tools_schema:
+        lines.append(json.dumps(tool, ensure_ascii=False))
+    lines.append("</tools>\n")
+    lines.append(
+        "For each function call, return a json object with function name and arguments "
+        "within <tool_call></tool_call> XML tags:\n"
+        "<tool_call>\n"
+        '{"name": <function-name>, "arguments": <args-json-object>}\n'
+        "</tool_call>"
+    )
+    return "\n".join(lines)
+
+
 def _load_static_context():
     """載入靜態 context（system prompt、tools schema）— 可跨 test case 快取"""
     from src.dm.system_prompts import build_system_prompt
 
     system_prompt = build_system_prompt()
     registry = _build_registry()
-    return system_prompt, registry.get_tools_schema()
+    tools_schema = registry.get_tools_schema()
+    # Text mode：tools schema 嵌入 system prompt，不透過 API tools 參數
+    system_prompt_with_tools = system_prompt + _format_tools_for_text_mode(tools_schema)
+    return system_prompt_with_tools, tools_schema
 
 
 def _create_fresh_tool_context():
@@ -176,7 +200,7 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
 
         messages.extend(test_messages)
 
-        tools = test_case.get("tools", self._tools_schema)
+        # Text mode：不送 tools 參數，schema 已嵌入 system prompt
         all_tool_calls = []
         total_tokens = 0
         total_prompt_tokens = 0
@@ -191,9 +215,7 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
                     "messages": messages,
                     "temperature": temperature,
                 }
-                if tools:
-                    payload["tools"] = tools
-                    payload["tool_choice"] = "auto"
+                # Text mode：不送 tools/tool_choice，模型用 <tool_call> 文字輸出
 
                 logger.debug("LLM request step=%d | model=%s | messages=%d",
                              _step, model, len(messages))
@@ -226,24 +248,15 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
                 )
                 response_text = self._clean_response(message, raw_objs)
 
-                # 把 assistant message 加入 messages
-                if message.get("tool_calls"):
-                    messages.append({
-                        "role": "assistant",
-                        "content": message.get("content"),
-                        "tool_calls": message["tool_calls"],
-                    })
-                else:
-                    messages.append({"role": "assistant", "content": message.get("content")})
+                # 把 assistant message 加入 messages（原始 content）
+                messages.append({"role": "assistant", "content": message.get("content")})
 
-                # 執行每個 tool call 並回灌結果
+                # 執行每個 tool call 並回灌結果（<tool_result> tag 格式，對齊 priming）
                 for tc_idx, tc in enumerate(step_tool_calls):
                     exec_result = self._execute_tool(tool_map, allowed_args, tc["name"], tc["arguments"])
-                    tool_call_id = tc.get("_raw", {}).get("id", f"toolcall_{_step}_{tc_idx}")
                     messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call_id,
-                        "content": json.dumps(exec_result, ensure_ascii=False),
+                        "role": "user",
+                        "content": f"<tool_result>\n{json.dumps(exec_result, ensure_ascii=False)}\n</tool_result>",
                     })
 
         if actual_model and actual_model != model:
