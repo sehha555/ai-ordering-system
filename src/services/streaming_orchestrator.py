@@ -1,11 +1,31 @@
 # src/services/streaming_orchestrator.py
 import base64
+import json
+import re as _re
 import time
+from pathlib import Path
+from datetime import datetime
 from typing import AsyncIterator, Dict, Any
 from loguru import logger
 from src.utils.perf_collector import perf_collector
 from src.services.tts_cache import tts_cache
 from src.dm import cart_manager
+
+# 對話 log 目錄（lazy init，首次寫入時才建立）
+_CONV_LOG_DIR = Path(__file__).resolve().parents[2] / "logs" / "conversations"
+_SAFE_ID_RE = _re.compile(r'[^\w\-]')
+
+
+def _append_turn_log(session_id: str, turn: dict) -> None:
+    """將單輪對話 trace append 到 session 的 JSONL 檔"""
+    _CONV_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    safe_id = _SAFE_ID_RE.sub('_', session_id)
+    path = _CONV_LOG_DIR / f"{safe_id}.jsonl"
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(turn, ensure_ascii=False) + "\n")
+    except (OSError, TypeError, ValueError) as e:
+        logger.warning("[CONV_LOG] 寫入失敗: {}", e)
 
 # 斷句標點 — 遇到就立即送 TTS
 _SENTENCE_PUNCTS = set("，。？！、；：\n")
@@ -87,16 +107,24 @@ class StreamingOrchestrator:
         first_audio = True
         ttfa_elapsed = None
         tts_start = None
+        tool_calls_log: list[dict] = []  # 收集本輪 tool calls
 
         async for event in self.dm.process_input_stream(text):
             evt_type = event.get("type")
 
             if evt_type == "tool_call":
                 # 送 status event 給前端顯示（純文字，不發 TTS 音訊）
-                tool_name = event.get("tool_call", {}).get("function", {}).get("name", "")
+                tc = event.get("tool_call", {})
+                tool_name = tc.get("function", {}).get("name", "")
                 status_msg = _TOOL_STATUS_MAP.get(tool_name, "處理中...")
                 yield {"event": "status", "data": {"message": status_msg}}
                 logger.info("[SSE-v2] tool_call status: {} → {}", tool_name, status_msg)
+                # 收集 tool call 資訊
+                tool_calls_log.append({
+                    "name": tool_name,
+                    "args": tc.get("function", {}).get("arguments"),
+                    "result": event.get("tool_result"),
+                })
 
             elif evt_type == "text_delta":
                 content = event.get("content", "")
@@ -220,3 +248,19 @@ class StreamingOrchestrator:
             tts_s=tts_elapsed,
             total_s=total_elapsed,
         )
+
+        # 5. 即時對話 log（每輪都寫，不等結帳）
+        _append_turn_log(self.session_id, {
+            "ts": datetime.now().isoformat(),
+            "asr_text": text,
+            "tool_calls": tool_calls_log,
+            "response": full_text,
+            "cart_count": len(cart),
+            "perf": {
+                "asr_s": round(asr_elapsed, 3),
+                "dm_s": round(dm_elapsed, 3),
+                "ttfa_s": round(ttfa_elapsed, 3) if ttfa_elapsed else None,
+                "tts_s": round(tts_elapsed, 3),
+                "total_s": round(total_elapsed, 3),
+            },
+        })
