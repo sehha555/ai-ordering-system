@@ -9,12 +9,16 @@ import { getPreferredMicStream } from './MicSelector';
 
 // VAD 設定
 const VAD_DEFAULT_THRESHOLD = 15;
+// 自動追問設定（speaking → idle 後，若購物車有品項則觸發）
+const AUTO_PROMPT_DELAY = 3000; // 3 秒無語音後自動追問
+const AUTO_PROMPT_TEXT = '這樣就好嗎？'; // 自動追問文字
 const SILENCE_DURATION = 1000;
 const VAD_CALIBRATION_FRAMES = 60; // 約 1 秒的校準幀數
 const VAD_THRESHOLD_MULTIPLIER = 2; // 閾值 = 環境噪音平均值 × 倍數
 const VAD_MIN_THRESHOLD = 20; // 最低閾值（原 10 過低，環境雜訊易誤觸）
 const MIN_AUDIO_BLOB_SIZE = 4000; // 最小音訊大小（bytes），過濾 VAD 誤觸的超短錄音
 const MAX_RECORDING_DURATION = 30000; // 最大錄音時長 30 秒
+const SSE_TIMEOUT = 30000; // SSE 回應超時 30 秒（LLM 冷啟動 + tool call 可能很慢）
 
 // 依序嘗試支援的 mimeType，找不到就讓瀏覽器自選
 const MIME_CANDIDATES = [
@@ -28,6 +32,18 @@ function getSupportedMimeType(): string | undefined {
     if (MediaRecorder.isTypeSupported(mime)) return mime;
   }
   return undefined; // 讓 MediaRecorder 自動選擇
+}
+
+// SSE 行解析（元件外提取，避免重複定義）
+function parseSSELines(lines: string[], onEvent: (event: string, data: string) => void) {
+  let currentEvent = '';
+  for (const line of lines) {
+    if (line.startsWith('event: ')) {
+      currentEvent = line.slice(7);
+    } else if (line.startsWith('data: ')) {
+      onEvent(currentEvent, line.slice(6));
+    }
+  }
 }
 
 interface VoiceControllerProps {
@@ -46,6 +62,11 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
 
   const { audioQueueRef, isPlayingRef, playNextAudio, onPlaybackCompleteRef, streamDoneRef } = useAudioPlayback();
 
+  // 自動追問計時器 ref
+  const autoPromptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 上一個 status（用於偵測 speaking → idle 轉換）
+  const prevStatusRef = useRef<string>('idle');
+
   // VAD refs
   const isListeningRef = useRef<boolean>(false);
   const isRecordingRef = useRef<boolean>(false);
@@ -56,7 +77,11 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
 
   const [volume, setVolume] = useState(0);
   // ref 存放 sendAudioToServer，讓 makeOnStopHandler 不受宣告順序限制
-  const sendAudioRef = useRef<(blob: Blob) => Promise<void>>();
+  const sendAudioRef = useRef<((blob: Blob) => Promise<void>) | undefined>(undefined);
+  // ref 存放 handleSSEEvent，讓 sendTextToServer/autoPrompt 不受宣告順序限制
+  const handleSSEEventRef = useRef<((event: string, dataStr: string) => void) | undefined>(undefined);
+  // ref 存放 sendTextToServer，讓 autoPrompt timer 永遠呼叫最新版本
+  const sendTextRef = useRef<((text: string) => Promise<void>) | undefined>(undefined);
 
   // 完整清理所有音訊資源（stream tracks + AudioContext + VAD loop + recorder）
   const cleanupAudio = useCallback(() => {
@@ -67,6 +92,12 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
     if (recordingTimerRef.current) {
       clearTimeout(recordingTimerRef.current);
       recordingTimerRef.current = null;
+    }
+
+    // 清除自動追問計時器
+    if (autoPromptTimerRef.current) {
+      clearTimeout(autoPromptTimerRef.current);
+      autoPromptTimerRef.current = null;
     }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
@@ -197,6 +228,13 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
     isRecordingRef.current = true;
     setStatus('listening');
 
+    // 用戶開始說話，取消自動追問計時器
+    if (autoPromptTimerRef.current) {
+      console.log('[自動追問] 偵測到語音輸入，取消計時器');
+      clearTimeout(autoPromptTimerRef.current);
+      autoPromptTimerRef.current = null;
+    }
+
     const mimeType = getSupportedMimeType();
     const recorderOpts = mimeType ? { mimeType } : undefined;
     const recorder = new MediaRecorder(streamRef.current, recorderOpts);
@@ -234,6 +272,13 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
 
   // Manual recording (push-to-talk)
   const startRecording = useCallback(async () => {
+    // 用戶開始說話，取消自動追問計時器
+    if (autoPromptTimerRef.current) {
+      console.log('[自動追問] 偵測到語音輸入（PTT），取消計時器');
+      clearTimeout(autoPromptTimerRef.current);
+      autoPromptTimerRef.current = null;
+    }
+
     try {
       // 每次重新取得 stream，避免裝置切換後殘留舊 stream
       if (streamRef.current) {
@@ -293,6 +338,75 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
     }
   }, [setStatus]);
 
+  // 送純文字到後端（/api/text-chat），用於自動追問場景
+  const sendTextToServer = useCallback(async (text: string) => {
+    // 暫停 VAD，避免在處理時誤觸發
+    if (vadEnabled) {
+      cancelAnimationFrame(vadLoopRef.current);
+    }
+
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(() => abortController.abort(), SSE_TIMEOUT);
+
+    try {
+      setStatus('processing');
+      streamDoneRef.current = false;
+
+      const response = await fetch('/api/text-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, session_id: sessionId }),
+        signal: abortController.signal,
+      });
+
+      if (!response.ok) throw new Error(`Server error: ${response.status}`);
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No response body');
+
+      clearTimeout(timeoutId);
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      const onEvent = (evt: string, data: string) => handleSSEEventRef.current?.(evt, data);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        parseSSELines(lines, onEvent);
+      }
+
+      if (buffer.trim()) {
+        parseSSELines(buffer.split('\n'), onEvent);
+      }
+
+      streamDoneRef.current = true;
+      if (audioQueueRef.current.length === 0 && !isPlayingRef.current) {
+        setStatus('idle');
+        if (vadEnabled && isListeningRef.current) {
+          startVADLoop();
+        }
+      }
+    } catch (error) {
+      clearTimeout(timeoutId);
+      console.error('[自動追問] 文字傳送失敗:', error);
+      streamDoneRef.current = true;
+      const isTimeout = (error as Error).name === 'AbortError';
+      useStore.getState().setConnectionError(
+        isTimeout ? '回應超時，請再試一次' : '自動追問傳送失敗，請稍後再試'
+      );
+      setStatus('idle');
+      if (vadEnabled && isListeningRef.current) {
+        startVADLoop();
+      }
+    }
+  }, [setStatus, vadEnabled, sessionId, startVADLoop, streamDoneRef, audioQueueRef, isPlayingRef]);
+  sendTextRef.current = sendTextToServer;
+
   // 佇列清空時的 callback：恢復 idle 狀態，並在 VAD 模式下重啟監聽
   // 用 useCallback 穩定參照後寫入 ref，讓 playNextAudio 永遠讀取最新版本
   const handlePlaybackComplete = useCallback(() => {
@@ -303,6 +417,26 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
     }
   }, [setStatus, setAiReply, vadEnabled, startVADLoop]);
   onPlaybackCompleteRef.current = handlePlaybackComplete;
+
+  // 偵測 speaking → idle 狀態轉換，啟動自動追問計時器
+  useEffect(() => {
+    if (prevStatusRef.current === 'speaking' && status === 'idle') {
+      // 購物車有品項才觸發（從 store 即時讀取，不需加入依賴）
+      const { cart: currentCart } = useStore.getState();
+      if (currentCart.length > 0) {
+        console.log('[自動追問] speaking → idle，購物車有品項，啟動 3 秒計時');
+        autoPromptTimerRef.current = setTimeout(() => {
+          autoPromptTimerRef.current = null;
+          const currentState = useStore.getState();
+          if (currentState.status === 'idle' && currentState.cart.length > 0) {
+            console.log('[自動追問] 觸發，送出:', AUTO_PROMPT_TEXT);
+            sendTextRef.current?.(AUTO_PROMPT_TEXT);
+          }
+        }, AUTO_PROMPT_DELAY);
+      }
+    }
+    prevStatusRef.current = status;
+  }, [status]);
 
   // Send audio to server and handle SSE
   const sendAudioToServer = useCallback(async (audioBlob: Blob) => {
@@ -315,12 +449,19 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
     formData.append('file', audioBlob, 'recording.webm');
     formData.append('session_id', sessionId);
 
+    const onEvent = (evt: string, data: string) => handleSSEEvent(evt, data);
+
+    // AbortController：SSE 超時自動取消，防止 LLM 卡住時前端掛死
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(() => abortController.abort(), SSE_TIMEOUT);
+
     try {
       setStatus('processing');
       streamDoneRef.current = false; // SSE 串流開始
 
       // 離線檢查
       if (!navigator.onLine) {
+        clearTimeout(timeoutId);
         useStore.getState().setConnectionError('網路已斷線，請檢查連線後再試');
         setStatus('idle');
         if (vadEnabled && isListeningRef.current) startVADLoop();
@@ -335,10 +476,12 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
           response = await fetch('/api/voice-chat', {
             method: 'POST',
             body: formData,
+            signal: abortController.signal,
           });
           if (response.ok) break;
           throw new Error(`Server error: ${response.status}`);
         } catch (fetchError) {
+          if ((fetchError as Error).name === 'AbortError') throw fetchError;
           if (attempt < maxRetries) {
             const delay = Math.pow(2, attempt) * 1000; // 1s, 2s
             await new Promise(resolve => setTimeout(resolve, delay));
@@ -357,6 +500,9 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
       const reader = response.body?.getReader();
       if (!reader) throw new Error('No response body');
 
+      // 收到第一個 event 後取消初始 timeout（後續靠 SSE 串流自己結束）
+      clearTimeout(timeoutId);
+
       const decoder = new TextDecoder();
       let buffer = '';
 
@@ -369,29 +515,12 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
-        let currentEvent = '';
-        for (const line of lines) {
-          if (line.startsWith('event: ')) {
-            currentEvent = line.slice(7);
-          } else if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            handleSSEEvent(currentEvent, data);
-          }
-        }
+        parseSSELines(lines, onEvent);
       }
 
       // Process remaining buffer
       if (buffer.trim()) {
-        const lines = buffer.split('\n');
-        let currentEvent = '';
-        for (const line of lines) {
-          if (line.startsWith('event: ')) {
-            currentEvent = line.slice(7);
-          } else if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            handleSSEEvent(currentEvent, data);
-          }
-        }
+        parseSSELines(buffer.split('\n'), onEvent);
       }
 
       // SSE 結束：標記串流完成，讓 playNextAudio 知道不會再有新 chunk
@@ -403,9 +532,13 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
         }
       }
     } catch (error) {
+      clearTimeout(timeoutId);
       console.error('Error sending audio:', error);
       streamDoneRef.current = true;
-      useStore.getState().setConnectionError('語音傳送失敗，請稍後再試');
+      const isTimeout = (error as Error).name === 'AbortError';
+      useStore.getState().setConnectionError(
+        isTimeout ? '回應超時，請再試一次' : '語音傳送失敗，請稍後再試'
+      );
       setStatus('idle');
       // Resume VAD on error
       if (vadEnabled && isListeningRef.current) {
@@ -463,6 +596,7 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
       console.error('Error parsing SSE event:', event, error);
     }
   }, [setStatus, setTranscript, setCart, setAiReply, playNextAudio]);
+  handleSSEEventRef.current = handleSSEEvent;
 
   // Click handler
   const handleClick = useCallback(() => {

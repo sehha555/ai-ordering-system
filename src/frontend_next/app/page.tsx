@@ -221,14 +221,15 @@ function OrderTicket({
 
       {/* 品項列表 */}
       <div className="px-6 py-2">
+        {/* 新品項：fade in + slide up；移除時：fade out + slide down */}
         <AnimatePresence mode="popLayout">
           {items.map((item, index) => (
             <motion.div
               key={`${item.name}-${index}`}
-              initial={{ opacity: 0, x: 24 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -24 }}
-              transition={{ duration: 0.25 }}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
             >
               <div className="flex justify-between items-center py-4">
                 <div className="flex-1 pr-4">

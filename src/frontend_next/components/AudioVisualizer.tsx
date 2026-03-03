@@ -25,15 +25,19 @@ function rgba(hex: string, a: number): string {
 }
 
 export default function AudioVisualizer({ status, volume = 0, size = 'large' }: AudioVisualizerProps) {
+  // isSmall 只用於控制繪圖細節（高光、經緯線、點數），不影響 canvas 尺寸
   const isSmall = size === 'small';
-  const canvasSize = size === 'small' ? 40 : size === 'medium' ? 120 : 256;
-  const scale = canvasSize / 256;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>(0);
   const phaseRef = useRef(0);
   const colorRef = useRef({ r: 114, g: 157, b: 173 });
   // 平滑音量（避免跳動）
   const smoothVolumeRef = useRef(0);
+  // 用 ref 持有動態數據，讓 draw callback 不因 props 變化而重建
+  const statusRef = useRef(status);
+  const volumeRef = useRef(volume);
+  useEffect(() => { statusRef.current = status; }, [status]);
+  useEffect(() => { volumeRef.current = volume; }, [volume]);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -47,17 +51,24 @@ export default function AudioVisualizer({ status, volume = 0, size = 'large' }: 
     const h = canvas.height / dpr;
     if (w === 0 || h === 0) return;
 
+    // scale 根據實際 CSS 尺寸動態計算，基準 256px
+    const scale = Math.min(w, h) / 256;
+
     const cx = w / 2;
     const cy = h / 2;
     ctx.clearRect(0, 0, w, h);
 
+    // 從 ref 讀取最新值（避免 useCallback 依賴 volume/status 導致 rAF 鏈每幀重建）
+    const currentVolume = volumeRef.current;
+    const currentStatus = statusRef.current;
+
     // 平滑音量
     const sv = smoothVolumeRef.current;
-    smoothVolumeRef.current += (volume - sv) * 0.15;
+    smoothVolumeRef.current += (currentVolume - sv) * 0.15;
     const vol = smoothVolumeRef.current;
 
     // 顏色平滑過渡
-    const targetHex = STATUS_COLORS[status];
+    const targetHex = STATUS_COLORS[currentStatus];
     const tr = parseInt(targetHex.slice(1, 3), 16);
     const tg = parseInt(targetHex.slice(3, 5), 16);
     const tb = parseInt(targetHex.slice(5, 7), 16);
@@ -82,7 +93,7 @@ export default function AudioVisualizer({ status, volume = 0, size = 'large' }: 
     let scaleFactor = 1;   // 整體大小隨音量
     let rimAlpha = 0.3;    // 邊緣亮度
 
-    switch (status) {
+    switch (currentStatus) {
       case 'idle':
         noiseAmp = 3 * scale;
         breathAmp = 6 * scale;
@@ -283,7 +294,7 @@ export default function AudioVisualizer({ status, volume = 0, size = 'large' }: 
     ctx.fill();
 
     animationRef.current = requestAnimationFrame(draw);
-  }, [status, volume, scale, isSmall]);
+  }, [isSmall]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -319,24 +330,13 @@ export default function AudioVisualizer({ status, volume = 0, size = 'large' }: 
     };
   }, [draw]);
 
-  if (size === 'small' || size === 'medium') {
-    return (
-      <canvas
-        ref={canvasRef}
-        width={canvasSize}
-        height={canvasSize}
-        style={{ width: canvasSize, height: canvasSize }}
-      />
-    );
-  }
-
+  // canvas 不設固定 width/height attribute，完全填滿父容器
+  // 由父層（motion.div）控制尺寸動畫，ResizeObserver 自動跟進
+  // 這樣 Framer Motion layout 動畫時不會有瞬間跳變造成球體扁掉
   return (
     <canvas
       ref={canvasRef}
-      width={256}
-      height={256}
-      className="w-64 h-64 cursor-pointer"
-      style={{ width: 256, height: 256 }}
+      style={{ display: 'block', width: '100%', height: '100%' }}
     />
   );
 }
