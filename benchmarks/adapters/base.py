@@ -55,6 +55,9 @@ class BaseLLMAdapter(ABC):
         """
         ...
 
+    def close(self):
+        """釋放資源（子類別可覆寫）"""
+
 
 class BaseE2EAdapter(ABC):
     """端到端模型 adapter 基底"""

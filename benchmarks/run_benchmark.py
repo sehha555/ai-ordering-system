@@ -135,6 +135,10 @@ def run_single_benchmark(
                 _on_complete(case_result)
                 results["test_cases"].append(case_result)
 
+    # 釋放 adapter 資源（如 httpx.Client 連線池）
+    if hasattr(adapter, "close"):
+        adapter.close()
+
     bench_elapsed = time.perf_counter() - bench_start
     mode = f"平行 ×{workers}" if workers > 1 else "序列"
     print(f"    ⏱  {total} 案例完成，耗時 {bench_elapsed:.1f}s（{mode}）")

@@ -41,6 +41,7 @@ def _extract_json_objects(text: str) -> list[dict]:
     return results
 
 from benchmarks.adapters.base import BaseLLMAdapter
+from src.dm.tool_priming import format_tool_result
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 if str(PROJECT_ROOT) not in sys.path:
@@ -91,6 +92,16 @@ def _load_static_context():
     return system_prompt_with_tools, tools_schema
 
 
+def _load_raw_static_context():
+    """載入 raw completion 用的靜態 context（system prompt 不含 tools text）"""
+    from src.dm.system_prompts import build_system_prompt
+
+    system_prompt = build_system_prompt()
+    registry = _build_registry()
+    tools_schema = registry.get_tools_schema()
+    return system_prompt, tools_schema
+
+
 def _create_fresh_tool_context():
     """每個 test case 建立新的 tool context（避免購物車狀態污染）"""
     registry = _build_registry()
@@ -113,6 +124,7 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
         self._system_prompt = None
         self._tools_schema = None
         self._priming = None
+        self._client: httpx.Client | None = None
 
     def _ensure_static_context(self):
         """懶載入靜態 context（system prompt、tools schema、priming）— 可跨 test case 快取"""
@@ -162,15 +174,40 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
 
     @staticmethod
     def _execute_tool(tool_map: dict, allowed_args: dict, name: str, arguments: dict) -> dict:
-        """執行工具並回傳結果（參考 llm_tool_caller.py:152-181）"""
+        """執行工具並回傳結果（參考 llm_tool_caller.py:152-181）
+
+        add_to_cart 會先經過 pre-execution 驗證器：
+        參數值不合法時直接回傳錯誤訊息 + 合法選項，讓模型在 tool loop 中自修正。
+        """
         if name not in tool_map:
             return {"ok": False, "error": f"tool_not_allowed:{name}"}
+
+        # add_to_cart 的 pre-execution 參數值驗證
+        if name == "add_to_cart":
+            from benchmarks.adapters.tool_validator import validate_add_to_cart
+
+            validation_error = validate_add_to_cart(arguments)
+            if validation_error is not None:
+                logger.debug("tool_validator 攔截 add_to_cart：%s", validation_error["message"])
+                return validation_error
+
         allowed = allowed_args.get(name, set())
         safe_args = {k: arguments[k] for k in allowed if k in arguments}
         try:
             return tool_map[name](**safe_args)
         except Exception as e:
             return {"ok": False, "error": f"tool_exec_error:{type(e).__name__}"}
+
+    def _get_client(self, timeout: float) -> httpx.Client:
+        """取得共用 httpx.Client（跨 test case 重複使用連線池）"""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.Client(timeout=timeout)
+        return self._client
+
+    def close(self):
+        """關閉共用 httpx.Client"""
+        if self._client is not None and not self._client.is_closed:
+            self._client.close()
 
     def run(self, test_case: dict, timeout: float = 60) -> dict:
         self._ensure_static_context()
@@ -180,6 +217,12 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
         model = self.params["model"]
         temperature = self.params.get("temperature", 0.0)
         url = f"{base_url}/chat/completions" if not base_url.endswith("/chat/completions") else base_url
+
+        # 從 config 讀取 sampling 參數（避免 llama.cpp 預設值干擾）
+        sampling_overrides = {}
+        for key in ("repeat_penalty", "min_p", "top_p", "top_k"):
+            if key in self.params:
+                sampling_overrides[key] = self.params[key]
 
         # 注入 system prompt + few-shot priming + 測試對話
         messages = [{"role": "system", "content": self._system_prompt}]
@@ -208,56 +251,57 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
         actual_model = ""
         response_text = ""
 
-        with httpx.Client(timeout=timeout) as client:
-            for _step in range(self.MAX_TOOL_STEPS):
-                payload = {
-                    "model": model,
-                    "messages": messages,
-                    "temperature": temperature,
-                }
-                # Text mode：不送 tools/tool_choice，模型用 <tool_call> 文字輸出
+        client = self._get_client(timeout)
+        for _step in range(self.MAX_TOOL_STEPS):
+            payload = {
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+                **sampling_overrides,
+            }
+            # Text mode：不送 tools/tool_choice，模型用 <tool_call> 文字輸出
 
-                logger.debug("LLM request step=%d | model=%s | messages=%d",
-                             _step, model, len(messages))
+            logger.debug("LLM request step=%d | model=%s | messages=%d",
+                         _step, model, len(messages))
 
-                resp = client.post(url, json=payload)
-                if resp.status_code != 200:
-                    logger.error("LLM API 回傳 %d: %s", resp.status_code, resp.text[:500])
-                resp.raise_for_status()
-                data = resp.json()
+            resp = client.post(url, json=payload)
+            if resp.status_code != 200:
+                logger.error("LLM API 回傳 %d: %s", resp.status_code, resp.text[:500])
+            resp.raise_for_status()
+            data = resp.json()
 
-                # 累計 token 用量
-                usage = data.get("usage", {})
-                total_tokens += usage.get("total_tokens", 0)
-                total_prompt_tokens += usage.get("prompt_tokens", 0)
-                total_completion_tokens += usage.get("completion_tokens", 0)
-                if not actual_model:
-                    actual_model = data.get("model", "")
+            # 累計 token 用量
+            usage = data.get("usage", {})
+            total_tokens += usage.get("total_tokens", 0)
+            total_prompt_tokens += usage.get("prompt_tokens", 0)
+            total_completion_tokens += usage.get("completion_tokens", 0)
+            if not actual_model:
+                actual_model = data.get("model", "")
 
-                message = data["choices"][0]["message"]
-                step_tool_calls, raw_objs = self._parse_tool_calls(message)
+            message = data["choices"][0]["message"]
+            step_tool_calls, raw_objs = self._parse_tool_calls(message)
 
-                if not step_tool_calls:
-                    # 沒有 tool call → 模型產出最終回覆，loop 結束
-                    response_text = self._clean_response(message, [])
-                    break
+            if not step_tool_calls:
+                # 沒有 tool call → 模型產出最終回覆，loop 結束
+                response_text = self._clean_response(message, [])
+                break
 
-                # 有 tool call → 執行工具、回灌結果、繼續 loop
-                all_tool_calls.extend(
-                    {"name": tc["name"], "arguments": tc["arguments"]} for tc in step_tool_calls
-                )
-                response_text = self._clean_response(message, raw_objs)
+            # 有 tool call → 執行工具、回灌結果、繼續 loop
+            all_tool_calls.extend(
+                {"name": tc["name"], "arguments": tc["arguments"]} for tc in step_tool_calls
+            )
+            response_text = self._clean_response(message, raw_objs)
 
-                # 把 assistant message 加入 messages（原始 content）
-                messages.append({"role": "assistant", "content": message.get("content")})
+            # 把 assistant message 加入 messages（原始 content）
+            messages.append({"role": "assistant", "content": message.get("content")})
 
-                # 執行每個 tool call 並回灌結果（<tool_result> tag 格式，對齊 priming）
-                for tc_idx, tc in enumerate(step_tool_calls):
-                    exec_result = self._execute_tool(tool_map, allowed_args, tc["name"], tc["arguments"])
-                    messages.append({
-                        "role": "user",
-                        "content": f"<tool_result>\n{json.dumps(exec_result, ensure_ascii=False)}\n</tool_result>",
-                    })
+            # 執行每個 tool call 並回灌結果（對齊 priming 格式）
+            for tc_idx, tc in enumerate(step_tool_calls):
+                exec_result = self._execute_tool(tool_map, allowed_args, tc["name"], tc["arguments"])
+                messages.append({
+                    "role": "user",
+                    "content": format_tool_result(exec_result),
+                })
 
         if actual_model and actual_model != model:
             logger.warning("模型不符！請求 %s → 實際 %s（LM Studio 可能 fallback）", model, actual_model)
@@ -285,8 +329,164 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
         return "\n".join(lines)
 
 
+class RawCompletionAdapter(BaseLLMAdapter):
+    """Raw completion adapter — 自渲染 Qwen3 template + /completion endpoint
+
+    跳過 llama.cpp 的 chat template 渲染，用官方 Jinja2 template 產生 raw prompt，
+    直接送 /completion（低階 API）。目標：對齊 LM Studio 的渲染結果。
+    """
+
+    MAX_TOOL_STEPS = 4
+
+    def __init__(self, params: dict):
+        super().__init__(params)
+        self._system_prompt = None
+        self._tools_schema = None
+        self._priming = None
+        self._renderer = None
+        self._client: httpx.Client | None = None
+
+    def _ensure_static_context(self):
+        if self._system_prompt is None:
+            self._system_prompt, self._tools_schema = _load_raw_static_context()
+            self._priming = _load_priming_messages()
+            from benchmarks.adapters.template_renderer import Qwen3TemplateRenderer
+            self._renderer = Qwen3TemplateRenderer()
+
+    def _get_client(self, timeout: float) -> httpx.Client:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.Client(timeout=timeout)
+        return self._client
+
+    def close(self):
+        if self._client is not None and not self._client.is_closed:
+            self._client.close()
+
+    def run(self, test_case: dict, timeout: float = 60) -> dict:
+        self._ensure_static_context()
+        tool_map, allowed_args = _create_fresh_tool_context()
+        base_url = self.params["base_url"]
+        temperature = self.params.get("temperature", 0.0)
+
+        # sampling 參數
+        sampling_overrides = {}
+        for key in ("repeat_penalty", "min_p", "top_p", "top_k"):
+            if key in self.params:
+                sampling_overrides[key] = self.params[key]
+
+        # 組裝 messages（system + priming + test）
+        messages = [{"role": "system", "content": self._system_prompt}]
+        messages.extend(self._priming)
+
+        # 注入 session context
+        session_ctx = test_case.get("session_context")
+        test_messages = list(test_case["messages"])
+        if session_ctx:
+            ctx_text = OpenAICompatibleAdapter._format_session_context(session_ctx)
+            last_user_idx = len(test_messages) - 1
+            for i in range(len(test_messages) - 1, -1, -1):
+                if test_messages[i]["role"] == "user":
+                    last_user_idx = i
+                    break
+            test_messages.insert(last_user_idx, {"role": "system", "content": ctx_text})
+
+        messages.extend(test_messages)
+
+        all_tool_calls = []
+        total_tokens = 0
+        total_prompt_tokens = 0
+        total_completion_tokens = 0
+        response_text = ""
+
+        # /completion endpoint（不含 /v1）
+        url = f"{base_url}/completion"
+
+        client = self._get_client(timeout)
+        for _step in range(self.MAX_TOOL_STEPS):
+            # 渲染 raw prompt
+            prompt = self._renderer.render_prompt(
+                messages, self._tools_schema, enable_thinking=False,
+            )
+
+            payload = {
+                "prompt": prompt,
+                "stop": ["<|im_end|>"],
+                "n_predict": 2048,
+                "temperature": temperature,
+                "cache_prompt": True,
+                **sampling_overrides,
+            }
+
+            logger.debug("Raw completion step=%d | prompt_len=%d chars", _step, len(prompt))
+
+            resp = client.post(url, json=payload)
+            if resp.status_code != 200:
+                logger.error("/completion API 回傳 %d: %s", resp.status_code, resp.text[:500])
+            resp.raise_for_status()
+            data = resp.json()
+
+            # Token 用量（/completion 的欄位名不同）
+            total_prompt_tokens += data.get("tokens_evaluated", 0)
+            total_completion_tokens += data.get("tokens_predicted", 0)
+            total_tokens += data.get("tokens_evaluated", 0) + data.get("tokens_predicted", 0)
+
+            content = data.get("content", "")
+
+            # 解析 tool calls
+            raw_objs = _extract_json_objects(content)
+            step_tool_calls = [
+                {"name": obj["name"], "arguments": obj.get("arguments", {})}
+                for obj in raw_objs
+            ]
+
+            if not step_tool_calls:
+                # 沒有 tool call → 最終回覆
+                response_text = self._clean_content(content)
+                break
+
+            # 有 tool call → 執行工具、回灌結果
+            all_tool_calls.extend(step_tool_calls)
+            response_text = self._clean_content(content, raw_objs)
+
+            # 把 assistant 回覆加入 messages（保持原始 content 以便下輪渲染）
+            messages.append({"role": "assistant", "content": content})
+
+            for tc in step_tool_calls:
+                exec_result = OpenAICompatibleAdapter._execute_tool(
+                    tool_map, allowed_args, tc["name"], tc["arguments"],
+                )
+                # 以 role:tool + plain JSON 加入（renderer 會轉為 <tool_response>）
+                result_json = json.dumps(exec_result, ensure_ascii=False)
+                messages.append({"role": "tool", "content": result_json})
+
+        return {
+            "response": response_text,
+            "tool_calls": all_tool_calls,
+            "actual_model": self.params.get("model", ""),
+            "tokens": total_tokens,
+            "prompt_tokens": total_prompt_tokens,
+            "completion_tokens": total_completion_tokens,
+        }
+
+    @staticmethod
+    def _clean_content(content: str, parsed_objs: list[dict] | None = None) -> str:
+        """清理 content 中的 tool call 文字"""
+        text = content
+        text = re.sub(r'<\|im_start\|>', '', text)
+        text = re.sub(r'</?tool_call>', '', text)
+        text = re.sub(r'<think>\s*</think>', '', text)
+        if parsed_objs:
+            for obj in parsed_objs:
+                try:
+                    text = text.replace(json.dumps(obj, ensure_ascii=False), '')
+                except Exception:
+                    pass
+        return text.strip()
+
+
 REGISTRY = {
     "openai_compatible": OpenAICompatibleAdapter,
+    "raw_completion": RawCompletionAdapter,
 }
 
 
