@@ -569,9 +569,11 @@ class ToolRegistry:
                 self._session_id, order_number, cart, total_price, resolved_dine, llm_history
             )
 
-            # 標記 session 完成
+            # 標記 session 完成，清空購物車防止重複送單
             session["status"] = "SUBMITTED"
             session["order_payload"] = order_payload
+            session["cart"] = []
+            session["llm_history"] = []
 
             return {
                 "ok": True,

@@ -28,9 +28,14 @@ async def get_api_key_optional(api_key: str = Depends(api_key_header)):
 
 
 async def event_generator_v2(orchestrator: StreamingOrchestrator, audio_bytes: bytes, session_id: str):
-    """串流版 SSE — 使用 process_audio_stream_v2"""
-    async for event in orchestrator.process_audio_stream_v2(audio_bytes, session_id=session_id):
-        yield f"event: {event['event']}\ndata: {json.dumps(event['data'], ensure_ascii=False)}\n\n"
+    """串流版 SSE — 使用 process_audio_stream_v2（全域 try/except 防止靜默斷線）"""
+    try:
+        async for event in orchestrator.process_audio_stream_v2(audio_bytes, session_id=session_id):
+            yield f"event: {event['event']}\ndata: {json.dumps(event['data'], ensure_ascii=False)}\n\n"
+    except Exception as e:
+        logger.error("[SSE] event_generator_v2 未捕捉異常: {}", e)
+        error_data = json.dumps({"message": "伺服器處理錯誤，請再試一次"}, ensure_ascii=False)
+        yield f"event: error\ndata: {error_data}\n\n"
 
 
 class StreamingDMAdapter:
@@ -161,8 +166,11 @@ async def voice_chat(
                     raise RuntimeError(f"ffmpeg failed: {stderr.decode()[:200]}")
 
                 os.unlink(tmp_path)
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 result = await loop.run_in_executor(None, self._asr.transcribe, wav_path)
+                asr_error = result.get("error")
+                if asr_error:
+                    logger.warning("[ASR] 辨識錯誤: {}", asr_error)
                 return postprocess(result.get("text", ""))
             finally:
                 for p in [tmp_path, wav_path]:

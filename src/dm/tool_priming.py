@@ -11,6 +11,9 @@ Few-shot priming messages — 讓本地 LLM 學會使用 tool_calls 格式。
 
 import json
 
+# 統一 tag 格式，benchmark adapter 也引用此常數
+TOOL_RESULT_TAG = "tool_result"
+
 
 def _tc(call_id: str, name: str, args: dict) -> list[dict]:
     """構建 tool_calls 格式"""
@@ -24,11 +27,16 @@ def _tc(call_id: str, name: str, args: dict) -> list[dict]:
     }]
 
 
+def format_tool_result(result: dict) -> str:
+    """將工具執行結果格式化為 <tool_result> 文字（priming + benchmark 共用）"""
+    return f"<{TOOL_RESULT_TAG}>\n{json.dumps(result, ensure_ascii=False)}\n</{TOOL_RESULT_TAG}>"
+
+
 def _tool_resp(call_id: str, result: dict) -> dict:
-    """構建 tool response（role:user + <tool_result> tag，避免 LM Studio middleware 慢路徑）"""
+    """構建 tool response（role:user + <tool_result> tag，繞過 server middleware 慢路徑）"""
     return {
         "role": "user",
-        "content": f"<tool_result>\n{json.dumps(result, ensure_ascii=False)}\n</tool_result>",
+        "content": format_tool_result(result),
     }
 
 

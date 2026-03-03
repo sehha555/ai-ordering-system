@@ -12,6 +12,7 @@ from src.config.logging_config import PerfTimer
 from src.dm.tool_priming import get_priming_messages
 
 _PRIMING_MESSAGES = get_priming_messages()
+_NO_THINK_PREFIX = "/no_think\n"  # 關閉 Qwen3 thinking mode，降低延遲
 
 # Qwen 模型有時把 tool call 輸出到 content 而非 tool_calls 欄位
 _TOOL_CALL_RE = re.compile(
@@ -200,7 +201,8 @@ class LLMToolCaller:
         """
         logger.info("[LLM] 開始 run_turn: '{}'", user_text)
 
-        messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
+        # /no_think 關閉 Qwen3 thinking mode，大幅降低延遲
+        messages: List[Dict[str, Any]] = [{"role": "system", "content": _NO_THINK_PREFIX + system_prompt}]
         messages.extend(_PRIMING_MESSAGES)  # few-shot priming 讓模型學會用 tool_calls
         messages.extend(history)
         if context:
@@ -217,7 +219,11 @@ class LLMToolCaller:
                     tool_choice="auto",
                     temperature=0.0,
                 )
-            msg = resp["choices"][0]["message"]
+            choices = resp.get("choices") or []
+            if not choices:
+                logger.error("[LLM] run_turn 回傳空 choices: {}", resp)
+                return {"ok": False, "error": "llm_empty_response", "assistant_text": "抱歉，請再說一次", "history": history, "tool_trace": last_tool_trace}
+            msg = choices[0]["message"]
             tool_call = self.pick_first_tool_call(resp)
 
             if not tool_call:
@@ -320,7 +326,8 @@ class LLMToolCaller:
         """
         logger.info("[LLM] 開始 run_turn_stream: '{}'", user_text)
 
-        messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
+        # /no_think 關閉 Qwen3 thinking mode，大幅降低延遲
+        messages: List[Dict[str, Any]] = [{"role": "system", "content": _NO_THINK_PREFIX + system_prompt}]
         messages.extend(_PRIMING_MESSAGES)  # few-shot priming 讓模型學會用 tool_calls
         messages.extend(history)
         if context:
@@ -338,7 +345,14 @@ class LLMToolCaller:
                     temperature=0.0,
                 )
 
-            msg = resp["choices"][0]["message"]
+            choices = resp.get("choices") or []
+            if not choices:
+                logger.error("[LLM] run_turn_stream 回傳空 choices: {}", resp)
+                fallback = "抱歉，請再說一次"
+                yield {"type": "text_delta", "content": fallback}
+                yield {"type": "done", "assistant_text": fallback, "history": history, "tool_trace": last_tool_trace}
+                return
+            msg = choices[0]["message"]
             tool_call = self.pick_first_tool_call(resp)
 
             if not tool_call:
@@ -396,5 +410,7 @@ class LLMToolCaller:
             })
 
         logger.warning("[LLM] run_turn_stream 超過最大步數 {}", self.max_steps)
-        yield {"type": "done", "error": "max_steps_exceeded", "history": history, "tool_trace": last_tool_trace}
+        fallback = "抱歉，處理您的請求時發生問題，請再說一次"
+        yield {"type": "text_delta", "content": fallback}
+        yield {"type": "done", "assistant_text": fallback, "error": "max_steps_exceeded", "history": history, "tool_trace": last_tool_trace}
 

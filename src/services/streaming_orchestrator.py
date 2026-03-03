@@ -88,9 +88,14 @@ class StreamingOrchestrator:
         # 1. Thinking
         yield {"event": "thinking", "data": {}}
 
-        # 2. ASR
+        # 2. ASR（try/except 防止 ffmpeg/模型異常中斷整條鏈）
         asr_start = time.perf_counter()
-        text = await self.asr.transcribe(audio_bytes)
+        try:
+            text = await self.asr.transcribe(audio_bytes)
+        except Exception as e:
+            logger.error("[SSE-v2] ASR transcribe 異常: {}", e)
+            yield {"event": "error", "data": {"message": "語音辨識失敗，請再試一次"}}
+            return
         asr_elapsed = time.perf_counter() - asr_start
         logger.info("[PERF] asr_transcribe 耗時 {:.3f}s", asr_elapsed)
         yield {"event": "transcription", "data": {"text": text}}
@@ -193,13 +198,16 @@ class StreamingOrchestrator:
                             logger.info("[PERF] TTFA 首個音訊 {:.3f}s (快取命中)", ttfa_elapsed)
                             first_audio = False
                     else:
-                        async for chunk in self.tts.run_stream(sentence):
-                            b64_audio = base64.b64encode(chunk).decode('utf-8')
-                            yield {"event": "audio_chunk", "data": b64_audio}
-                            if first_audio:
-                                ttfa_elapsed = time.perf_counter() - request_start
-                                logger.info("[PERF] TTFA 首個音訊 {:.3f}s", ttfa_elapsed)
-                                first_audio = False
+                        try:
+                            async for chunk in self.tts.run_stream(sentence):
+                                b64_audio = base64.b64encode(chunk).decode('utf-8')
+                                yield {"event": "audio_chunk", "data": b64_audio}
+                                if first_audio:
+                                    ttfa_elapsed = time.perf_counter() - request_start
+                                    logger.info("[PERF] TTFA 首個音訊 {:.3f}s", ttfa_elapsed)
+                                    first_audio = False
+                        except Exception as e:
+                            logger.warning("[TTS] run_stream 失敗（跳過此句）: {}", e)
 
             elif evt_type == "done":
                 context_snapshot = event
@@ -222,12 +230,15 @@ class StreamingOrchestrator:
                     ttfa_elapsed = time.perf_counter() - request_start
                     first_audio = False
             else:
-                async for chunk in self.tts.run_stream(buffer):
-                    b64_audio = base64.b64encode(chunk).decode('utf-8')
-                    yield {"event": "audio_chunk", "data": b64_audio}
-                    if first_audio:
-                        ttfa_elapsed = time.perf_counter() - request_start
-                        first_audio = False
+                try:
+                    async for chunk in self.tts.run_stream(buffer):
+                        b64_audio = base64.b64encode(chunk).decode('utf-8')
+                        yield {"event": "audio_chunk", "data": b64_audio}
+                        if first_audio:
+                            ttfa_elapsed = time.perf_counter() - request_start
+                            first_audio = False
+                except Exception as e:
+                    logger.warning("[TTS] run_stream 殘餘 buffer 失敗: {}", e)
 
         # 4. Cart Update
         cart = context_snapshot.get("cart", [])
