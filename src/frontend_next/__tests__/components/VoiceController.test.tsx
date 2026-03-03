@@ -11,6 +11,14 @@ vi.mock('../../components/AudioVisualizer', () => ({
   ),
 }));
 
+// Mock MicSelector 的 getPreferredMicStream
+vi.mock('../../components/MicSelector', () => ({
+  getPreferredMicStream: vi.fn().mockResolvedValue({
+    getTracks: () => [{ stop: vi.fn() }],
+  }),
+  default: () => null,
+}));
+
 // Mock navigator.mediaDevices
 const mockGetUserMedia = vi.fn().mockResolvedValue({
   getTracks: () => [{ stop: vi.fn() }],
@@ -44,7 +52,13 @@ const mockAudioContext = {
   createAnalyser: vi.fn(() => mockAnalyser),
   createMediaStreamSource: vi.fn(() => ({ connect: vi.fn() })),
 };
-vi.stubGlobal('AudioContext', vi.fn(() => mockAudioContext));
+// 用 class 包裝確保 new AudioContext() 可行
+class MockAudioContext {
+  createAnalyser = vi.fn(() => mockAnalyser);
+  createMediaStreamSource = vi.fn(() => ({ connect: vi.fn() }));
+  close = vi.fn();
+}
+vi.stubGlobal('AudioContext', MockAudioContext);
 
 beforeEach(() => {
   useStore.setState({

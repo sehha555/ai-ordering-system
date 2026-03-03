@@ -54,28 +54,19 @@ afterEach(() => {
 
 describe('AudioVisualizer', () => {
   describe('渲染測試', () => {
-    it('idle 狀態應正確渲染 canvas 與狀態文字', () => {
+    it('idle 狀態應正確渲染 canvas', () => {
       render(<AudioVisualizer status="idle" />);
-      // canvas 元素存在
       const canvas = document.querySelector('canvas');
       expect(canvas).toBeInTheDocument();
-      // 顯示 idle 文字
-      expect(screen.getByText('點擊開始')).toBeInTheDocument();
     });
 
-    it('listening 狀態應顯示對應文字', () => {
-      render(<AudioVisualizer status="listening" />);
-      expect(screen.getByText('聆聽中...')).toBeInTheDocument();
-    });
-
-    it('processing 狀態應顯示對應文字', () => {
-      render(<AudioVisualizer status="processing" />);
-      expect(screen.getByText('處理中...')).toBeInTheDocument();
-    });
-
-    it('speaking 狀態應顯示對應文字', () => {
-      render(<AudioVisualizer status="speaking" />);
-      expect(screen.getByText('回覆中...')).toBeInTheDocument();
+    it('各狀態都應正確渲染 canvas', () => {
+      const statuses = ['listening', 'processing', 'speaking'] as const;
+      for (const s of statuses) {
+        const { unmount } = render(<AudioVisualizer status={s} />);
+        expect(document.querySelector('canvas')).toBeInTheDocument();
+        unmount();
+      }
     });
   });
 

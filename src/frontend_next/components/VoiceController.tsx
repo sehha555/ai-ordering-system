@@ -5,15 +5,30 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../store/useStore';
 import AudioVisualizer from './AudioVisualizer';
 import { useAudioPlayback } from '../hooks/useAudioPlayback';
+import { getPreferredMicStream } from './MicSelector';
 
 // VAD 設定
 const VAD_DEFAULT_THRESHOLD = 15;
-const SILENCE_DURATION = 1500;
+const SILENCE_DURATION = 1000;
 const VAD_CALIBRATION_FRAMES = 60; // 約 1 秒的校準幀數
 const VAD_THRESHOLD_MULTIPLIER = 2; // 閾值 = 環境噪音平均值 × 倍數
 const VAD_MIN_THRESHOLD = 20; // 最低閾值（原 10 過低，環境雜訊易誤觸）
 const MIN_AUDIO_BLOB_SIZE = 4000; // 最小音訊大小（bytes），過濾 VAD 誤觸的超短錄音
 const MAX_RECORDING_DURATION = 30000; // 最大錄音時長 30 秒
+
+// 依序嘗試支援的 mimeType，找不到就讓瀏覽器自選
+const MIME_CANDIDATES = [
+  'audio/webm;codecs=opus',
+  'audio/webm',
+  'audio/ogg;codecs=opus',
+  'audio/mp4',
+];
+function getSupportedMimeType(): string | undefined {
+  for (const mime of MIME_CANDIDATES) {
+    if (MediaRecorder.isTypeSupported(mime)) return mime;
+  }
+  return undefined; // 讓 MediaRecorder 自動選擇
+}
 
 interface VoiceControllerProps {
   // 外部觸發點擊的 ref（push-to-talk 模式，供 page.tsx 的大波形 onClick 使用）
@@ -29,7 +44,7 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const { audioQueueRef, isPlayingRef, playNextAudio, onPlaybackCompleteRef } = useAudioPlayback();
+  const { audioQueueRef, isPlayingRef, playNextAudio, onPlaybackCompleteRef, streamDoneRef } = useAudioPlayback();
 
   // VAD refs
   const isListeningRef = useRef<boolean>(false);
@@ -40,6 +55,8 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
   const recordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [volume, setVolume] = useState(0);
+  // ref 存放 sendAudioToServer，讓 makeOnStopHandler 不受宣告順序限制
+  const sendAudioRef = useRef<(blob: Blob) => Promise<void>>();
 
   // 完整清理所有音訊資源（stream tracks + AudioContext + VAD loop + recorder）
   const cleanupAudio = useCallback(() => {
@@ -69,9 +86,7 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
   // 初始化麥克風 + VAD
   const initMicrophone = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true },
-      });
+      const stream = await getPreferredMicStream();
       streamRef.current = stream;
 
       audioContextRef.current = new AudioContext();
@@ -85,8 +100,10 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
       isListeningRef.current = true;
     } catch (error) {
       console.error('Failed to access microphone:', error);
+      useStore.getState().setConnectionError('無法存取麥克風，請確認瀏覽器權限');
+      setVadEnabled(false);
     }
-  }, []);
+  }, [setVadEnabled]);
 
   // VAD loop - monitors volume and auto-triggers recording
   const startVADLoop = useCallback(() => {
@@ -98,7 +115,9 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
       if (!isListeningRef.current || !analyserRef.current) return;
 
       analyserRef.current.getByteFrequencyData(dataArray);
-      const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+      let sum = 0;
+      for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+      const avg = sum / dataArray.length;
       setVolume(avg / 255);
 
       if (avg > vadThresholdRef.current) {
@@ -144,7 +163,9 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
       }
 
       analyserRef.current.getByteFrequencyData(dataArray);
-      const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+      let calSum = 0;
+      for (let i = 0; i < dataArray.length; i++) calSum += dataArray[i];
+      const avg = calSum / dataArray.length;
       totalAvg += avg;
       frameCount++;
 
@@ -154,33 +175,38 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
     calibrationLoop();
   }, [startVADLoop]);
 
+  // 共用 onstop handler — VAD/PTT 共用，只差 label
+  const makeOnStopHandler = useCallback((label: string, mime: string) => async () => {
+    isRecordingRef.current = false;
+    try {
+      const audioBlob = new Blob(audioChunksRef.current, { type: mime });
+      if (audioBlob.size > MIN_AUDIO_BLOB_SIZE) {
+        await sendAudioRef.current?.(audioBlob);
+      } else {
+        setStatus('idle');
+      }
+    } catch (error) {
+      console.error(`[${label}] onstop 處理失敗:`, error);
+      setStatus('idle');
+    }
+  }, [setStatus]);
+
   // Start recording in VAD mode
   const startRecordingVAD = useCallback(() => {
     if (isRecordingRef.current || !streamRef.current) return;
     isRecordingRef.current = true;
     setStatus('listening');
 
-    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-      ? 'audio/webm;codecs=opus'
-      : 'audio/webm';
-
-    const recorder = new MediaRecorder(streamRef.current, { mimeType });
+    const mimeType = getSupportedMimeType();
+    const recorderOpts = mimeType ? { mimeType } : undefined;
+    const recorder = new MediaRecorder(streamRef.current, recorderOpts);
     audioChunksRef.current = [];
 
     recorder.ondataavailable = (e) => {
       if (e.data.size > 0) audioChunksRef.current.push(e.data);
     };
 
-    recorder.onstop = async () => {
-      const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
-      isRecordingRef.current = false;
-
-      if (audioBlob.size > MIN_AUDIO_BLOB_SIZE) {
-        await sendAudioToServer(audioBlob);
-      } else {
-        setStatus('idle');
-      }
-    };
+    recorder.onstop = makeOnStopHandler('VAD', recorder.mimeType);
 
     mediaRecorderRef.current = recorder;
     recorder.start(200);
@@ -204,56 +230,50 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
       setStatus('processing');
       setVolume(0);
     }
-  }, [setStatus]);
+  }, [setStatus, makeOnStopHandler]);
 
   // Manual recording (push-to-talk)
   const startRecording = useCallback(async () => {
     try {
-      if (!streamRef.current) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        streamRef.current = stream;
+      // 每次重新取得 stream，避免裝置切換後殘留舊 stream
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
       }
-
-      const stream = streamRef.current;
+      const stream = await getPreferredMicStream();
+      streamRef.current = stream;
 
       if (!audioContextRef.current) {
         audioContextRef.current = new AudioContext();
         analyserRef.current = audioContextRef.current.createAnalyser();
         analyserRef.current.fftSize = 256;
-        const source = audioContextRef.current.createMediaStreamSource(stream);
-        source.connect(analyserRef.current);
       }
+      // 每次新 stream 都重新連接到 analyser（避免第二次 PTT 後音量監控失效）
+      const source = audioContextRef.current.createMediaStreamSource(stream);
+      source.connect(analyserRef.current!);
 
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : 'audio/webm';
-
-      mediaRecorderRef.current = new MediaRecorder(stream, { mimeType });
+      const mimeType = getSupportedMimeType();
+      const recorderOpts = mimeType ? { mimeType } : undefined;
+      mediaRecorderRef.current = new MediaRecorder(stream, recorderOpts);
       audioChunksRef.current = [];
 
       mediaRecorderRef.current.ondataavailable = (event) => {
         if (event.data.size > 0) audioChunksRef.current.push(event.data);
       };
 
-      mediaRecorderRef.current.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
-        if (audioBlob.size > MIN_AUDIO_BLOB_SIZE) {
-          await sendAudioToServer(audioBlob);
-        } else {
-          setStatus('idle');
-        }
-      };
+      mediaRecorderRef.current.onstop = makeOnStopHandler('PTT', mediaRecorderRef.current.mimeType);
 
       mediaRecorderRef.current.start();
       setStatus('listening');
 
-      // Volume monitoring for visualizer
+      // Volume monitoring：用 mediaRecorderRef 狀態判斷，避免 stale closure
       const dataArray = new Uint8Array(analyserRef.current!.frequencyBinCount);
       const updateVolume = () => {
-        if (analyserRef.current && status === 'listening') {
+        if (analyserRef.current && mediaRecorderRef.current?.state === 'recording') {
           analyserRef.current.getByteFrequencyData(dataArray);
-          const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
-          setVolume(avg / 255);
+          let volSum = 0;
+          for (let i = 0; i < dataArray.length; i++) volSum += dataArray[i];
+          setVolume(volSum / dataArray.length / 255);
           requestAnimationFrame(updateVolume);
         }
       };
@@ -262,7 +282,7 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
       console.error('Failed to start recording:', error);
       setStatus('idle');
     }
-  }, [setStatus, status]);
+  }, [setStatus, makeOnStopHandler]);
 
   // Stop manual recording
   const stopRecording = useCallback(() => {
@@ -296,6 +316,7 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
 
     try {
       setStatus('processing');
+      streamDoneRef.current = false; // SSE 串流開始
 
       // 離線檢查
       if (!navigator.onLine) {
@@ -372,19 +393,17 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
         }
       }
 
-      // Start playing audio
-      if (audioQueueRef.current.length > 0 && !isPlayingRef.current) {
-        setStatus('speaking');
-        playNextAudio();
-      } else if (audioQueueRef.current.length === 0) {
+      // SSE 結束：標記串流完成，讓 playNextAudio 知道不會再有新 chunk
+      streamDoneRef.current = true;
+      if (audioQueueRef.current.length === 0 && !isPlayingRef.current) {
         setStatus('idle');
-        // Resume VAD
         if (vadEnabled && isListeningRef.current) {
           startVADLoop();
         }
       }
     } catch (error) {
       console.error('Error sending audio:', error);
+      streamDoneRef.current = true;
       useStore.getState().setConnectionError('語音傳送失敗，請稍後再試');
       setStatus('idle');
       // Resume VAD on error
@@ -393,6 +412,7 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
       }
     }
   }, [setStatus, playNextAudio, vadEnabled, startVADLoop, sessionId]);
+  sendAudioRef.current = sendAudioToServer;
 
   // Handle SSE events
   const handleSSEEvent = useCallback((event: string, dataStr: string) => {
@@ -429,13 +449,18 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
         case 'audio_chunk': {
           const audioData = JSON.parse(dataStr);
           audioQueueRef.current.push(audioData);
+          // 收到即播放：不等 SSE 結束，立即啟動播放鏈
+          if (!isPlayingRef.current) {
+            setStatus('speaking');
+            playNextAudio();
+          }
           break;
         }
       }
     } catch (error) {
       console.error('Error parsing SSE event:', event, error);
     }
-  }, [setStatus, setTranscript, setCart, setAiReply]);
+  }, [setStatus, setTranscript, setCart, setAiReply, playNextAudio]);
 
   // Click handler
   const handleClick = useCallback(() => {
@@ -465,19 +490,23 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
     };
   }, [vadEnabled, initMicrophone, calibrateVAD, cleanupAudio]);
 
+  // 用 ref 追蹤 status，避免 keyboard handler 因 status 變更重新註冊
+  const statusRef = useRef(status);
+  useEffect(() => { statusRef.current = status; }, [status]);
+
   // Keyboard shortcuts (only in push-to-talk mode)
   useEffect(() => {
     if (vadEnabled) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && status === 'idle') {
+      if (e.code === 'Space' && statusRef.current === 'idle') {
         e.preventDefault();
         startRecording();
       }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && status === 'listening') {
+      if (e.code === 'Space' && statusRef.current === 'listening') {
         e.preventDefault();
         stopRecording();
       }
@@ -490,7 +519,7 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [status, vadEnabled, startRecording, stopRecording]);
+  }, [vadEnabled, startRecording, stopRecording]);
 
   return (
     <div className="flex flex-col items-center">

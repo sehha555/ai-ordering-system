@@ -18,7 +18,7 @@ export const useStore = create<AppState>((set) => ({
   orderResult: null,
 
   // VAD
-  vadEnabled: true,
+  vadEnabled: false,
 
   // 網路連線
   connectionError: null,

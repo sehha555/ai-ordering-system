@@ -1,13 +1,13 @@
 'use client';
 
 import { useRef, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+
 import { AppStatus } from '../types';
 
 interface AudioVisualizerProps {
   status: AppStatus;
   volume?: number;
-  size?: 'large' | 'small';
+  size?: 'large' | 'medium' | 'small';
 }
 
 const STATUS_COLORS: Record<AppStatus, string> = {
@@ -26,8 +26,8 @@ function rgba(hex: string, a: number): string {
 
 export default function AudioVisualizer({ status, volume = 0, size = 'large' }: AudioVisualizerProps) {
   const isSmall = size === 'small';
-  const canvasSize = isSmall ? 40 : 256;
-  const scale = isSmall ? 40 / 256 : 1;
+  const canvasSize = size === 'small' ? 40 : size === 'medium' ? 120 : 256;
+  const scale = canvasSize / 256;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>(0);
   const phaseRef = useRef(0);
@@ -319,14 +319,7 @@ export default function AudioVisualizer({ status, volume = 0, size = 'large' }: 
     };
   }, [draw]);
 
-  const statusText: Record<AppStatus, string> = {
-    idle: '點擊開始',
-    listening: '聆聽中...',
-    processing: '處理中...',
-    speaking: '回覆中...',
-  };
-
-  if (isSmall) {
+  if (size === 'small' || size === 'medium') {
     return (
       <canvas
         ref={canvasRef}
@@ -338,29 +331,12 @@ export default function AudioVisualizer({ status, volume = 0, size = 'large' }: 
   }
 
   return (
-    <div className="flex flex-col items-center gap-4">
-      <canvas
-        ref={canvasRef}
-        width={256}
-        height={256}
-        className="w-64 h-64 cursor-pointer"
-        style={{ width: 256, height: 256 }}
-      />
-      <div className="h-7 flex items-center justify-center overflow-hidden">
-        <AnimatePresence mode="wait">
-          <motion.p
-            key={status}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.2 }}
-            className="text-lg font-medium"
-            style={{ color: STATUS_COLORS[status] }}
-          >
-            {statusText[status]}
-          </motion.p>
-        </AnimatePresence>
-      </div>
-    </div>
+    <canvas
+      ref={canvasRef}
+      width={256}
+      height={256}
+      className="w-64 h-64 cursor-pointer"
+      style={{ width: 256, height: 256 }}
+    />
   );
 }
