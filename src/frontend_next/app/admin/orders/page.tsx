@@ -324,6 +324,7 @@ export default function AdminOrdersPage() {
   const [activeTab, setActiveTab] = useState<TabType>('ACTIVE');
   const [toast, setToast] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -348,12 +349,14 @@ export default function AdminOrdersPage() {
   // ── 載入今日訂單 ──
   const fetchOrders = useCallback(async () => {
     try {
+      setFetchError(null);
       const res = await fetch('/admin/orders/list');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setOrders(data.items);
     } catch (e) {
       console.error('載入訂單失敗:', e);
+      setFetchError('無法連線後端服務，請確認後端已啟動（port 8000）');
     } finally {
       setLoading(false);
     }
@@ -512,6 +515,20 @@ export default function AdminOrdersPage() {
       <main className="max-w-lg mx-auto px-4 pb-10 pt-2">
         {loading ? (
           <p className="text-center py-12" style={{ color: '#8a9a9f' }}>載入中...</p>
+        ) : fetchError ? (
+          <div
+            className="rounded-2xl p-10 text-center mt-4"
+            style={{ backgroundColor: '#fff5f5', border: '1px solid #e8c4c4' }}
+          >
+            <p style={{ color: '#c45c5c' }}>{fetchError}</p>
+            <button
+              onClick={fetchOrders}
+              className="mt-4 px-6 py-2 rounded-lg text-sm font-medium"
+              style={{ backgroundColor: '#729DAD', color: 'white' }}
+            >
+              重試
+            </button>
+          </div>
         ) : filtered.length === 0 ? (
           <div
             className="rounded-2xl p-10 text-center mt-4"
