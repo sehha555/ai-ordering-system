@@ -297,10 +297,11 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
   // 用 useCallback 穩定參照後寫入 ref，讓 playNextAudio 永遠讀取最新版本
   const handlePlaybackComplete = useCallback(() => {
     setStatus('idle');
+    setAiReply(''); // 播放結束清除 AI 回覆，避免資料殘留
     if (vadEnabled && isListeningRef.current) {
       startVADLoop();
     }
-  }, [setStatus, vadEnabled, startVADLoop]);
+  }, [setStatus, setAiReply, vadEnabled, startVADLoop]);
   onPlaybackCompleteRef.current = handlePlaybackComplete;
 
   // Send audio to server and handle SSE
@@ -432,9 +433,10 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
           break;
         }
         case 'order_complete': {
-          // 當 AI 完成訂單流程時，設定訂單結果
+          // 當 AI 完成訂單流程時，設定訂單結果並清空前端購物車
           const result = JSON.parse(dataStr);
           useStore.getState().setOrderResult(result);
+          useStore.getState().clearCart();
           break;
         }
         case 'status': {
