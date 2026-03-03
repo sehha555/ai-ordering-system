@@ -1,7 +1,7 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
 import type { OrderResult } from '../types';
 
@@ -28,6 +28,23 @@ export default function CheckoutFlow() {
   const [selectedPayment, setSelectedPayment] = useState<'cash' | 'mobile' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState(10);
+
+  // 結帳完成後自動倒數返回
+  useEffect(() => {
+    if (checkoutStep !== 2) return;
+    setCountdown(10);
+    const timer = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          resetSession();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [checkoutStep, resetSession]);
 
   // 手動結帳 — 送出訂單到後端
   const handleManualSubmit = async () => {
@@ -93,7 +110,7 @@ export default function CheckoutFlow() {
   };
 
   return (
-    <div className="flex-1 flex flex-col p-6 relative">
+    <div className="flex-1 flex flex-col p-6">
       <AnimatePresence mode="wait">
         {/* 手動結帳頁面（一頁式） */}
         {checkoutStep === 1 && (
@@ -190,17 +207,38 @@ export default function CheckoutFlow() {
               <span className="text-2xl font-bold" style={{ color: '#729DAD' }}>${total}</span>
             </div>
 
-            {/* 確認送出按鈕 */}
-            <button
-              onClick={handleManualSubmit}
-              disabled={isSubmitting || cart.length === 0 || !selectedDine || !selectedPayment}
-              className="w-full py-4 rounded-xl font-semibold text-lg text-white transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{
-                background: 'linear-gradient(135deg, #729DAD 0%, #5a8494 100%)',
-              }}
-            >
-              {isSubmitting ? '處理中...' : '確認送出'}
-            </button>
+            {/* 按鈕區 */}
+            <div className="flex flex-col gap-3 mt-auto">
+              <button
+                onClick={handleManualSubmit}
+                disabled={isSubmitting || cart.length === 0 || !selectedDine || !selectedPayment}
+                className="w-full py-4 rounded-xl font-semibold text-lg text-white transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  background: 'linear-gradient(135deg, #729DAD 0%, #5a8494 100%)',
+                }}
+              >
+                {isSubmitting ? '處理中...' : '確認送出'}
+              </button>
+              <button
+                onClick={handleBack}
+                className="w-full py-2.5 rounded-lg text-sm text-center transition-colors"
+                style={{
+                  border: '1px solid #d0dce0',
+                  color: '#5a6b70',
+                  backgroundColor: 'transparent',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = '#729DAD';
+                  e.currentTarget.style.color = '#729DAD';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = '#d0dce0';
+                  e.currentTarget.style.color = '#5a6b70';
+                }}
+              >
+                返回
+              </button>
+            </div>
           </motion.div>
         )}
 
@@ -288,34 +326,11 @@ export default function CheckoutFlow() {
                 e.currentTarget.style.color = '#729DAD';
               }}
             >
-              開始新訂單
+              開始新訂單（{countdown}s）
             </button>
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* 返回按鈕（只在手動結帳頁面時顯示） */}
-      {checkoutStep === 1 && (
-        <button
-          onClick={handleBack}
-          className="absolute bottom-6 left-6 px-6 py-2.5 rounded-lg text-sm transition-colors"
-          style={{
-            border: '1px solid #d0dce0',
-            color: '#5a6b70',
-            backgroundColor: 'transparent',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = '#729DAD';
-            e.currentTarget.style.color = '#729DAD';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = '#d0dce0';
-            e.currentTarget.style.color = '#5a6b70';
-          }}
-        >
-          返回
-        </button>
-      )}
     </div>
   );
 }

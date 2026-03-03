@@ -18,6 +18,7 @@ beforeAll(() => {
       addColorStop: vi.fn(),
     }),
     scale: vi.fn(),
+    setTransform: vi.fn(),
     strokeStyle: '',
     fillStyle: '',
     lineWidth: 0,

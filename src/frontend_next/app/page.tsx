@@ -7,6 +7,7 @@ import VoiceController from '../components/VoiceController';
 import AudioVisualizer from '../components/AudioVisualizer';
 import CheckoutFlow from '../components/CheckoutFlow';
 import Toast from '../components/Toast';
+import MicSelector from '../components/MicSelector';
 
 export default function Home() {
   const { checkoutStep, cart, total, status, vadEnabled, setCheckoutStep } = useStore();
@@ -56,7 +57,10 @@ export default function Home() {
               源飯糰
             </h1>
           </div>
-          <p className="text-sm" style={{ color: '#5a6b70' }}>語音點餐系統</p>
+          <div className="flex items-center gap-2">
+            <MicSelector />
+            <p className="text-sm" style={{ color: '#5a6b70' }}>語音點餐系統</p>
+          </div>
         </header>
 
         {/* 主內容區 */}
@@ -129,14 +133,16 @@ export default function Home() {
 
 /* ─── AI 回覆 Banner ─── */
 function AiReplyBanner() {
-  const { aiReply, status } = useStore();
-  const isVisible = Boolean(aiReply) && (status === 'speaking' || status === 'processing');
+  const { aiReply, status, cart } = useStore();
+  const hasItems = cart.length > 0;
+  const isAiSpeaking = Boolean(aiReply) && (status === 'speaking' || status === 'processing');
+  const isIdleWithItems = status === 'idle' && hasItems;
 
   return (
-    <AnimatePresence>
-      {isVisible && (
+    <AnimatePresence mode="wait">
+      {isAiSpeaking && (
         <motion.div
-          key={aiReply}
+          key="ai-reply"
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -8 }}
@@ -149,6 +155,22 @@ function AiReplyBanner() {
           }}
         >
           「{aiReply}」
+        </motion.div>
+      )}
+      {!isAiSpeaking && isIdleWithItems && (
+        <motion.div
+          key="continue-hint"
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.25 }}
+          className="mx-4 mt-3 px-5 py-3 rounded-2xl text-base text-center"
+          style={{
+            backgroundColor: 'rgba(114, 157, 173, 0.06)',
+            color: '#8a9a9f',
+          }}
+        >
+          繼續說話點餐，或按結帳完成
         </motion.div>
       )}
     </AnimatePresence>

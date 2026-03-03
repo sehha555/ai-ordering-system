@@ -194,7 +194,7 @@ describe('CheckoutFlow', () => {
 
     it('點擊「開始新訂單」應呼叫 resetSession', async () => {
       render(<CheckoutFlow />);
-      await userEvent.click(screen.getByText('開始新訂單'));
+      await userEvent.click(screen.getByText(/開始新訂單/));
       expect(useStore.getState().checkoutStep).toBe(0);
       expect(useStore.getState().cart).toEqual([]);
     });
