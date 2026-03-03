@@ -2,6 +2,7 @@
 from fastapi import APIRouter, UploadFile, File, Depends, Form
 from fastapi.responses import StreamingResponse
 from fastapi.security.api_key import APIKeyHeader
+from pydantic import BaseModel
 import json
 import os
 from loguru import logger
@@ -27,13 +28,13 @@ async def get_api_key_optional(api_key: str = Depends(api_key_header)):
     return api_key
 
 
-async def event_generator_v2(orchestrator: StreamingOrchestrator, audio_bytes: bytes, session_id: str):
-    """串流版 SSE — 使用 process_audio_stream_v2（全域 try/except 防止靜默斷線）"""
+async def _sse_wrap(stream, label: str):
+    """將 orchestrator 的 event stream 包裝為 SSE 格式（全域 try/except 防止靜默斷線）"""
     try:
-        async for event in orchestrator.process_audio_stream_v2(audio_bytes, session_id=session_id):
+        async for event in stream:
             yield f"event: {event['event']}\ndata: {json.dumps(event['data'], ensure_ascii=False)}\n\n"
     except Exception as e:
-        logger.error("[SSE] event_generator_v2 未捕捉異常: {}", e)
+        logger.error("[SSE-{}] 未捕捉異常: {}", label, e)
         error_data = json.dumps({"message": "伺服器處理錯誤，請再試一次"}, ensure_ascii=False)
         yield f"event: error\ndata: {error_data}\n\n"
 
@@ -81,6 +82,9 @@ class StreamingDMAdapter:
             if evt_type == "text_delta":
                 yield event
 
+            elif evt_type == "early_tts":
+                yield event  # pass through 給 orchestrator 立即送 TTS
+
             elif evt_type == "tool_call":
                 tool_trace.append({"tool_call": event.get("tool_call"), "exec": event.get("exec")})
                 yield event
@@ -113,6 +117,42 @@ class StreamingDMAdapter:
                     "order_payload": {"total_price": total_price},
                     "finalize_result": finalize_result,
                 }
+
+
+class TextChatRequest(BaseModel):
+    """純文字輸入請求（用於自動追問等跳過 ASR 的場景）"""
+    text: str
+    session_id: str
+
+
+_SSE_HEADERS = {
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no",
+}
+
+
+@router.post("/text-chat")
+async def text_chat(
+    request: TextChatRequest,
+    api_key: str = Depends(get_api_key_optional)
+):
+    """
+    純文字對話 SSE 端點（跳過 ASR）
+
+    接收文字 + session_id，返回 Server-Sent Events 串流：
+    - 與 /voice-chat 事件格式完全相同
+    - 用途：自動追問、文字輸入模式等不需要語音辨識的場景
+    """
+    logger.info("[TEXT-CHAT] 收到文字請求: session_id={}, text='{}'", request.session_id, request.text)
+
+    dm_adapter = StreamingDMAdapter(request.session_id)
+    orchestrator = StreamingOrchestrator(None, dm_adapter, _streaming_tts, session_id=request.session_id)
+    return StreamingResponse(
+        _sse_wrap(orchestrator.process_text_stream(request.text, session_id=request.session_id), "text"),
+        media_type="text/event-stream",
+        headers=_SSE_HEADERS,
+    )
 
 
 @router.post("/voice-chat")
@@ -181,11 +221,7 @@ async def voice_chat(
     dm_adapter = StreamingDMAdapter(session_id)
     orchestrator = StreamingOrchestrator(asr_adapter, dm_adapter, streaming_tts, session_id=session_id)
     return StreamingResponse(
-        event_generator_v2(orchestrator, audio_bytes, session_id),
+        _sse_wrap(orchestrator.process_audio_stream_v2(audio_bytes, session_id=session_id), "voice"),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        }
+        headers=_SSE_HEADERS,
     )

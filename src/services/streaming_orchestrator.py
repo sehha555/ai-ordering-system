@@ -10,6 +10,7 @@ from loguru import logger
 from src.utils.perf_collector import perf_collector
 from src.services.tts_cache import tts_cache
 from src.dm import cart_manager
+from src.utils import SENTENCE_PUNCTS as _SENTENCE_PUNCTS
 
 # 對話 log 目錄（lazy init，首次寫入時才建立）
 _CONV_LOG_DIR = Path(__file__).resolve().parents[2] / "logs" / "conversations"
@@ -28,9 +29,6 @@ def _append_turn_log(session_id: str | None, turn: dict) -> None:
             f.write(json.dumps(turn, ensure_ascii=False) + "\n")
     except (OSError, TypeError, ValueError) as e:
         logger.warning("[CONV_LOG] 寫入失敗: {}", e)
-
-# 斷句標點 — 遇到就立即送 TTS
-_SENTENCE_PUNCTS = set("，。？！、；：\n")
 
 # 自適應分句閾值
 _MIN_SENTENCE_CHARS = 4   # 太短不送（繼續累積）
@@ -74,21 +72,196 @@ class StreamingOrchestrator:
         self.tts = tts_service
         self.session_id = session_id
 
+    async def _send_tts(
+        self, text: str, request_start: float, first_audio: bool, label: str = ""
+    ) -> AsyncIterator[tuple]:
+        """TTS 音訊產生：查快取 → 命中直送 / miss 則串流。
+        每個 yield 回傳 (sse_event, updated_first_audio, ttfa_or_None)"""
+        cached = tts_cache.get(text)
+        if cached:
+            b64 = base64.b64encode(cached).decode('utf-8')
+            ttfa = None
+            if first_audio:
+                ttfa = time.perf_counter() - request_start
+                logger.info("[PERF] TTFA {:.3f}s ({} 快取命中)", ttfa, label or "tts")
+                first_audio = False
+            yield {"event": "audio_chunk", "data": b64}, first_audio, ttfa
+        else:
+            try:
+                async for chunk in self.tts.run_stream(text):
+                    b64 = base64.b64encode(chunk).decode('utf-8')
+                    ttfa = None
+                    if first_audio:
+                        ttfa = time.perf_counter() - request_start
+                        logger.info("[PERF] TTFA {:.3f}s ({})", ttfa, label or "tts")
+                        first_audio = False
+                    yield {"event": "audio_chunk", "data": b64}, first_audio, ttfa
+            except Exception as e:
+                logger.warning("[TTS] {} run_stream 失敗: {}", label or "tts", e)
+
+    async def _run_dm_pipeline(
+        self, text: str, request_start: float, asr_elapsed: float, log_prefix: str
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """共用的 DM → TTS 串流核心，供 audio/text 兩個入口共用"""
+        dm_start = time.perf_counter()
+        dm_elapsed = 0
+        buffer = ""
+        full_text = ""
+        context_snapshot = {}
+        first_audio = True
+        ttfa_elapsed = None
+        tts_start = None
+        tool_calls_log: list[dict] = []
+
+        async for event in self.dm.process_input_stream(text):
+            evt_type = event.get("type")
+
+            if evt_type == "tool_call":
+                tc = event.get("tool_call", {})
+                tool_name = tc.get("function", {}).get("name", "")
+                status_msg = _TOOL_STATUS_MAP.get(tool_name, "處理中...")
+                yield {"event": "status", "data": {"message": status_msg}}
+                logger.info("[{}] tool_call status: {} → {}", log_prefix, tool_name, status_msg)
+                tool_calls_log.append({
+                    "name": tool_name,
+                    "args": tc.get("function", {}).get("arguments"),
+                    "result": event.get("tool_result"),
+                })
+
+            elif evt_type == "early_tts":
+                early_text = event.get("content", "").strip()
+                if early_text:
+                    if tts_start is None:
+                        tts_start = time.perf_counter()
+                    async for evt, updated_first, ttfa in self._send_tts(
+                        early_text, request_start, first_audio, "early_tts"
+                    ):
+                        yield evt
+                        first_audio = updated_first
+                        if ttfa is not None:
+                            ttfa_elapsed = ttfa
+
+            elif evt_type == "text_delta":
+                content = event.get("content", "")
+                buffer += content
+                full_text += content
+
+                # 自適應分句：標點切分 + MIN/MAX 字數閾值
+                while buffer:
+                    if len(buffer) >= _MAX_SENTENCE_CHARS:
+                        cut_idx = -1
+                        for i, ch in enumerate(buffer[:_MAX_SENTENCE_CHARS]):
+                            if ch in _SENTENCE_PUNCTS:
+                                cut_idx = i
+                        if cut_idx == -1:
+                            cut_idx = _MAX_SENTENCE_CHARS - 1
+                        sentence = buffer[:cut_idx + 1]
+                        buffer = buffer[cut_idx + 1:]
+                    else:
+                        cut_idx = -1
+                        for i, ch in enumerate(buffer):
+                            if ch in _SENTENCE_PUNCTS:
+                                cut_idx = i
+                                break
+                        if cut_idx == -1:
+                            break
+                        sentence = buffer[:cut_idx + 1]
+                        if len(sentence.strip()) < _MIN_SENTENCE_CHARS:
+                            next_cut = -1
+                            for i, ch in enumerate(buffer[cut_idx + 1:]):
+                                if ch in _SENTENCE_PUNCTS:
+                                    next_cut = cut_idx + 1 + i
+                                    break
+                            if next_cut == -1:
+                                break
+                            sentence = buffer[:next_cut + 1]
+                            cut_idx = next_cut
+                        buffer = buffer[cut_idx + 1:]
+
+                    if not sentence.strip():
+                        continue
+
+                    if tts_start is None:
+                        tts_start = time.perf_counter()
+                    async for evt, updated_first, ttfa in self._send_tts(
+                        sentence.strip(), request_start, first_audio, "sentence"
+                    ):
+                        yield evt
+                        first_audio = updated_first
+                        if ttfa is not None:
+                            ttfa_elapsed = ttfa
+
+            elif evt_type == "done":
+                context_snapshot = event
+                dm_elapsed = time.perf_counter() - dm_start
+                logger.info("[PERF] dm_process_stream 耗時 {:.3f}s", dm_elapsed)
+
+        # 提前送出 AI 回覆文字（在 TTS 殘餘之前，確保 Banner 及時顯示）
+        if full_text.strip():
+            yield {"event": "tts_text", "data": {"text": full_text}}
+
+        # 處理 buffer 殘餘
+        remaining = buffer.strip()
+        if remaining:
+            if tts_start is None:
+                tts_start = time.perf_counter()
+            async for evt, updated_first, ttfa in self._send_tts(
+                remaining, request_start, first_audio, "buffer"
+            ):
+                yield evt
+                first_audio = updated_first
+                if ttfa is not None:
+                    ttfa_elapsed = ttfa
+
+        # Cart Update
+        cart = context_snapshot.get("cart", [])
+        total = context_snapshot.get("order_payload", {}).get("total_price", 0)
+        yield {"event": "cart_update", "data": {"items": _format_cart_items(cart), "total": total}}
+
+        # Order Complete
+        finalize_result = context_snapshot.get("finalize_result")
+        if finalize_result:
+            yield {"event": "order_complete", "data": finalize_result}
+
+        tts_elapsed = (time.perf_counter() - tts_start) if tts_start else 0
+        total_elapsed = time.perf_counter() - request_start
+        logger.info("[PERF] tts_stream 耗時 {:.3f}s", tts_elapsed)
+        logger.info("[PERF] {} 端對端耗時 {:.3f}s", log_prefix, total_elapsed)
+
+        perf_collector.record(
+            asr_s=asr_elapsed,
+            dm_s=dm_elapsed,
+            ttfa_s=ttfa_elapsed,
+            tts_s=tts_elapsed,
+            total_s=total_elapsed,
+        )
+
+        _append_turn_log(self.session_id, {
+            "ts": datetime.now().isoformat(),
+            "asr_text": f"[{log_prefix}] {text}" if log_prefix != "SSE-v2" else text,
+            "tool_calls": tool_calls_log,
+            "response": full_text,
+            "cart_count": len(cart),
+            "perf": {
+                "asr_s": round(asr_elapsed, 3),
+                "dm_s": round(dm_elapsed, 3),
+                "ttfa_s": round(ttfa_elapsed, 3) if ttfa_elapsed else None,
+                "tts_s": round(tts_elapsed, 3),
+                "total_s": round(total_elapsed, 3),
+            },
+        })
+
     async def process_audio_stream_v2(self, audio_bytes: bytes, session_id: str = None) -> AsyncIterator[Dict[str, Any]]:
-        """
-        串流版流程：LLM 串流 + 分段 TTS
-        DM adapter 須提供 process_input_stream() 方法
-        """
+        """串流版流程：ASR → DM 串流 → 分段 TTS"""
         if session_id:
             self.session_id = session_id
 
         request_start = time.perf_counter()
         logger.info("[SSE-v2] 開始串流處理, session_id={}", self.session_id)
 
-        # 1. Thinking
         yield {"event": "thinking", "data": {}}
 
-        # 2. ASR（try/except 防止 ffmpeg/模型異常中斷整條鏈）
+        # ASR
         asr_start = time.perf_counter()
         try:
             text = await self.asr.transcribe(audio_bytes)
@@ -105,176 +278,23 @@ class StreamingOrchestrator:
             yield {"event": "error", "data": {"message": "無法識別語音內容，請再試一次"}}
             return
 
-        # 3. DM 串流 — 逐句收 token，湊成句子後立即送 TTS
-        dm_start = time.perf_counter()
-        dm_elapsed = 0
-        buffer = ""
-        full_text = ""
-        context_snapshot = {}
-        first_audio = True
-        ttfa_elapsed = None
-        tts_start = None
-        tool_calls_log: list[dict] = []  # 收集本輪 tool calls
+        async for evt in self._run_dm_pipeline(text, request_start, asr_elapsed, "SSE-v2"):
+            yield evt
 
-        async for event in self.dm.process_input_stream(text):
-            evt_type = event.get("type")
+    async def process_text_stream(self, text: str, session_id: str = None) -> AsyncIterator[Dict[str, Any]]:
+        """純文字輸入版：跳過 ASR，直接進 DM → TTS pipeline"""
+        if session_id:
+            self.session_id = session_id
 
-            if evt_type == "tool_call":
-                # 送 status event 給前端顯示（純文字，不發 TTS 音訊）
-                tc = event.get("tool_call", {})
-                tool_name = tc.get("function", {}).get("name", "")
-                status_msg = _TOOL_STATUS_MAP.get(tool_name, "處理中...")
-                yield {"event": "status", "data": {"message": status_msg}}
-                logger.info("[SSE-v2] tool_call status: {} → {}", tool_name, status_msg)
-                # 收集 tool call 資訊
-                tool_calls_log.append({
-                    "name": tool_name,
-                    "args": tc.get("function", {}).get("arguments"),
-                    "result": event.get("tool_result"),
-                })
+        request_start = time.perf_counter()
+        logger.info("[SSE-text] 開始純文字串流處理, session_id={}, text='{}'", self.session_id, text)
 
-            elif evt_type == "text_delta":
-                content = event.get("content", "")
-                buffer += content
-                full_text += content
+        yield {"event": "thinking", "data": {}}
+        yield {"event": "transcription", "data": {"text": text}}
 
-                # 自適應分句：標點切分 + MIN/MAX 字數閾值
-                while buffer:
-                    # 強制切：buffer 超過最大字數，不等標點
-                    if len(buffer) >= _MAX_SENTENCE_CHARS:
-                        # 找最近的標點（在 MAX 範圍內）
-                        cut_idx = -1
-                        for i, ch in enumerate(buffer[:_MAX_SENTENCE_CHARS]):
-                            if ch in _SENTENCE_PUNCTS:
-                                cut_idx = i
-                        if cut_idx == -1:
-                            # 沒有標點，強制在 MAX 處截斷
-                            cut_idx = _MAX_SENTENCE_CHARS - 1
-                        sentence = buffer[:cut_idx + 1]
-                        buffer = buffer[cut_idx + 1:]
-                    else:
-                        # 找第一個斷句標點
-                        cut_idx = -1
-                        for i, ch in enumerate(buffer):
-                            if ch in _SENTENCE_PUNCTS:
-                                cut_idx = i
-                                break
+        if not text:
+            yield {"event": "error", "data": {"message": "輸入文字不能為空"}}
+            return
 
-                        if cut_idx == -1:
-                            break  # 還沒湊成一句，繼續累積
-
-                        sentence = buffer[:cut_idx + 1]
-
-                        # 最小字數檢查：太短就繼續累積，等下一個標點
-                        if len(sentence.strip()) < _MIN_SENTENCE_CHARS:
-                            # 把下一段也納進來再找下一個標點
-                            next_cut = -1
-                            for i, ch in enumerate(buffer[cut_idx + 1:]):
-                                if ch in _SENTENCE_PUNCTS:
-                                    next_cut = cut_idx + 1 + i
-                                    break
-                            if next_cut == -1:
-                                break  # 後面還沒有標點，繼續累積
-                            # 合併到下一個標點
-                            sentence = buffer[:next_cut + 1]
-                            cut_idx = next_cut
-
-                        buffer = buffer[cut_idx + 1:]
-
-                    if not sentence.strip():
-                        continue
-
-                    # 送 TTS
-                    if tts_start is None:
-                        tts_start = time.perf_counter()
-
-                    # 先查快取
-                    cached = tts_cache.get(sentence.strip())
-                    if cached:
-                        b64_audio = base64.b64encode(cached).decode('utf-8')
-                        yield {"event": "audio_chunk", "data": b64_audio}
-                        if first_audio:
-                            ttfa_elapsed = time.perf_counter() - request_start
-                            logger.info("[PERF] TTFA 首個音訊 {:.3f}s (快取命中)", ttfa_elapsed)
-                            first_audio = False
-                    else:
-                        try:
-                            async for chunk in self.tts.run_stream(sentence):
-                                b64_audio = base64.b64encode(chunk).decode('utf-8')
-                                yield {"event": "audio_chunk", "data": b64_audio}
-                                if first_audio:
-                                    ttfa_elapsed = time.perf_counter() - request_start
-                                    logger.info("[PERF] TTFA 首個音訊 {:.3f}s", ttfa_elapsed)
-                                    first_audio = False
-                        except Exception as e:
-                            logger.warning("[TTS] run_stream 失敗（跳過此句）: {}", e)
-
-            elif evt_type == "done":
-                context_snapshot = event
-                dm_elapsed = time.perf_counter() - dm_start
-                logger.info("[PERF] dm_process_stream 耗時 {:.3f}s", dm_elapsed)
-
-        # 3.5 提前送出 AI 回覆文字（在 TTS 殘餘之前，確保 Banner 及時顯示）
-        if full_text.strip():
-            yield {"event": "tts_text", "data": {"text": full_text}}
-
-        # 處理 buffer 殘餘
-        if buffer.strip():
-            if tts_start is None:
-                tts_start = time.perf_counter()
-            cached = tts_cache.get(buffer.strip())
-            if cached:
-                b64_audio = base64.b64encode(cached).decode('utf-8')
-                yield {"event": "audio_chunk", "data": b64_audio}
-                if first_audio:
-                    ttfa_elapsed = time.perf_counter() - request_start
-                    first_audio = False
-            else:
-                try:
-                    async for chunk in self.tts.run_stream(buffer):
-                        b64_audio = base64.b64encode(chunk).decode('utf-8')
-                        yield {"event": "audio_chunk", "data": b64_audio}
-                        if first_audio:
-                            ttfa_elapsed = time.perf_counter() - request_start
-                            first_audio = False
-                except Exception as e:
-                    logger.warning("[TTS] run_stream 殘餘 buffer 失敗: {}", e)
-
-        # 4. Cart Update
-        cart = context_snapshot.get("cart", [])
-        total = context_snapshot.get("order_payload", {}).get("total_price", 0)
-        yield {"event": "cart_update", "data": {"items": _format_cart_items(cart), "total": total}}
-
-        # 4.5 Order Complete
-        finalize_result = context_snapshot.get("finalize_result")
-        if finalize_result:
-            yield {"event": "order_complete", "data": finalize_result}
-
-        tts_elapsed = (time.perf_counter() - tts_start) if tts_start else 0
-        total_elapsed = time.perf_counter() - request_start
-        logger.info("[PERF] tts_stream 耗時 {:.3f}s", tts_elapsed)
-        logger.info("[PERF] 端對端 SSE 總耗時 {:.3f}s", total_elapsed)
-
-        perf_collector.record(
-            asr_s=asr_elapsed,
-            dm_s=dm_elapsed,
-            ttfa_s=ttfa_elapsed,
-            tts_s=tts_elapsed,
-            total_s=total_elapsed,
-        )
-
-        # 5. 即時對話 log（每輪都寫，不等結帳）
-        _append_turn_log(self.session_id, {
-            "ts": datetime.now().isoformat(),
-            "asr_text": text,
-            "tool_calls": tool_calls_log,
-            "response": full_text,
-            "cart_count": len(cart),
-            "perf": {
-                "asr_s": round(asr_elapsed, 3),
-                "dm_s": round(dm_elapsed, 3),
-                "ttfa_s": round(ttfa_elapsed, 3) if ttfa_elapsed else None,
-                "tts_s": round(tts_elapsed, 3),
-                "total_s": round(total_elapsed, 3),
-            },
-        })
+        async for evt in self._run_dm_pipeline(text, request_start, 0, "text-input"):
+            yield evt

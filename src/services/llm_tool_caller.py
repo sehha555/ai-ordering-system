@@ -14,6 +14,11 @@ from src.dm.tool_priming import get_priming_messages
 _PRIMING_MESSAGES = get_priming_messages()
 _NO_THINK_PREFIX = "/no_think\n"  # 關閉 Qwen3 thinking mode，降低延遲
 
+# 允許 early TTS 播報的工具（tool call 成功後立即送語音，降低 TTFA）
+_EARLY_TTS_TOOLS = {"add_to_cart", "remove_from_cart"}
+
+from src.utils import SENTENCE_PUNCTS as _SENTENCE_PUNCTS
+
 # Qwen 模型有時把 tool call 輸出到 content 而非 tool_calls 欄位
 _TOOL_CALL_RE = re.compile(
     r'[<\|im_start\|>]*\s*'           # 可選的 <|im_start|> 前綴
@@ -363,11 +368,10 @@ class LLMToolCaller:
                     if full_text:
                         yield {"type": "text_delta", "content": full_text}
                 else:
-                    _PUNCT = set("，。？！、；：\n")
                     buf = ""
                     for ch in full_text:
                         buf += ch
-                        if ch in _PUNCT:
+                        if ch in _SENTENCE_PUNCTS:
                             yield {"type": "text_delta", "content": buf}
                             buf = ""
                     if buf:
@@ -401,6 +405,15 @@ class LLMToolCaller:
             last_tool_trace.append({"tool_call": tool_call, "exec": exec_result})
 
             yield {"type": "tool_call", "tool_call": tool_call, "exec": exec_result}
+
+            # 提前送出 tool result message 作為首段語音，大幅降低 TTFA
+            # 只對加入/移除購物車觸發，避免 query_menu 等工具意外播報
+            tool_name = tool_call.get("function", {}).get("name", "")
+            if tool_name in _EARLY_TTS_TOOLS and exec_result.get("ok"):
+                tool_result = exec_result.get("result")
+                tool_msg = tool_result.get("message", "") if isinstance(tool_result, dict) else ""
+                if tool_msg:
+                    yield {"type": "early_tts", "content": tool_msg}
 
             tool_call_id = tool_call.get("id", "toolcall_0")
             messages.append({
