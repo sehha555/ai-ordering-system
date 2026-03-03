@@ -1,8 +1,17 @@
 # src/services/tts_cache.py
 """TTS 預快取層 — 啟動時對高頻固定回覆預生成音檔，命中時 TTFA ≈ 0"""
+import re
 from typing import AsyncIterator, Dict, Optional
 
 from loguru import logger
+
+# 正規化：去除常見標點，統一 lookup key
+_PUNCT_RE = re.compile(r'[，。？！、；：\s]+')
+
+
+def _normalize(text: str) -> str:
+    """去標點 + 空白，產生正規化 key"""
+    return _PUNCT_RE.sub('', text)
 
 # 高頻固定回覆清單（店員常說的短句）
 HIGH_FREQ_PHRASES = [
@@ -24,7 +33,7 @@ HIGH_FREQ_PHRASES = [
     "飲料溫度呢",
     "抱歉 沒聽清楚 再說一次",
     "吐司漢堡還是饅頭",
-    # clarify_policy.py 帶標點回覆
+    # clarify_policy.py 帶標點回覆（正規化後自動與無標點版共用快取）
     "請問還需要什麼嗎？",
     "你要冰的、溫的？",
     "大杯還中杯？",
@@ -48,7 +57,7 @@ class TTSCache:
         self._cache: Dict[str, bytes] = {}
 
     async def warmup(self, tts_service) -> None:
-        """啟動時預生成高頻回覆的 TTS 音檔"""
+        """啟動時預生成高頻回覆的 TTS 音檔（同時存原文 key 和正規化 key）"""
         logger.info("[TTS-Cache] 開始預熱 {} 條高頻回覆...", len(HIGH_FREQ_PHRASES))
         success = 0
         for phrase in HIGH_FREQ_PHRASES:
@@ -57,19 +66,27 @@ class TTSCache:
                 async for chunk in tts_service.run_stream(phrase):
                     chunks.append(chunk)
                 if chunks:
-                    self._cache[phrase] = b"".join(chunks)
+                    audio = b"".join(chunks)
+                    self._cache[phrase] = audio
+                    # 同時用正規化 key 存一份，讓帶/不帶標點都能命中
+                    norm = _normalize(phrase)
+                    if norm != phrase and norm not in self._cache:
+                        self._cache[norm] = audio
                     success += 1
             except Exception as e:
                 logger.warning("[TTS-Cache] 預熱失敗: '{}' → {}", phrase, e)
-        logger.info("[TTS-Cache] 預熱完成: {}/{} 成功", success, len(HIGH_FREQ_PHRASES))
+        logger.info("[TTS-Cache] 預熱完成: {}/{} 成功, 快取條目 {}", success, len(HIGH_FREQ_PHRASES), len(self._cache))
 
     def get(self, text: str) -> Optional[bytes]:
-        """查詢快取，命中返回完整音訊 bytes，未命中返回 None"""
-        return self._cache.get(text)
+        """查詢快取：先精確匹配，再試正規化 key"""
+        result = self._cache.get(text)
+        if result is None:
+            result = self._cache.get(_normalize(text))
+        return result
 
     async def get_stream(self, text: str) -> Optional[AsyncIterator[bytes]]:
         """查詢快取並以串流方式返回（相容 run_stream 介面）"""
-        audio = self._cache.get(text)
+        audio = self.get(text)
         if audio is None:
             return None
 
