@@ -25,6 +25,12 @@ interface Order {
 
 type TabType = 'ACTIVE' | 'COMPLETED';
 
+// ───────────────────────────── 中文映射 ─────────────────────────
+const DINE_TYPE_LABEL: Record<string, string> = {
+  'dine-in': '內用',
+  'take-out': '外帶',
+};
+
 // ───────────────────────────── 常數 ─────────────────────────────
 
 // 煎台分類（以品名結尾判斷）
@@ -225,7 +231,7 @@ function OrderCard({
       {/* 第二列：內用/外帶 + 付款 */}
       <div className="flex items-center justify-between mt-1.5">
         <span className="font-bold" style={{ fontSize: 18, color: '#2c3e42' }}>
-          {order.dine_type || '內用'}
+          {DINE_TYPE_LABEL[order.dine_type] || order.dine_type || '內用'}
         </span>
         {order.status !== 'COMPLETED' && (
           <PaymentPill
