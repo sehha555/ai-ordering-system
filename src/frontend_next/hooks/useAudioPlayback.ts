@@ -33,12 +33,16 @@ export function useAudioPlayback() {
         playNextAudio();
       };
 
-      audio.onerror = () => {
+      audio.onerror = (e) => {
+        console.warn('[AudioPlayback] 播放錯誤:', e);
         URL.revokeObjectURL(audioUrl);
         playNextAudio();
       };
 
-      audio.play().catch(() => playNextAudio());
+      audio.play().catch((err) => {
+        console.warn('[AudioPlayback] play() 失敗:', err.name, err.message);
+        playNextAudio();
+      });
     } catch (error) {
       console.error('Error playing audio:', error);
       playNextAudio();

@@ -1,7 +1,9 @@
-"""ASR 輸出後處理：簡轉繁 + 領域詞彙修正"""
+"""ASR 輸出後處理：簡轉繁 + 領域詞彙修正 + 無意義文本過濾"""
+import re
 import opencc
 
 _converter = opencc.OpenCC("s2twp")  # 簡體→繁體（台灣用語偏好）
+_PUNCTUATION_RE = re.compile(r'[，。？！、；：「」,.?!\s]')
 
 # 領域詞彙修正表：ASR 常見錯誤 → 正確菜單用語
 # 同時包含簡體和 opencc 轉繁後的錯誤詞，確保兩階段都能修正
@@ -92,6 +94,9 @@ _CORRECTIONS = {
     # 糙米
     "草米": "糙米",
     "操米": "糙米",
+    # 紫米 — ASR 聲母誤辨（z/zh 混淆）
+    "子米": "紫米",
+    "籽米": "紫米",
     # === 麵類 — 面→麵 ===
     "铁板面": "鐵板麵",
     "鐵板面": "鐵板麵",
@@ -122,11 +127,16 @@ _CORRECTIONS = {
 
 
 def postprocess(text: str) -> str:
-    """ASR 輸出後處理：簡轉繁 + 詞彙修正"""
+    """ASR 輸出後處理：簡轉繁 + 詞彙修正 + 無意義文本過濾"""
     # Step 1: opencc 簡轉繁
     text = _converter.convert(text)
     # Step 2: 領域詞彙修正（opencc 轉完可能仍有錯）
     for wrong, correct in _CORRECTIONS.items():
         if wrong in text:
             text = text.replace(wrong, correct)
-    return text.strip()
+    text = text.strip()
+    # Step 3: 過濾無意義結果（純標點、單字等 — VAD 誤觸空白音訊常產生「。」）
+    content = _PUNCTUATION_RE.sub('', text)
+    if len(content) < 2:
+        return ""
+    return text

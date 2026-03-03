@@ -11,7 +11,8 @@ const VAD_DEFAULT_THRESHOLD = 15;
 const SILENCE_DURATION = 1500;
 const VAD_CALIBRATION_FRAMES = 60; // 約 1 秒的校準幀數
 const VAD_THRESHOLD_MULTIPLIER = 2; // 閾值 = 環境噪音平均值 × 倍數
-const VAD_MIN_THRESHOLD = 10; // 最低閾值
+const VAD_MIN_THRESHOLD = 20; // 最低閾值（原 10 過低，環境雜訊易誤觸）
+const MIN_AUDIO_BLOB_SIZE = 4000; // 最小音訊大小（bytes），過濾 VAD 誤觸的超短錄音
 const MAX_RECORDING_DURATION = 30000; // 最大錄音時長 30 秒
 
 interface VoiceControllerProps {
@@ -174,7 +175,7 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
       const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
       isRecordingRef.current = false;
 
-      if (audioBlob.size > 1000) {
+      if (audioBlob.size > MIN_AUDIO_BLOB_SIZE) {
         await sendAudioToServer(audioBlob);
       } else {
         setStatus('idle');
@@ -236,7 +237,7 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
 
       mediaRecorderRef.current.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
-        if (audioBlob.size > 1000) {
+        if (audioBlob.size > MIN_AUDIO_BLOB_SIZE) {
           await sendAudioToServer(audioBlob);
         } else {
           setStatus('idle');
