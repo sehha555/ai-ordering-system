@@ -88,8 +88,8 @@ export default function Home() {
             >
               <motion.div
                 animate={{
-                  width: hasItems ? 120 : 256,
-                  height: hasItems ? 120 : 256,
+                  width: hasItems ? 160 : 256,
+                  height: hasItems ? 160 : 256,
                 }}
                 transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
               >
@@ -240,11 +240,11 @@ function OrderTicket({
         <AnimatePresence mode="popLayout">
           {items.map((item, index) => (
             <motion.div
-              key={`${item.name}-${index}`}
-              initial={{ opacity: 0, y: 16 }}
+              key={item.name}
+              initial={{ opacity: 0, y: -14 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 8 }}
-              transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+              exit={{ opacity: 0, y: 6, scale: 0.97 }}
+              transition={{ duration: 0.3, delay: Math.min(index * 0.06, 0.18), ease: [0.4, 0, 0.2, 1] }}
             >
               <div className="flex justify-between items-center py-4">
                 <div className="flex-1 pr-4">
