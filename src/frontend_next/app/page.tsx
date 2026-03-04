@@ -3,6 +3,7 @@
 import { useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../store/useStore';
+import { AppStatus } from '../types';
 import VoiceController from '../components/VoiceController';
 import AudioVisualizer from '../components/AudioVisualizer';
 import CheckoutFlow from '../components/CheckoutFlow';
@@ -148,9 +149,9 @@ function AiReplyBanner() {
 }
 
 /* ─── 球體視覺化（volume 高頻更新，隔離成獨立 component 避免 Home re-render 破壞 layout 動畫）─── */
-function BallVisualizer({ status, size }: { status: string; size: 'large' | 'medium' | 'small' }) {
+function BallVisualizer({ status, size }: { status: AppStatus; size: 'large' | 'medium' | 'small' }) {
   const volume = useStore(state => state.volume);
-  return <AudioVisualizer status={status as import('../types').AppStatus} volume={volume} size={size} />;
+  return <AudioVisualizer status={status} volume={volume} size={size} />;
 }
 
 /* ─── 球體下方狀態提示 ─── */

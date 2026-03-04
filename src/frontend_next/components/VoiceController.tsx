@@ -143,6 +143,7 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
     if (!analyserRef.current) return;
 
     const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+    let frameCount = 0;
 
     const loop = () => {
       if (!isListeningRef.current || !analyserRef.current) return;
@@ -151,7 +152,8 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
       let sum = 0;
       for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
       const avg = sum / dataArray.length;
-      setVolume(avg / 255);
+      // throttle：每 4 幀寫一次 store（~15Hz），減少 Zustand subscriber 通知
+      if (++frameCount % 4 === 0) setVolume(avg / 255);
 
       if (avg > vadThresholdRef.current) {
         silenceStartRef.current = null;
@@ -319,12 +321,13 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
 
       // Volume monitoring：用 mediaRecorderRef 狀態判斷，避免 stale closure
       const dataArray = new Uint8Array(analyserRef.current!.frequencyBinCount);
+      let pttFrameCount = 0;
       const updateVolume = () => {
         if (analyserRef.current && mediaRecorderRef.current?.state === 'recording') {
           analyserRef.current.getByteFrequencyData(dataArray);
           let volSum = 0;
           for (let i = 0; i < dataArray.length; i++) volSum += dataArray[i];
-          setVolume(volSum / dataArray.length / 255);
+          if (++pttFrameCount % 4 === 0) setVolume(volSum / dataArray.length / 255);
           requestAnimationFrame(updateVolume);
         }
       };

@@ -45,10 +45,13 @@ export function useAudioPlayback(_audioContextRef: RefObject<AudioContext | null
     const audio = new Audio(url);
     currentAudioRef.current = audio;
 
-    audio.onended = () => {
+    const revokeUrl = () => {
       URL.revokeObjectURL(url);
       if (currentUrlRef.current === url) currentUrlRef.current = null;
+    };
 
+    audio.onended = () => {
+      revokeUrl();
       if (audioQueueRef.current.length > 0) {
         playNextAudio();
       } else if (streamDoneRef.current) {
@@ -59,13 +62,15 @@ export function useAudioPlayback(_audioContextRef: RefObject<AudioContext | null
 
     audio.onerror = () => {
       console.warn('[AudioPlayback] <audio> 播放失敗，跳過此 chunk');
-      URL.revokeObjectURL(url);
-      if (currentUrlRef.current === url) currentUrlRef.current = null;
+      revokeUrl();
       playNextAudio();
     };
 
     audio.play().catch((e) => {
       console.warn('[AudioPlayback] play() 被阻擋:', e);
+      // play() 被阻擋時 onended 不會觸發，必須手動推進 queue 避免 deadlock
+      revokeUrl();
+      playNextAudio();
     });
   }, []);
 

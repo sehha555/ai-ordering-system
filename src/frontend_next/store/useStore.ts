@@ -56,6 +56,7 @@ export const useStore = create<AppState>((set) => ({
     orderResult: null,
     connectionError: null,
     aiReply: '',
+    volume: 0,
   }),
   setVadEnabled: (vadEnabled: boolean) => set({ vadEnabled }),
   setVolume: (volume: number) => set({ volume }),
