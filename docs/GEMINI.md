@@ -42,7 +42,7 @@ uv pip sync --all-features
   ```
 - **CLI 測試工具**:
   - 互動式 CLI: `uv run python src/main.py`
-  - DM 測試 CLI: `uv run python src/run_dm_cli.py`
+  - DM 測試 CLI: `uv run python scripts/run_dm_cli.py`
 
 ### 測試執行
 ```powershell
