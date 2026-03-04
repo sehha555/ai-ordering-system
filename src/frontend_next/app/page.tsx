@@ -10,7 +10,7 @@ import Toast from '../components/Toast';
 import MicSelector from '../components/MicSelector';
 
 export default function Home() {
-  const { checkoutStep, cart, total, status, vadEnabled, setVadEnabled, volume, setCheckoutStep } = useStore();
+  const { checkoutStep, cart, total, status, vadEnabled, setVadEnabled, setCheckoutStep } = useStore();
   const hasItems = cart.length > 0;
 
   const triggerRef = useRef<(() => void) | null>(null);
@@ -92,11 +92,7 @@ export default function Home() {
                 }}
                 transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
               >
-                <AudioVisualizer
-                  status={status}
-                  volume={volume}
-                  size={hasItems ? 'medium' : 'large'}
-                />
+                <BallVisualizer status={status} size={hasItems ? 'medium' : 'large'} />
               </motion.div>
               <VoiceHint status={status} hasItems={hasItems} vadEnabled={vadEnabled} />
               <button
@@ -149,6 +145,12 @@ function AiReplyBanner() {
       )}
     </AnimatePresence>
   );
+}
+
+/* ─── 球體視覺化（volume 高頻更新，隔離成獨立 component 避免 Home re-render 破壞 layout 動畫）─── */
+function BallVisualizer({ status, size }: { status: string; size: 'large' | 'medium' | 'small' }) {
+  const volume = useStore(state => state.volume);
+  return <AudioVisualizer status={status as import('../types').AppStatus} volume={volume} size={size} />;
 }
 
 /* ─── 球體下方狀態提示 ─── */
