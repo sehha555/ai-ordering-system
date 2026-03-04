@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, useCallback, useEffect, RefObject } from 'react';
+import { useRef, useCallback, useEffect, RefObject } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../store/useStore';
 import AudioVisualizer from './AudioVisualizer';
@@ -51,7 +51,7 @@ interface VoiceControllerProps {
 }
 
 export default function VoiceController({ triggerRef }: VoiceControllerProps = {}) {
-  const { status, setStatus, setCart, setTranscript, transcript, vadEnabled, setVadEnabled, sessionId, setAiReply } = useStore();
+  const { status, setStatus, setCart, setTranscript, transcript, vadEnabled, setVadEnabled, sessionId, setAiReply, setVolume } = useStore();
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -74,7 +74,6 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
   const vadThresholdRef = useRef<number>(VAD_DEFAULT_THRESHOLD);
   const recordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [volume, setVolume] = useState(0);
   const recordingStartTimeRef = useRef<number>(0);
 
   // ref 存放 sendAudioToServer，讓 makeOnStopHandler 不受宣告順序限制
@@ -670,7 +669,7 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
         className={`${vadEnabled ? '' : 'cursor-pointer'} select-none`}
         onClick={handleClick}
       >
-        <AudioVisualizer status={status} volume={volume} />
+        <AudioVisualizer status={status} />
       </div>
 
       <p className="mt-4 text-sm" style={{ color: '#5a6b70' }}>

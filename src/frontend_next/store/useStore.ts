@@ -26,6 +26,9 @@ export const useStore = create<AppState>((set) => ({
   // AI 回覆文字
   aiReply: '',
 
+  // 麥克風音量
+  volume: 0,
+
   // Actions - 語音和訂購
   setStatus: (status: AppStatus) => set({ status }),
   setCart: (cart: CartItem[], total: number) => set({ cart, total }),
@@ -55,6 +58,7 @@ export const useStore = create<AppState>((set) => ({
     aiReply: '',
   }),
   setVadEnabled: (vadEnabled: boolean) => set({ vadEnabled }),
+  setVolume: (volume: number) => set({ volume }),
 
   // Actions - AI 回覆文字
   setAiReply: (aiReply: string) => set({ aiReply }),

@@ -10,7 +10,7 @@ import Toast from '../components/Toast';
 import MicSelector from '../components/MicSelector';
 
 export default function Home() {
-  const { checkoutStep, cart, total, status, vadEnabled, setCheckoutStep } = useStore();
+  const { checkoutStep, cart, total, status, vadEnabled, setVadEnabled, volume, setCheckoutStep } = useStore();
   const hasItems = cart.length > 0;
 
   const triggerRef = useRef<(() => void) | null>(null);
@@ -94,10 +94,22 @@ export default function Home() {
               >
                 <AudioVisualizer
                   status={status}
+                  volume={volume}
                   size={hasItems ? 'medium' : 'large'}
                 />
               </motion.div>
               <VoiceHint status={status} hasItems={hasItems} vadEnabled={vadEnabled} />
+              <button
+                onClick={(e) => { e.stopPropagation(); setVadEnabled(!vadEnabled); }}
+                className="mt-2 px-4 py-1.5 rounded-full text-xs font-medium transition-colors"
+                style={{
+                  backgroundColor: vadEnabled ? '#729DAD' : '#e8eef0',
+                  color: vadEnabled ? 'white' : '#5a6b70',
+                  border: `1px solid ${vadEnabled ? '#5a8494' : '#d0dce0'}`,
+                }}
+              >
+                {vadEnabled ? '自動偵測模式' : '按鍵說話模式'}
+              </button>
             </motion.div>
           </div>
         )}

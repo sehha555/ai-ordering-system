@@ -88,8 +88,12 @@ class StreamingOrchestrator:
             yield {"event": "audio_chunk", "data": b64}, first_audio, ttfa
         else:
             try:
+                chunks = []
                 async for chunk in self.tts.run_stream(text):
-                    b64 = base64.b64encode(chunk).decode('utf-8')
+                    chunks.append(chunk)
+                if chunks:
+                    audio = b"".join(chunks)
+                    b64 = base64.b64encode(audio).decode('utf-8')
                     ttfa = None
                     if first_audio:
                         ttfa = time.perf_counter() - request_start
