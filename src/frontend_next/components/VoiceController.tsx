@@ -33,9 +33,8 @@ function getSupportedMimeType(): string | undefined {
   return undefined; // 讓 MediaRecorder 自動選擇
 }
 
-// SSE 行解析（元件外提取，避免重複定義）
-function parseSSELines(lines: string[], onEvent: (event: string, data: string) => void) {
-  let currentEvent = '';
+// SSE 行解析：回傳 currentEvent 供下次呼叫繼承，避免 event: 和 data: 跨 read chunk 時 event 被重置
+function parseSSELines(lines: string[], onEvent: (event: string, data: string) => void, currentEvent = ''): string {
   for (const line of lines) {
     if (line.startsWith('event: ')) {
       currentEvent = line.slice(7);
@@ -43,6 +42,7 @@ function parseSSELines(lines: string[], onEvent: (event: string, data: string) =
       onEvent(currentEvent, line.slice(6));
     }
   }
+  return currentEvent;
 }
 
 interface VoiceControllerProps {
@@ -374,6 +374,7 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
 
       const decoder = new TextDecoder();
       let buffer = '';
+      let sseEvent = '';
       const onEvent = (evt: string, data: string) => handleSSEEventRef.current?.(evt, data);
 
       while (true) {
@@ -383,11 +384,11 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
-        parseSSELines(lines, onEvent);
+        sseEvent = parseSSELines(lines, onEvent, sseEvent);
       }
 
       if (buffer.trim()) {
-        parseSSELines(buffer.split('\n'), onEvent);
+        parseSSELines(buffer.split('\n'), onEvent, sseEvent);
       }
 
       streamDoneRef.current = true;
@@ -511,6 +512,7 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
 
       const decoder = new TextDecoder();
       let buffer = '';
+      let sseEvent = '';
 
       while (true) {
         const { done, value } = await reader.read();
@@ -521,12 +523,12 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
-        parseSSELines(lines, onEvent);
+        sseEvent = parseSSELines(lines, onEvent, sseEvent);
       }
 
       // Process remaining buffer
       if (buffer.trim()) {
-        parseSSELines(buffer.split('\n'), onEvent);
+        parseSSELines(buffer.split('\n'), onEvent, sseEvent);
       }
 
       // SSE 結束：標記串流完成，讓 playNextAudio 知道不會再有新 chunk
