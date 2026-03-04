@@ -39,7 +39,7 @@ backups/
 .claude/skills/
 claude.md
 nul
-IMPLEMENTATION_BLUEPRINT.md
+
 
 # Benchmark 報告（跑測試產生的結果）
 benchmarks/reports/
