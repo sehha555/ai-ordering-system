@@ -93,6 +93,16 @@ async def lifespan(app):
     _warmup_tts = _create_tts(_tts_backend)
     asyncio.create_task(tts_cache.warmup(_warmup_tts))
 
+    # startup: LLM warmup（減少首次請求 30s+ 冷啟動）
+    async def _warmup_llm():
+        try:
+            logger.info("[STARTUP] LLM warmup 開始...")
+            await _llm_caller.ping()
+            logger.info("[STARTUP] LLM warmup 完成")
+        except Exception as e:
+            logger.warning("[STARTUP] LLM warmup 失敗（不影響啟動）: {}", e)
+    asyncio.create_task(_warmup_llm())
+
     # startup: Session 背景清理任務（每 5 分鐘）
     cleanup_task = asyncio.create_task(_session_cleanup_loop())
 

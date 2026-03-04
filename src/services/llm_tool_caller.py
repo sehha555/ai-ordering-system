@@ -271,6 +271,18 @@ class LLMToolCaller:
         logger.warning("[LLM] run_turn 超過最大步數 {}", self.max_steps)
         return {"ok": False, "error": "max_steps_exceeded", "history": history, "tool_trace": last_tool_trace}
 
+    async def ping(self) -> None:
+        """輕量 warmup ping，觸發模型載入（減少首次請求冷啟動延遲）。"""
+        try:
+            await self.call_llm_async(
+                messages=[{"role": "user", "content": "hi"}],
+                tools_schema=None,
+                tool_choice=None,
+                temperature=0.0,
+            )
+        except Exception:
+            pass  # warmup 失敗不影響啟動
+
     # ============ 串流 API ============
 
     async def call_llm_stream(

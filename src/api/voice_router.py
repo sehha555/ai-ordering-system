@@ -3,8 +3,10 @@ from fastapi import APIRouter, UploadFile, File, Depends, Form
 from fastapi.responses import StreamingResponse
 from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel
+import asyncio
 import json
 import os
+import tempfile
 from loguru import logger
 
 from src.services.asr_postprocess import postprocess
@@ -173,6 +175,20 @@ async def voice_chat(
     logger.info("[VOICE] 收到語音請求: session_id={}", session_id)
     audio_bytes = await file.read()
 
+    # 估算時長：webm/opus 通常 ~32kbps，過短視為空白音訊跳過 ASR
+    estimated_duration_ms = len(audio_bytes) / (32 * 1024 / 8) * 1000
+    if estimated_duration_ms < 200:
+        logger.debug("[VOICE] 音訊過短（估計 {}ms），跳過 ASR", int(estimated_duration_ms))
+
+        async def _empty_stream():
+            yield {"event": "done", "data": {"cart": [], "order_payload": {"total_price": 0}}}
+
+        return StreamingResponse(
+            _sse_wrap(_empty_stream(), "empty"),
+            media_type="text/event-stream",
+            headers=_SSE_HEADERS,
+        )
+
     # 取得服務實例（從服務容器導入）
     from src.services import container
     _asr_service = container.asr_service
@@ -186,26 +202,28 @@ async def voice_chat(
             self._asr = asr_service
 
         async def transcribe(self, audio_bytes: bytes) -> str:
-            import asyncio
-            import tempfile
+            # pipe 模式：webm bytes → ffmpeg stdin → wav bytes（省去 webm 磁碟 I/O）
+            proc = await asyncio.create_subprocess_exec(
+                "ffmpeg", "-y",
+                "-i", "pipe:0",
+                "-ar", "16000", "-ac", "1",
+                "-f", "wav", "pipe:1",
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            wav_bytes, _ = await proc.communicate(input=audio_bytes)
 
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp:
-                tmp.write(audio_bytes)
-                tmp_path = tmp.name
+            if proc.returncode != 0 or not wav_bytes:
+                logger.warning("[ASR] ffmpeg 轉換失敗（returncode={}）", proc.returncode)
+                return ""
 
-            wav_path = tmp_path.replace(".webm", ".wav")
+            # ASR service 只接受 file path，寫入 wav tempfile
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_wav:
+                tmp_wav.write(wav_bytes)
+                wav_path = tmp_wav.name
+
             try:
-                proc = await asyncio.create_subprocess_exec(
-                    "ffmpeg", "-y", "-i", tmp_path,
-                    "-ar", "16000", "-ac", "1", "-f", "wav", wav_path,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                _, stderr = await proc.communicate()
-                if proc.returncode != 0:
-                    raise RuntimeError(f"ffmpeg failed: {stderr.decode()[:200]}")
-
-                os.unlink(tmp_path)
                 loop = asyncio.get_running_loop()
                 result = await loop.run_in_executor(None, self._asr.transcribe, wav_path)
                 asr_error = result.get("error")
@@ -213,9 +231,10 @@ async def voice_chat(
                     logger.warning("[ASR] 辨識錯誤: {}", asr_error)
                 return postprocess(result.get("text", ""))
             finally:
-                for p in [tmp_path, wav_path]:
-                    if os.path.exists(p):
-                        os.unlink(p)
+                try:
+                    os.unlink(wav_path)
+                except FileNotFoundError:
+                    pass
 
     asr_adapter = ASRAdapter(_asr_service)
     dm_adapter = StreamingDMAdapter(session_id)

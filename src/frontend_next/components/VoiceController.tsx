@@ -12,11 +12,10 @@ const VAD_DEFAULT_THRESHOLD = 15;
 // 自動追問設定（speaking → idle 後，若購物車有品項則觸發）
 const AUTO_PROMPT_DELAY = 3000; // 3 秒無語音後自動追問
 const AUTO_PROMPT_TEXT = '這樣就好嗎？'; // 自動追問文字
-const SILENCE_DURATION = 1000;
+const SILENCE_DURATION = 1500;
 const VAD_CALIBRATION_FRAMES = 60; // 約 1 秒的校準幀數
 const VAD_THRESHOLD_MULTIPLIER = 2; // 閾值 = 環境噪音平均值 × 倍數
 const VAD_MIN_THRESHOLD = 20; // 最低閾值（原 10 過低，環境雜訊易誤觸）
-const MIN_AUDIO_BLOB_SIZE = 4000; // 最小音訊大小（bytes），過濾 VAD 誤觸的超短錄音
 const MAX_RECORDING_DURATION = 30000; // 最大錄音時長 30 秒
 const SSE_TIMEOUT = 30000; // SSE 回應超時 30 秒（LLM 冷啟動 + tool call 可能很慢）
 
@@ -60,7 +59,7 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const { audioQueueRef, isPlayingRef, playNextAudio, onPlaybackCompleteRef, streamDoneRef } = useAudioPlayback();
+  const { audioQueueRef, isPlayingRef, playNextAudio, onPlaybackCompleteRef, streamDoneRef, cleanup: cleanupPlayback } = useAudioPlayback(audioContextRef);
 
   // 自動追問計時器 ref
   const autoPromptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -76,6 +75,8 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
   const recordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [volume, setVolume] = useState(0);
+  const recordingStartTimeRef = useRef<number>(0);
+
   // ref 存放 sendAudioToServer，讓 makeOnStopHandler 不受宣告順序限制
   const sendAudioRef = useRef<((blob: Blob) => Promise<void>) | undefined>(undefined);
   // ref 存放 handleSSEEvent，讓 sendTextToServer/autoPrompt 不受宣告順序限制
@@ -107,12 +108,14 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
+    // 先重置播放佇列（nextStartTimeRef 歸零），再 close AudioContext
+    cleanupPlayback();
     if (audioContextRef.current) {
       audioContextRef.current.close();
       audioContextRef.current = null;
     }
     analyserRef.current = null;
-  }, []);
+  }, [cleanupPlayback]);
 
   // 初始化麥克風 + VAD
   const initMicrophone = useCallback(async () => {
@@ -211,9 +214,11 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
     isRecordingRef.current = false;
     try {
       const audioBlob = new Blob(audioChunksRef.current, { type: mime });
-      if (audioBlob.size > MIN_AUDIO_BLOB_SIZE) {
+      const duration = Date.now() - recordingStartTimeRef.current;
+      if (duration >= 300 && audioBlob.size > 1000) {
         await sendAudioRef.current?.(audioBlob);
       } else {
+        console.log(`[${label}] 錄音過短（${duration}ms / ${audioBlob.size}bytes），略過`);
         setStatus('idle');
       }
     } catch (error) {
@@ -247,7 +252,8 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
     recorder.onstop = makeOnStopHandler('VAD', recorder.mimeType);
 
     mediaRecorderRef.current = recorder;
-    recorder.start(200);
+    recordingStartTimeRef.current = Date.now();
+    recorder.start(100);
 
     // 最大錄音時長保護
     recordingTimerRef.current = setTimeout(() => {
@@ -308,6 +314,7 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
 
       mediaRecorderRef.current.onstop = makeOnStopHandler('PTT', mediaRecorderRef.current.mimeType);
 
+      recordingStartTimeRef.current = Date.now();
       mediaRecorderRef.current.start();
       setStatus('listening');
 
