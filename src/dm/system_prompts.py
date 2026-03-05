@@ -134,18 +134,10 @@ class SystemPromptBuilder:
 
     def _generate_tool_usage_rules(self) -> str:
         """生成工具使用規則（精簡版，與 system_prompt.md 互補不重複）"""
-        return """# 常用別名
-- 飯糰：傳統=源味傳統、培根=香燻培根、火腿=風味火腿
-- 飲料：豆=有糖豆漿、清=無糖豆漿、奶=純鮮奶茶、大冰豆=大杯冰有糖豆漿
-- 蛋餅：蛋餅=原味蛋餅、蔬菜蛋餅=高麗菜蛋餅
-- 鐵板麵：蘑菇麵=蘑菇鐵板麵、黑椒麵=黑椒鐵板麵
-- 套餐：一號餐/1號=套餐一、二號餐/2號=套餐二，依此類推
-- 語音容錯：聽起來像的就算（如「起絲蛋兵」=起司蛋餅）
-
-## 點餐決策三步驟
+        return """# 點餐決策三步驟
 收到點餐請求時依序執行：
 
-步驟一【解析】辨識品項，含別名/簡稱（參照上方別名表）
+步驟一【解析】辨識品項；聽不確定時從菜單指南找最相近的品項向客人確認
 步驟二【核對】確認必填欄位是否齊全：
   飯糰：口味 + 米種（必填）
   飲料：品名 + 大小 + 溫度（必填）
@@ -156,6 +148,85 @@ class SystemPromptBuilder:
   齊全 → call tool
   有缺 → 一次追問所有缺的欄位，不分開問
   多品項 → 先 call 齊全的，再追問缺的"""
+
+    def _generate_menu_domain_guide(self) -> str:
+        """生成菜單領域指南（Triad Engine Format B）"""
+        import json  # noqa: PLC0415
+        from pathlib import Path  # noqa: PLC0415
+
+        menu_path = Path(__file__).parent.parent / "tools" / "menu" / "menu_all.json"
+        recipe_path = Path(__file__).parent.parent / "tools" / "menu" / "riceball_recipes.json"
+
+        with open(menu_path, encoding="utf-8-sig") as f:
+            menu_items = json.load(f)
+        with open(recipe_path, encoding="utf-8-sig") as f:
+            recipes = json.load(f)
+
+        # 按分類整理品項名稱
+        by_category: Dict[str, list] = {}
+        for item in menu_items:
+            by_category.setdefault(item["category"], []).append(item["name"])
+
+        # 飯糰成分映射（menu name → ingredients list）
+        def get_riceball_ingredients(menu_name: str) -> list:
+            if menu_name in recipes:
+                return recipes[menu_name]["ingredients"]
+            key = menu_name.replace("飯糰", "").strip()
+            if key in recipes:
+                return recipes[key]["ingredients"]
+            return []
+
+        # 建立菜單結構
+        menu: Dict = {}
+
+        # 飯糰：opts + 品項附成分
+        menu["飯糰"] = {
+            "opts": {"米種": ["白米", "紫米", "混米"]},
+            "items": {
+                name: get_riceball_ingredients(name)
+                for name in by_category.get("飯糰", [])
+            },
+        }
+
+        # 純陣列分類
+        for cat in ["蛋餅", "吐司", "漢堡", "饅頭", "蔥抓餅", "鐵板麵", "點心"]:
+            if cat in by_category:
+                menu[cat] = by_category[cat]
+
+        # 果醬吐司：口味×片型 opts 格式（省 token）
+        menu["果醬吐司"] = {
+            "opts": {
+                "口味": ["草莓", "花生", "蒜香", "奶酥", "巧克力"],
+                "片型": ["薄片", "厚片"],
+            }
+        }
+
+        # 飲品：去重（(中)/(大) 合併為 opts）
+        seen: set = set()
+        drink_names = []
+        for name in by_category.get("飲品", []):
+            base = name.replace("(中)", "").replace("(大)", "").strip()
+            if base not in seen:
+                seen.add(base)
+                drink_names.append(base)
+        menu["飲品"] = {"opts": {"杯型": ["中", "大"]}, "items": drink_names}
+
+        # 套餐
+        menu["套餐"] = by_category.get("套餐", [])
+
+        guide = {
+            "scope": "僅此 menu 內品項存在，未列出的一律不販售",
+            "required_opts": {"飯糰": ["米種"]},
+            "menu": menu,
+            "ingredients": {
+                "載體": {
+                    "共同": ["口味", "小黃瓜", "蛋", "沙拉醬"],
+                    "漢堡加": ["洋蔥", "番茄醬"],
+                }
+            },
+        }
+
+        return "# 菜單指南\n```json\n" + json.dumps(guide, ensure_ascii=False, separators=(",", ":")) + "\n```"
 
     def _format_session_context(self, session_context: Optional[SessionContext]) -> str:
         """格式化會話上下文信息"""
@@ -287,6 +358,8 @@ class SystemPromptBuilder:
             self._load_base_prompt(),
             "",
             self._generate_tool_usage_rules(),
+            "",
+            self._generate_menu_domain_guide(),
         ]
 
         # 動態內容放最尾段（避免插入中間破壞 prefix cache）
