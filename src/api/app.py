@@ -93,12 +93,21 @@ async def lifespan(app):
     _warmup_tts = _create_tts(_tts_backend)
     asyncio.create_task(tts_cache.warmup(_warmup_tts))
 
-    # startup: LLM warmup（減少首次請求 30s+ 冷啟動）
+    # startup: LLM KV cache 預熱（送完整 system prompt + priming + tools，讓 LM Studio cache 住固定前綴）
     async def _warmup_llm():
         try:
-            logger.info("[STARTUP] LLM warmup 開始...")
-            await _llm_caller.ping()
-            logger.info("[STARTUP] LLM warmup 完成")
+            logger.info("[STARTUP] LLM KV cache 預熱開始...")
+            from src.dm.tool_priming import get_priming_messages
+            system_prompt = SystemPromptBuilder().build()
+            priming = get_priming_messages()
+            tools_schema = _tool_registry.get_tools_schema()
+            messages = [
+                {"role": "system", "content": system_prompt},
+                *priming,
+                {"role": "user", "content": "你好"},
+            ]
+            await _llm_caller.ping(messages=messages, tools_schema=tools_schema)
+            logger.info("[STARTUP] LLM KV cache 預熱完成")
         except Exception as e:
             logger.warning("[STARTUP] LLM warmup 失敗（不影響啟動）: {}", e)
     asyncio.create_task(_warmup_llm())

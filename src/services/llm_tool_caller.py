@@ -271,15 +271,26 @@ class LLMToolCaller:
         logger.warning("[LLM] run_turn 超過最大步數 {}", self.max_steps)
         return {"ok": False, "error": "max_steps_exceeded", "history": history, "tool_trace": last_tool_trace}
 
-    async def ping(self) -> None:
-        """輕量 warmup ping，觸發模型載入（減少首次請求冷啟動延遲）。"""
+    async def ping(
+        self,
+        *,
+        messages: Optional[List[Dict[str, Any]]] = None,
+        tools_schema: Optional[List[Dict[str, Any]]] = None,
+    ) -> None:
+        """Warmup ping，預熱 LM Studio KV prefix cache。
+        傳入完整 messages（含 system prompt + priming）才能真正 cache 住固定前綴。
+        """
         try:
-            await self.call_llm_async(
-                messages=[{"role": "user", "content": "hi"}],
-                tools_schema=None,
-                tool_choice=None,
-                temperature=0.0,
-            )
+            warmup_messages = messages or [{"role": "user", "content": "hi"}]
+            payload: Dict[str, Any] = {
+                "model": self.model,
+                "messages": warmup_messages,
+                "temperature": 0.0,
+                "max_tokens": 1,
+            }
+            if tools_schema is not None:
+                payload["tools"] = tools_schema
+            await asyncio.to_thread(self._post, payload)
         except Exception:
             pass  # warmup 失敗不影響啟動
 
