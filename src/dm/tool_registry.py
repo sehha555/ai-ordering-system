@@ -17,6 +17,16 @@ from src.api.order_broadcaster import order_broadcaster, format_order_for_admin
 # 蛋餅別名
 EGG_PANCAKE_ALIASES = EggPancakeTool.FLAVOR_ALIASES
 
+# 結帳正規化映射（finalize_order / preview_checkout 共用）
+_DINE_TYPE_MAP: Dict[str, str] = {
+    "內用": "dine-in", "外帶": "take-out",
+    "dine-in": "dine-in", "take-out": "take-out",
+}
+_PAYMENT_MAP: Dict[str, str] = {
+    "現金": "cash", "行動支付": "line_pay", "Line Pay": "line_pay",
+    "cash": "cash", "mobile": "line_pay", "line_pay": "line_pay",
+}
+
 
 class ToolRegistry:
     """
@@ -504,13 +514,9 @@ class ToolRegistry:
                 }
 
 
-            # 正規化 dine_type
-            dine_type_map = {"內用": "dine-in", "外帶": "take-out", "dine-in": "dine-in", "take-out": "take-out"}
-            resolved_dine = dine_type_map.get(dine_type, dine_type)
-
-            # 正規化 payment_method
-            payment_map = {"現金": "cash", "行動支付": "line_pay", "Line Pay": "line_pay", "cash": "cash", "mobile": "line_pay", "line_pay": "line_pay"}
-            resolved_payment = payment_map.get(payment_method, payment_method)
+            # 正規化 dine_type / payment_method
+            resolved_dine = _DINE_TYPE_MAP.get(dine_type, dine_type)
+            resolved_payment = _PAYMENT_MAP.get(payment_method, payment_method)
 
             # 計算總價（複用現有 _calculate_cart_total）
             total_price = cart_manager.calculate_cart_total(session["cart"])
@@ -605,14 +611,11 @@ class ToolRegistry:
         if not cart:
             return {"ok": False, "message": "購物車為空"}
 
-        dine_type_map = {"內用": "dine-in", "外帶": "take-out", "dine-in": "dine-in", "take-out": "take-out"}
-        payment_map = {"現金": "cash", "Line Pay": "line_pay", "行動支付": "line_pay", "cash": "cash", "line_pay": "line_pay", "mobile": "line_pay"}
-
         return {
             "ok": True,
             "preview": True,
-            "dine_type": dine_type_map.get(dine_type, dine_type),
-            "payment_method": payment_map.get(payment_method, payment_method),
+            "dine_type": _DINE_TYPE_MAP.get(dine_type, dine_type),
+            "payment_method": _PAYMENT_MAP.get(payment_method, payment_method),
         }
 
     # ============ Schema 和映射 ============

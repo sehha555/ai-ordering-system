@@ -1,7 +1,9 @@
 """System Prompt 管理模組 - 動態生成和管理 LLM 系統提示"""
 from typing import Optional, Dict
+import json
 import os
 import re
+from pathlib import Path
 from src.dm.session_context import SessionContext
 from src.config.settings import settings
 
@@ -150,9 +152,9 @@ class SystemPromptBuilder:
   多品項 → 先 call 齊全的，再追問缺的"""
 
     def _generate_menu_domain_guide(self) -> str:
-        """生成菜單領域指南（Triad Engine Format B）"""
-        import json  # noqa: PLC0415
-        from pathlib import Path  # noqa: PLC0415
+        """生成菜單領域指南（Triad Engine Format B），結果快取避免重複讀檔"""
+        if self._menu_summary is not None:
+            return self._menu_summary
 
         menu_path = Path(__file__).parent.parent / "tools" / "menu" / "menu_all.json"
         recipe_path = Path(__file__).parent.parent / "tools" / "menu" / "riceball_recipes.json"
@@ -226,7 +228,8 @@ class SystemPromptBuilder:
             },
         }
 
-        return "# 菜單指南\n```json\n" + json.dumps(guide, ensure_ascii=False, separators=(",", ":")) + "\n```"
+        self._menu_summary = "# 菜單指南\n```json\n" + json.dumps(guide, ensure_ascii=False, separators=(",", ":")) + "\n```"
+        return self._menu_summary
 
     def _format_session_context(self, session_context: Optional[SessionContext]) -> str:
         """格式化會話上下文信息"""
