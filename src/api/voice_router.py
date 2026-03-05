@@ -105,19 +105,25 @@ class StreamingDMAdapter:
 
                 # 檢查 finalize_order
                 finalize_result = None
+                preview_result = None
                 for trace in event.get("tool_trace", []):
                     tc = trace.get("tool_call", {})
-                    if tc.get("function", {}).get("name") == "finalize_order":
+                    tool_name = tc.get("function", {}).get("name")
+                    if tool_name == "finalize_order":
                         exec_r = trace.get("exec", {})
                         if exec_r.get("ok"):
                             finalize_result = exec_r
-                            break
+                    elif tool_name == "preview_checkout":
+                        exec_r = trace.get("exec", {})
+                        if exec_r.get("ok") and exec_r.get("preview"):
+                            preview_result = exec_r
 
                 yield {
                     "type": "done",
                     "cart": cart,
                     "order_payload": {"total_price": total_price},
                     "finalize_result": finalize_result,
+                    "preview_result": preview_result,
                 }
 
 

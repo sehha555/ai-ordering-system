@@ -583,6 +583,14 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
           useStore.getState().clearCart();
           break;
         }
+        case 'checkout_preview': {
+          const { dine_type, payment_method } = JSON.parse(dataStr) as { dine_type: string; payment_method: string };
+          useStore.getState().setCheckoutPreview({
+            dineType: dine_type as 'dine-in' | 'take-out',
+            paymentMethod: payment_method as 'cash' | 'line_pay',
+          });
+          break;
+        }
         case 'status': {
           setStatus('processing');
           break;

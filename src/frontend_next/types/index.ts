@@ -13,7 +13,12 @@ export type CheckoutStep = 0 | 1 | 2;
 // 0 = 正常（未結帳）, 1 = 手動結帳頁面（一頁式 fallback）, 2 = 完成畫面
 
 export type DineType = 'dine-in' | 'take-out' | null;
-export type PaymentMethod = 'cash' | 'mobile' | null;
+export type PaymentMethod = 'cash' | 'line_pay' | 'mobile' | null;
+
+export interface CheckoutPreview {
+  dineType: 'dine-in' | 'take-out';
+  paymentMethod: 'cash' | 'line_pay';
+}
 
 export interface OrderResult {
   order_number: string;
@@ -40,6 +45,8 @@ export interface AppState {
   // 結帳
   checkoutStep: CheckoutStep;
   orderResult: OrderResult | null;
+  checkoutPreview: CheckoutPreview | null;
+  setCheckoutPreview: (preview: CheckoutPreview | null) => void;
 
   // VAD 模式
   vadEnabled: boolean;
