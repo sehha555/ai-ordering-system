@@ -1,6 +1,6 @@
 // src/frontend_next/store/useStore.ts
 import { create } from 'zustand';
-import { AppState, AppStatus, CartItem, CheckoutStep, OrderResult } from '../types';
+import { AppState, AppStatus, CartItem, CheckoutPreview, CheckoutStep, OrderResult } from '../types';
 
 // 生成唯一的工作階段 ID
 const generateSessionId = () => 'session-' + Date.now();
@@ -16,6 +16,7 @@ export const useStore = create<AppState>((set) => ({
   // 結帳
   checkoutStep: 0,
   orderResult: null,
+  checkoutPreview: null,
 
   // VAD
   vadEnabled: false,
@@ -39,9 +40,11 @@ export const useStore = create<AppState>((set) => ({
   // setOrderResult 會同時更新結帳步驟到第 2 步（完成畫面）
   setCheckoutStep: (checkoutStep: CheckoutStep) => set({ checkoutStep }),
   setOrderResult: (result: OrderResult) => set({ orderResult: result, checkoutStep: 2 }),
+  setCheckoutPreview: (checkoutPreview: CheckoutPreview | null) => set({ checkoutPreview, checkoutStep: 1 }),
   resetCheckout: () => set({
     checkoutStep: 0,
     orderResult: null,
+    checkoutPreview: null,
   }),
 
   // Actions - 工作階段
@@ -54,6 +57,7 @@ export const useStore = create<AppState>((set) => ({
     sessionId: generateSessionId(),
     checkoutStep: 0,
     orderResult: null,
+    checkoutPreview: null,
     connectionError: null,
     aiReply: '',
     volume: 0,

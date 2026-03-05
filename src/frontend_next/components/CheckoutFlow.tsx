@@ -3,7 +3,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
-import type { OrderResult } from '../types';
+import type { CheckoutPreview, OrderResult } from '../types';
 
 const stepVariants = {
   enter: { opacity: 0, y: 20 },
@@ -17,18 +17,31 @@ export default function CheckoutFlow() {
     total,
     checkoutStep,
     orderResult,
+    checkoutPreview,
     sessionId,
     setCheckoutStep,
     setOrderResult,
     resetSession,
   } = useStore();
 
-  // 手動結帳用的本地狀態
-  const [selectedDine, setSelectedDine] = useState<'dine-in' | 'take-out' | null>(null);
-  const [selectedPayment, setSelectedPayment] = useState<'cash' | 'mobile' | null>(null);
+  // 手動結帳用的本地狀態（語音預填時讀取 checkoutPreview）
+  const [selectedDine, setSelectedDine] = useState<'dine-in' | 'take-out' | null>(
+    checkoutPreview?.dineType ?? null
+  );
+  const [selectedPayment, setSelectedPayment] = useState<'cash' | 'line_pay' | null>(
+    checkoutPreview?.paymentMethod ?? null
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(10);
+
+  // checkoutPreview 更新時同步預填本地狀態（語音觸發跳到 step 1）
+  useEffect(() => {
+    if (checkoutPreview) {
+      setSelectedDine(checkoutPreview.dineType);
+      setSelectedPayment(checkoutPreview.paymentMethod);
+    }
+  }, [checkoutPreview]);
 
   // 結帳完成後自動倒數返回
   useEffect(() => {
@@ -167,7 +180,7 @@ export default function CheckoutFlow() {
             <div className="mb-6">
               <p className="text-sm font-medium mb-3" style={{ color: '#5a6b70' }}>付款方式</p>
               <div className="flex gap-3">
-                {([['cash', '現金'], ['mobile', '行動支付']] as const).map(([value, label]) => (
+                {([['cash', '現金'], ['line_pay', 'Line Pay']] as const).map(([value, label]) => (
                   <button
                     key={value}
                     onClick={() => setSelectedPayment(value)}
@@ -304,9 +317,22 @@ export default function CheckoutFlow() {
             )}
 
             {/* 用餐/付款資訊 */}
-            <p className="mb-6 text-sm" style={{ color: '#5a6b70' }}>
-              {orderResult.dine_type === 'dine-in' ? '內用' : '外帶'} / {orderResult.payment_method === 'cash' ? '現金' : '行動支付'}
+            <p className="mb-4 text-sm" style={{ color: '#5a6b70' }}>
+              {orderResult.dine_type === 'dine-in' ? '內用' : '外帶'} / {orderResult.payment_method === 'cash' ? '現金' : 'Line Pay'}
             </p>
+
+            {/* Line Pay QR Code */}
+            {(orderResult.payment_method === 'line_pay' || orderResult.payment_method === 'mobile') && (
+              <div className="mb-6 flex flex-col items-center">
+                <p className="text-sm mb-2" style={{ color: '#5a6b70' }}>Line Pay 掃碼付款</p>
+                <div
+                  className="w-40 h-40 rounded-xl flex items-center justify-center"
+                  style={{ backgroundColor: '#f4f7f8', border: '2px dashed #d0dce0' }}
+                >
+                  <span className="text-4xl">📱</span>
+                </div>
+              </div>
+            )}
 
             {/* 開始新訂單按鈕 */}
             <button

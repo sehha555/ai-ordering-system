@@ -28,6 +28,7 @@
 - get_cart_summary — 查詢購物車/金額
 - query_menu — 查詢菜單
 - finalize_order — 結帳（需確認內用/外帶、付款方式）
+- preview_checkout — 送出結帳預覽到前端（不實際結帳），適合語音確認後給用戶視覺確認
 
 # 結帳流程
 確認不再點後，簡短複述餐點內容，依序問內用/外帶、付款方式，一次只問一個問題，再調用 finalize_order。

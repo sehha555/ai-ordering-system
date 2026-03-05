@@ -509,7 +509,7 @@ class ToolRegistry:
             resolved_dine = dine_type_map.get(dine_type, dine_type)
 
             # 正規化 payment_method
-            payment_map = {"現金": "cash", "行動支付": "mobile", "cash": "cash", "mobile": "mobile"}
+            payment_map = {"現金": "cash", "行動支付": "line_pay", "Line Pay": "line_pay", "cash": "cash", "mobile": "line_pay", "line_pay": "line_pay"}
             resolved_payment = payment_map.get(payment_method, payment_method)
 
             # 計算總價（複用現有 _calculate_cart_total）
@@ -588,6 +588,32 @@ class ToolRegistry:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def preview_checkout(
+        self,
+        dine_type: str,
+        payment_method: str,
+    ) -> Dict[str, Any]:
+        """
+        預覽結帳資訊 — 送前端確認畫面，不實際結帳
+
+        Args:
+            dine_type: 用餐方式 (dine-in / take-out)
+            payment_method: 付款方式 (cash / line_pay)
+        """
+        session = self.get_current_session()
+        cart = session.get("cart", [])
+        if not cart:
+            return {"ok": False, "message": "購物車為空"}
+
+        dine_type_map = {"內用": "dine-in", "外帶": "take-out", "dine-in": "dine-in", "take-out": "take-out"}
+        payment_map = {"現金": "cash", "Line Pay": "line_pay", "行動支付": "line_pay", "cash": "cash", "line_pay": "line_pay", "mobile": "line_pay"}
+
+        return {
+            "ok": True,
+            "preview": True,
+            "dine_type": dine_type_map.get(dine_type, dine_type),
+            "payment_method": payment_map.get(payment_method, payment_method),
+        }
 
     # ============ Schema 和映射 ============
 
@@ -781,8 +807,31 @@ class ToolRegistry:
                             },
                             "payment_method": {
                                 "type": "string",
-                                "enum": ["cash", "mobile", "現金", "行動支付"],
-                                "description": "付款方式：現金或行動支付",
+                                "enum": ["cash", "line_pay", "現金", "Line Pay", "行動支付"],
+                                "description": "付款方式：現金或 Line Pay",
+                            },
+                        },
+                        "required": ["dine_type", "payment_method"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "preview_checkout",
+                    "description": "送出結帳預覽到前端確認畫面（不實際結帳），適合語音確認後讓用戶在UI上做最終確認",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "dine_type": {
+                                "type": "string",
+                                "enum": ["dine-in", "take-out"],
+                                "description": "用餐方式",
+                            },
+                            "payment_method": {
+                                "type": "string",
+                                "enum": ["cash", "line_pay"],
+                                "description": "付款方式",
                             },
                         },
                         "required": ["dine_type", "payment_method"],
@@ -805,6 +854,7 @@ class ToolRegistry:
             "query_menu": self.query_menu,
             "get_price": self.get_price,
             "finalize_order": self.finalize_order,
+            "preview_checkout": self.preview_checkout,
         }
 
     def get_allowed_args(self) -> Dict[str, Set[str]]:
@@ -842,4 +892,5 @@ class ToolRegistry:
                 "extra_egg",
             },
             "finalize_order": {"dine_type", "payment_method"},
+            "preview_checkout": {"dine_type", "payment_method"},
         }
