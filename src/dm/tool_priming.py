@@ -43,144 +43,98 @@ def _tool_resp(call_id: str, result: dict) -> dict:
 def get_priming_messages() -> list[dict]:
     """精選 priming 示範，搭配 system prompt CoT 引導模型行為。
 
-    12 個 demo 覆蓋關鍵行為模式（排序：基礎→追問→複雜→結帳→邊界）：
-    1. 點心直接加（蘿蔔糕加蛋，易混淆品項）
-    2. 飲料缺規格 → 追問
-    3. 飯糰缺米種 → 追問
-    4. 載體缺 → 追問 → 補齊後 call
-    5. 別名解析 → 直接 call
-    6. 套餐 → call → ok:false → 轉述追問
-    7. 多品項全齊 → 連續 call
-    8. 查詢菜單 → query_menu
-    9. 多品項部分缺 → call 齊全的 + 追問缺的
-    10. 饅頭缺口味 → 追問
-    11. 結帳完整流程 → finalize_order
-    12. 邊界 — 購物車沒有該品項 → 不 call tool（最後，強化保護行為）
+    6 個高質量 demo，品項全部與 test_scenarios.json 不重疊（防記憶化）：
+    1. 飯糰完整 call — boolean spicy + flavor 不帶後綴（修 Pattern C 參數格式）
+    2. 載體缺 → 追問 → 補齊後 call（培根蛋，避開 test 火腿蛋/起司蛋）
+    3. 套餐數字別名 → call → ok:false → 追問（修 combo_alias + combo_missing_temp）
+    4. 多品項部分缺 — add_carrier + add_drink 齊全先 call，奶茶缺規格追問
+    5. 結帳完整流程 → finalize_order（Line Pay，與 test case 現金不重疊）
+    6. 邊界 — 品項不在購物車 → 不 call tool（近因效應，修 cancel_nonexistent）
     """
     msgs: list[dict] = []
 
-    # Demo 1: 點心直接加（snack 無必填，直接 call；用蘿蔔糕加蛋示範易混淆品項）
-    msgs.append({"role": "user", "content": "一份蘿蔔糕加蛋"})
+    # Demo 1: 飯糰完整 call — 示範 boolean spicy=false + flavor 只填口味名稱
+    # 品項：鮭魚（test cases 沒有此品項），修正 Pattern C（riceball 參數格式錯誤）
+    msgs.append({"role": "user", "content": "一個鮭魚飯糰 白米 不加辣"})
     msgs.append({
         "role": "assistant",
         "content": None,
-        "tool_calls": _tc("c1", "add_to_cart", {
-            "item_type": "snack", "flavor": "蘿蔔糕加蛋",
+        "tool_calls": _tc("c1", "add_riceball", {
+            "flavor": "鮭魚", "rice": "白米", "spicy": False,
         }),
     })
-    msgs.append(_tool_resp("c1", {"ok": True, "message": "已加入：蘿蔔糕加蛋"}))
-    msgs.append({"role": "assistant", "content": "好，一份蘿蔔糕加蛋～還要什麼？"})
+    msgs.append(_tool_resp("c1", {"ok": True, "message": "已加入：白米鮭魚飯糰"}))
+    msgs.append({"role": "assistant", "content": "好，一個白米鮭魚飯糰～還要什麼？"})
 
-    # Demo 2: 飲料缺規格 → 追問（不 call tool）
-    msgs.append({"role": "user", "content": "一杯紅茶"})
-    msgs.append({"role": "assistant", "content": "大杯還是中杯？冰的還是溫的？"})
-
-    # Demo 3: 飯糰缺米種 → 追問（不 call tool）
-    msgs.append({"role": "user", "content": "一個鮪魚飯糰"})
-    msgs.append({"role": "assistant", "content": "紫米白米還是混米？"})
-
-    # Demo 4: 載體缺 → 追問 → 補齊後 call
-    msgs.append({"role": "user", "content": "一個起司蛋"})
+    # Demo 2: 載體缺 → 追問 → 補齊後 call（完整多輪循環）
+    # 品項：培根蛋（test cases 用起司蛋/火腿蛋），覆蓋「缺必填→追問→補齊→call」
+    msgs.append({"role": "user", "content": "一個培根蛋"})
     msgs.append({"role": "assistant", "content": "吐司還是漢堡？"})
     msgs.append({"role": "user", "content": "吐司"})
     msgs.append({
         "role": "assistant",
         "content": None,
-        "tool_calls": _tc("c4", "add_to_cart", {
-            "item_type": "carrier", "carrier": "吐司", "flavor": "起司蛋",
+        "tool_calls": _tc("c2", "add_carrier", {
+            "carrier": "吐司", "flavor": "培根蛋",
         }),
     })
-    msgs.append(_tool_resp("c4", {"ok": True, "message": "已加入：起司蛋吐司"}))
-    msgs.append({"role": "assistant", "content": "好，一個起司蛋吐司～還要什麼？"})
+    msgs.append(_tool_resp("c2", {"ok": True, "message": "已加入：培根蛋吐司"}))
+    msgs.append({"role": "assistant", "content": "好，一個培根蛋吐司～還要什麼？"})
 
-    # Demo 5: 別名解析 → 直接 call（大冰奶 = 大杯冰純鮮奶茶）
-    msgs.append({"role": "user", "content": "大冰奶"})
+    # Demo 3: 套餐數字別名 → call → ok:false → 追問
+    # 品項：三號餐（test cases 用套餐一/四），同時示範別名解析 + ok:false 反饋循環
+    msgs.append({"role": "user", "content": "一個三號餐"})
     msgs.append({
         "role": "assistant",
         "content": None,
-        "tool_calls": _tc("c5", "add_to_cart", {
-            "item_type": "drink", "flavor": "純鮮奶茶", "size": "大杯", "temp": "冰",
+        "tool_calls": _tc("c3", "add_combo", {
+            "combo_name": "套餐三",
         }),
     })
-    msgs.append(_tool_resp("c5", {"ok": True, "message": "已加入：純鮮奶茶(大/冰)"}))
-    msgs.append({"role": "assistant", "content": "好，一杯大冰純鮮奶茶～還要什麼？"})
+    msgs.append(_tool_resp("c3", {"ok": False, "message": "缺飲料溫度，冰的還是溫的？"}))
+    msgs.append({"role": "assistant", "content": "飲料要冰的還是溫的？"})
 
-    # Demo 6: 套餐 → call → ok:false → 轉述追問
-    msgs.append({"role": "user", "content": "一個套餐一"})
+    # Demo 4: 多品項部分缺 — call 齊全的 + 追問缺的（含 add_drink 示範）
+    # 品項：花生吐司 + 大冰十穀漿（齊全） + 奶茶（缺杯型/溫度）
+    # 教學：齊全先 call（含 add_drink），缺的合併追問
+    msgs.append({"role": "user", "content": "一個花生吐司 一杯大冰十穀漿 一杯奶茶"})
     msgs.append({
         "role": "assistant",
         "content": None,
-        "tool_calls": _tc("c6", "add_to_cart", {
-            "item_type": "combo", "combo_name": "套餐一",
+        "tool_calls": _tc("c4a", "add_carrier", {
+            "carrier": "吐司", "flavor": "花生",
         }),
     })
-    msgs.append(_tool_resp("c6", {"ok": False, "message": "缺飲料溫度，冰的還是溫的？"}))
-    msgs.append({"role": "assistant", "content": "飲料冰的還是溫的？"})
-
-    # Demo 7: 多品項連續 call（齊全的先 call，每品項各 call 一次）
-    msgs.append({"role": "user", "content": "兩個玉米蛋餅 一個薯餅"})
+    msgs.append(_tool_resp("c4a", {"ok": True, "message": "已加入：花生吐司"}))
     msgs.append({
         "role": "assistant",
         "content": None,
-        "tool_calls": _tc("c7a", "add_to_cart", {
-            "item_type": "egg_pancake", "flavor": "玉米蛋餅", "quantity": 2,
+        "tool_calls": _tc("c4b", "add_drink", {
+            "flavor": "十穀漿", "size": "大杯", "temp": "冰",
         }),
     })
-    msgs.append(_tool_resp("c7a", {"ok": True, "message": "已加入：玉米蛋餅 x2"}))
-    msgs.append({
-        "role": "assistant",
-        "content": None,
-        "tool_calls": _tc("c7b", "add_to_cart", {
-            "item_type": "snack", "flavor": "薯餅",
-        }),
-    })
-    msgs.append(_tool_resp("c7b", {"ok": True, "message": "已加入：薯餅"}))
-    msgs.append({"role": "assistant", "content": "好，兩個玉米蛋餅加一個薯餅～還要什麼？"})
+    msgs.append(_tool_resp("c4b", {"ok": True, "message": "已加入：大杯冰十穀漿"}))
+    msgs.append({"role": "assistant", "content": "好，奶茶大杯還是中杯？冰的還是溫的？"})
 
-    # Demo 8: 查詢菜單（飲料有哪些 → query_menu）
-    msgs.append({"role": "user", "content": "有什麼飲料"})
-    msgs.append({
-        "role": "assistant",
-        "content": None,
-        "tool_calls": _tc("c8", "query_menu", {"category": "飲品"}),
-    })
-    msgs.append(_tool_resp("c8", {"ok": True, "message": "飲品：紅茶、奶茶、豆漿、純鮮奶茶..."}))
-    msgs.append({"role": "assistant", "content": "飲料有紅茶、奶茶、豆漿、純鮮奶茶等，要來一杯嗎？"})
-
-    # Demo 9: 多品項部分缺資訊 — call 齊全的，追問缺的
-    msgs.append({"role": "user", "content": "兩個玉米蛋餅 一個起司蛋"})
-    msgs.append({
-        "role": "assistant",
-        "content": None,
-        "tool_calls": _tc("c9", "add_to_cart", {
-            "item_type": "egg_pancake", "flavor": "玉米蛋餅", "quantity": 2,
-        }),
-    })
-    msgs.append(_tool_resp("c9", {"ok": True, "message": "已加入：玉米蛋餅 x2"}))
-    msgs.append({"role": "assistant", "content": "好，起司蛋吐司還是漢堡？"})
-
-    # Demo 10: 饅頭缺口味 → 追問（不 call tool）
-    msgs.append({"role": "user", "content": "一個饅頭夾蛋"})
-    msgs.append({"role": "assistant", "content": "黑糖、白饅頭還是花捲？"})
-
-    # Demo 11: 結帳完整流程 → finalize_order
-    msgs.append({"role": "user", "content": "不用了 結帳"})
+    # Demo 5: 結帳完整流程 → finalize_order（Line Pay，與 test H2 現金不重疊）
+    msgs.append({"role": "user", "content": "好了 買單"})
     msgs.append({"role": "assistant", "content": "內用還是外帶？"})
     msgs.append({"role": "user", "content": "外帶"})
     msgs.append({"role": "assistant", "content": "現金還是行動支付？"})
-    msgs.append({"role": "user", "content": "現金"})
+    msgs.append({"role": "user", "content": "Line Pay"})
     msgs.append({
         "role": "assistant",
         "content": None,
-        "tool_calls": _tc("c11", "finalize_order", {
-            "dine_type": "外帶", "payment_method": "現金",
+        "tool_calls": _tc("c5", "finalize_order", {
+            "dine_type": "外帶", "payment_method": "line_pay",
         }),
     })
-    msgs.append(_tool_resp("c11", {"ok": True, "order_id": "A042"}))
-    msgs.append({"role": "assistant", "content": "好，42 號～"})
+    msgs.append(_tool_resp("c5", {"ok": True, "order_id": "B023"}))
+    msgs.append({"role": "assistant", "content": "好，23 號～"})
 
-    # Demo 12: 邊界 — 購物車沒有該品項，不 call tool 直接回覆（最後位置，近因效應強化保護行為）
-    msgs.append({"role": "user", "content": "把蛋餅取消"})
-    msgs.append({"role": "assistant", "content": "購物車裡沒有蛋餅喔，不用取消～還需要什麼？"})
+    # Demo 6: 邊界 — 品項不在購物車 → 不 call tool（最後位置，近因效應強化保護行為）
+    # 品項：奶茶（test cases 用蛋餅），行為模式相同但品項不重疊
+    msgs.append({"role": "user", "content": "幫我把奶茶取消"})
+    msgs.append({"role": "assistant", "content": "購物車裡沒有奶茶喔，不用取消～還需要什麼？"})
 
     return msgs

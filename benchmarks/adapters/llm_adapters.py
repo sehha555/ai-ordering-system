@@ -273,7 +273,10 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
             )
             response_text = _clean_content(message.get("content"), raw_objs)
 
-            messages.append({"role": "assistant", "content": message.get("content")})
+            assistant_msg = {"role": "assistant", "content": message.get("content")}
+            if message.get("tool_calls"):
+                assistant_msg["tool_calls"] = message["tool_calls"]
+            messages.append(assistant_msg)
 
             for tc in step_tool_calls:
                 exec_result = _execute_tool(tool_map, allowed_args, tc["name"], tc["arguments"])

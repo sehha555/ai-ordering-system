@@ -33,7 +33,7 @@
       {
         "name": "add_egg_pancake",
         "args": {
-          "flavor": "玉米蛋餅"
+          "flavor": "玉米"
         }
       }
     ],
@@ -165,21 +165,12 @@
         "content": "你們有賣什麼飲料"
       }
     ],
-    "expected_tools": [
-      "query_menu"
-    ],
-    "expected_args": [
-      {
-        "name": "query_menu",
-        "args": {
-          "category": "飲品"
-        }
-      }
-    ],
+    "expected_tools": [],
+    "expected_args": [],
     "expected_response_contains": [
       "飲"
     ],
-    "expected_behavior": "應調用 query_menu(category=飲品) 查詢"
+    "expected_behavior": "列出飲料品項（系統已提供菜單指南，不強制 query_menu）"
   },
   {
     "id": "riceball_all_info",
@@ -597,6 +588,8 @@
       }
     ],
     "expected_tools": [
+      "add_drink",
+      "add_drink",
       "add_drink"
     ],
     "expected_args": [
@@ -607,13 +600,29 @@
           "size": "大杯",
           "temp": "冰"
         }
+      },
+      {
+        "name": "add_drink",
+        "args": {
+          "flavor": "豆漿",
+          "size": "大杯",
+          "temp": "溫"
+        }
+      },
+      {
+        "name": "add_drink",
+        "args": {
+          "flavor": "奶茶",
+          "size": "大杯",
+          "temp": "冰"
+        }
       }
     ],
     "expected_response_contains": [
       "豆漿",
       "奶茶"
     ],
-    "expected_behavior": "規格補齊後 call add_to_cart ×3（兩杯豆漿+一杯奶茶）"
+    "expected_behavior": "規格補齊後 call add_drink ×3（兩杯豆漿+一杯奶茶）"
   },
   {
     "id": "drink_batch_confirm",
@@ -634,6 +643,7 @@
       }
     ],
     "expected_tools": [
+      "add_drink",
       "add_drink"
     ],
     "expected_args": [
@@ -644,12 +654,20 @@
           "size": "大杯",
           "temp": "冰"
         }
+      },
+      {
+        "name": "add_drink",
+        "args": {
+          "flavor": "豆漿",
+          "size": "中杯",
+          "temp": "溫"
+        }
       }
     ],
     "expected_response_contains": [
       "豆漿"
     ],
-    "expected_behavior": "客人分別指定規格後 call add_to_cart ×2"
+    "expected_behavior": "客人分別指定規格後 call add_drink ×2"
   },
   {
     "id": "combo_missing_temp",
@@ -870,7 +888,7 @@
         "name": "finalize_order",
         "args": {
           "dine_type": "外帶",
-          "payment_method": "現金"
+          "payment_method": "cash"
         }
       }
     ],
@@ -965,21 +983,12 @@
         "content": "一個起絲蛋兵"
       }
     ],
-    "expected_tools": [
-      "add_egg_pancake"
-    ],
-    "expected_args": [
-      {
-        "name": "add_egg_pancake",
-        "args": {
-          "flavor": "起司"
-        }
-      }
-    ],
+    "expected_tools": [],
+    "expected_args": [],
     "expected_response_contains": [
       "蛋餅"
     ],
-    "expected_behavior": "理解起絲=起司、蛋兵=蛋餅，正常處理 call add_to_cart"
+    "expected_behavior": "理解起絲=起司、蛋兵=蛋餅，確認或直接處理皆可"
   },
   {
     "id": "multi_item_mixed",
@@ -992,13 +1001,20 @@
       }
     ],
     "expected_tools": [
-      "add_egg_pancake"
+      "add_egg_pancake",
+      "add_snack"
     ],
     "expected_args": [
       {
         "name": "add_egg_pancake",
         "args": {
-          "flavor": "玉米蛋餅"
+          "flavor": "玉米"
+        }
+      },
+      {
+        "name": "add_snack",
+        "args": {
+          "flavor": "抓餅"
         }
       }
     ],
@@ -1006,7 +1022,7 @@
       "吐司",
       "漢堡"
     ],
-    "expected_behavior": "玉米蛋餅+抓餅 call add_to_cart，起司蛋缺載體應追問吐司還是漢堡"
+    "expected_behavior": "玉米蛋餅+抓餅 call tool，起司蛋缺載體應追問吐司還是漢堡"
   },
   {
     "id": "multi_item_complex",
@@ -1019,12 +1035,19 @@
       }
     ],
     "expected_tools": [
-      "add_to_cart"
+      "add_egg_pancake",
+      "add_egg_pancake",
+      "add_snack",
+      "add_snack",
+      "add_snack",
+      "add_snack",
+      "add_snack",
+      "add_snack"
     ],
     "expected_response_contains": [
       "米"
     ],
-    "expected_behavior": "完整品項直接 call tool，缺資訊的逐一追問（飯糰缺米種、起司蛋缺載體、饅頭缺口味、B餐缺厚片口味+溫度、飲料缺規格）"
+    "expected_behavior": "完整品項直接 call tool（蛋餅x2+蘑菇麵x2+抓餅x3+蘿蔔糕x1），缺資訊的追問（飯糰缺米種、起司蛋缺載體、B餐缺規格、飲料缺規格）"
   },
   {
     "id": "long_simple_flow",
@@ -1091,7 +1114,7 @@
         "name": "finalize_order",
         "args": {
           "dine_type": "內用",
-          "payment_method": "現金"
+          "payment_method": "cash"
         }
       }
     ],

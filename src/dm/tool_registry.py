@@ -910,13 +910,13 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "add_riceball",
-                    "description": "加入飯糰到購物車。flavor（口味）和 rice（米種）都必填。缺一則追問。",
+                    "description": "加入飯糰到購物車。flavor（口味）和 rice（米種）都必填，缺一則追問。flavor 只填口味名稱，不帶「飯糰」後綴（如「鮪魚」而非「鮪魚飯糰」）。spicy 是 boolean（true/false）。",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "flavor": {
                                 "type": "string",
-                                "description": "飯糰口味，如：源味傳統、香燻培根、醬燒里肌、起司蛋、鮪魚蛋等",
+                                "description": "飯糰口味，只填口味名稱，如：源味傳統、香燻培根、醬燒里肌、起司蛋、鮪魚蛋、鮭魚等",
                             },
                             "rice": {
                                 "type": "string",
@@ -985,7 +985,7 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "add_carrier",
-                    "description": "加入吐司/漢堡/饅頭系列到購物車。carrier（載體）和 flavor（餡料）都必填。",
+                    "description": "加入吐司/漢堡/饅頭系列到購物車。carrier（載體）和 flavor（餡料）都必填。饅頭需確認口味（如黑糖夾蛋、原味夾蛋），客人只說「饅頭夾蛋」時要追問口味。",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -1028,13 +1028,13 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "add_snack",
-                    "description": "加入點心到購物車。flavor（品項名稱）必填。",
+                    "description": "加入點心到購物車。包含：薯餅、蘿蔔糕、韭菜餡餅、蔥抓餅、鐵板麵系列（玉米麵、蘑菇麵等）。flavor 必填，填品項名稱（鐵板麵只填口味，如「玉米」「蘑菇」）。",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "flavor": {
                                 "type": "string",
-                                "description": "點心名稱，如：薯餅、薯條、雞塊等",
+                                "description": "點心名稱，如：薯餅、蘿蔔糕加蛋、韭菜餡餅、玉米（鐵板麵）、蘑菇（鐵板麵）等",
                             },
                             "quantity": {"type": "integer", "default": 1},
                             "customization": {"type": "string"},
@@ -1047,7 +1047,7 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "add_combo",
-                    "description": "加入套餐到購物車。combo_name 必填，其他依套餐要求。",
+                    "description": "加入套餐到購物車。套餐一/二/三/四/A/B/兒童餐，或「X號餐」別名（如二號餐=套餐二）。combo_name 必填，call 後依 ok:false 訊息追問缺少的規格。",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -1066,46 +1066,8 @@ class ToolRegistry:
                     },
                 },
             },
-            {
-                "type": "function",
-                "function": {
-                    "name": "update_draft",
-                    "description": "儲存待確認的品項到 draft 區（覆蓋寫入）。用於收集不完整資訊時暫存，LLM 確認齊全後再 call add_* 真正加入購物車。",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "items": {
-                                "type": "array",
-                                "description": "待確認品項列表，格式同購物車品項",
-                                "items": {"type": "object"},
-                            },
-                        },
-                        "required": ["items"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "modify_cart_item",
-                    "description": "直接修改購物車中某品項的欄位值。需要 item_id（從 get_cart_summary 取得）。",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "item_id": {
-                                "type": "string",
-                                "description": "品項 ID，如 riceball_1、drink_2",
-                            },
-                            "field": {
-                                "type": "string",
-                                "description": "要修改的欄位，如 rice、flavor、quantity、temp、size",
-                            },
-                            "new_value": {"description": "新值"},
-                        },
-                        "required": ["item_id", "field", "new_value"],
-                    },
-                },
-            },
+            # update_draft 和 modify_cart_item 從 schema 移除（減少 tool 數量，避免模型誤用）
+            # 方法保留在 tool_map 供前端/內部呼叫
             {
                 "type": "function",
                 "function": {
@@ -1133,17 +1095,6 @@ class ToolRegistry:
                                 "default": False,
                             },
                         },
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_cart_summary",
-                    "description": "取得購物車品項列表和總價（含 item_id 和 draft 待確認品項）。",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
                     },
                 },
             },
@@ -1180,29 +1131,6 @@ class ToolRegistry:
                                 "type": "string",
                                 "enum": ["cash", "line_pay", "現金", "Line Pay", "行動支付"],
                                 "description": "付款方式：現金或 Line Pay",
-                            },
-                        },
-                        "required": ["dine_type", "payment_method"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "preview_checkout",
-                    "description": "送出結帳預覽到前端確認畫面（不實際結帳），適合語音確認後讓用戶在UI上做最終確認",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "dine_type": {
-                                "type": "string",
-                                "enum": ["dine-in", "take-out"],
-                                "description": "用餐方式",
-                            },
-                            "payment_method": {
-                                "type": "string",
-                                "enum": ["cash", "line_pay"],
-                                "description": "付款方式",
                             },
                         },
                         "required": ["dine_type", "payment_method"],
