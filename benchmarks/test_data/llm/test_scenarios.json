@@ -165,8 +165,17 @@
         "content": "你們有賣什麼飲料"
       }
     ],
-    "expected_tools": ["query_menu"],
-    "expected_args": [{"name": "query_menu", "args": {"category": "飲品"}}],
+    "expected_tools": [
+      "query_menu"
+    ],
+    "expected_args": [
+      {
+        "name": "query_menu",
+        "args": {
+          "category": "飲品"
+        }
+      }
+    ],
     "expected_response_contains": [
       "飲"
     ],
@@ -229,7 +238,7 @@
       },
       {
         "role": "assistant",
-        "content": "紫米白米還是混米"
+        "content": "紫米還是白米"
       },
       {
         "role": "user",
@@ -239,6 +248,10 @@
     "expected_tools": [
       "add_riceball"
     ],
+    "expected_response_contains": [
+      "飯糰"
+    ],
+    "expected_behavior": "米種補齊後，預設不加辣，應 call add_to_cart 或追問辣菜脯",
     "expected_args": [
       {
         "name": "add_riceball",
@@ -247,11 +260,7 @@
           "rice": "紫米"
         }
       }
-    ],
-    "expected_response_contains": [
-      "飯糰"
-    ],
-    "expected_behavior": "米種補齊後，預設不加辣，應 call add_to_cart 或追問辣菜脯"
+    ]
   },
   {
     "id": "riceball_full_flow",
@@ -671,7 +680,7 @@
   },
   {
     "id": "combo_missing_temp",
-    "description": "G1: 套餐缺飲料溫度 — add_to_cart 回 ok:false 追問",
+    "description": "G1: 套餐缺飲料溫度 — 直接追問或 call tool 皆可",
     "category": "combo",
     "messages": [
       {
@@ -682,6 +691,11 @@
     "expected_tools": [
       "add_combo"
     ],
+    "expected_response_contains": [
+      "冰",
+      "溫"
+    ],
+    "expected_behavior": "模型 call add_to_cart，系統回 ok:false 追問飲料溫度",
     "expected_args": [
       {
         "name": "add_combo",
@@ -689,12 +703,7 @@
           "combo_name": "套餐一"
         }
       }
-    ],
-    "expected_response_contains": [
-      "冰",
-      "溫"
-    ],
-    "expected_behavior": "模型 call add_to_cart，系統回 ok:false 追問飲料溫度"
+    ]
   },
   {
     "id": "combo_alias",
