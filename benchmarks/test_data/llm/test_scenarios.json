@@ -27,13 +27,12 @@
       }
     ],
     "expected_tools": [
-      "add_to_cart"
+      "add_egg_pancake"
     ],
     "expected_args": [
       {
-        "name": "add_to_cart",
+        "name": "add_egg_pancake",
         "args": {
-          "item_type": "egg_pancake",
           "flavor": "玉米蛋餅"
         }
       }
@@ -70,13 +69,12 @@
       }
     ],
     "expected_tools": [
-      "add_to_cart"
+      "add_drink"
     ],
     "expected_args": [
       {
-        "name": "add_to_cart",
+        "name": "add_drink",
         "args": {
-          "item_type": "drink",
           "flavor": "紅茶",
           "size": "大杯",
           "temp": "冰"
@@ -116,13 +114,12 @@
       }
     ],
     "expected_tools": [
-      "add_to_cart"
+      "add_snack"
     ],
     "expected_args": [
       {
-        "name": "add_to_cart",
+        "name": "add_snack",
         "args": {
-          "item_type": "snack",
           "flavor": "蘿蔔糕加蛋"
         }
       }
@@ -143,13 +140,12 @@
       }
     ],
     "expected_tools": [
-      "add_to_cart"
+      "add_snack"
     ],
     "expected_args": [
       {
-        "name": "add_to_cart",
+        "name": "add_snack",
         "args": {
-          "item_type": "snack",
           "flavor": "薯餅"
         }
       }
@@ -196,13 +192,12 @@
       }
     ],
     "expected_tools": [
-      "add_to_cart"
+      "add_riceball"
     ],
     "expected_args": [
       {
-        "name": "add_to_cart",
+        "name": "add_riceball",
         "args": {
-          "item_type": "riceball",
           "flavor": "鮪魚",
           "rice": "紫米",
           "spicy": true
@@ -251,13 +246,12 @@
       }
     ],
     "expected_tools": [
-      "add_to_cart"
+      "add_riceball"
     ],
     "expected_args": [
       {
-        "name": "add_to_cart",
+        "name": "add_riceball",
         "args": {
-          "item_type": "riceball",
           "flavor": "源味傳統",
           "rice": "紫米"
         }
@@ -295,13 +289,12 @@
       }
     ],
     "expected_tools": [
-      "add_to_cart"
+      "add_riceball"
     ],
     "expected_args": [
       {
-        "name": "add_to_cart",
+        "name": "add_riceball",
         "args": {
-          "item_type": "riceball",
           "flavor": "源味傳統",
           "rice": "紫米",
           "spicy": true
@@ -349,13 +342,12 @@
       }
     ],
     "expected_tools": [
-      "add_to_cart"
+      "add_carrier"
     ],
     "expected_args": [
       {
-        "name": "add_to_cart",
+        "name": "add_carrier",
         "args": {
-          "item_type": "carrier",
           "carrier": "吐司",
           "flavor": "起司蛋"
         }
@@ -377,13 +369,12 @@
       }
     ],
     "expected_tools": [
-      "add_to_cart"
+      "add_carrier"
     ],
     "expected_args": [
       {
-        "name": "add_to_cart",
+        "name": "add_carrier",
         "args": {
-          "item_type": "carrier",
           "carrier": "漢堡",
           "flavor": "火腿蛋"
         }
@@ -405,13 +396,12 @@
       }
     ],
     "expected_tools": [
-      "add_to_cart"
+      "add_snack"
     ],
     "expected_args": [
       {
-        "name": "add_to_cart",
+        "name": "add_snack",
         "args": {
-          "item_type": "snack",
           "flavor": "蘑菇"
         }
       }
@@ -432,13 +422,12 @@
       }
     ],
     "expected_tools": [
-      "add_to_cart"
+      "add_snack"
     ],
     "expected_args": [
       {
-        "name": "add_to_cart",
+        "name": "add_snack",
         "args": {
-          "item_type": "snack",
           "flavor": "韭菜餡餅"
         }
       }
@@ -477,13 +466,12 @@
       }
     ],
     "expected_tools": [
-      "add_to_cart"
+      "add_drink"
     ],
     "expected_args": [
       {
-        "name": "add_to_cart",
+        "name": "add_drink",
         "args": {
-          "item_type": "drink",
           "flavor": "純鮮奶茶",
           "size": "大杯",
           "temp": "冰"
@@ -506,13 +494,12 @@
       }
     ],
     "expected_tools": [
-      "add_to_cart"
+      "add_drink"
     ],
     "expected_args": [
       {
-        "name": "add_to_cart",
+        "name": "add_drink",
         "args": {
-          "item_type": "drink",
           "flavor": "豆漿",
           "size": "中杯",
           "temp": "溫"
@@ -559,13 +546,12 @@
       }
     ],
     "expected_tools": [
-      "add_to_cart"
+      "add_carrier"
     ],
     "expected_args": [
       {
-        "name": "add_to_cart",
+        "name": "add_carrier",
         "args": {
-          "item_type": "carrier",
           "carrier": "饅頭"
         }
       }
@@ -611,33 +597,14 @@
       }
     ],
     "expected_tools": [
-      "add_to_cart"
+      "add_drink"
     ],
     "expected_args": [
       {
-        "name": "add_to_cart",
+        "name": "add_drink",
         "args": {
-          "item_type": "drink",
           "flavor": "豆漿",
           "size": "大杯",
-          "temp": "冰"
-        }
-      },
-      {
-        "name": "add_to_cart",
-        "args": {
-          "item_type": "drink",
-          "flavor": "豆漿",
-          "size": "大杯",
-          "temp": "溫"
-        }
-      },
-      {
-        "name": "add_to_cart",
-        "args": {
-          "item_type": "drink",
-          "flavor": "奶茶",
-          "size": "大",
           "temp": "冰"
         }
       }
@@ -667,25 +634,15 @@
       }
     ],
     "expected_tools": [
-      "add_to_cart"
+      "add_drink"
     ],
     "expected_args": [
       {
-        "name": "add_to_cart",
+        "name": "add_drink",
         "args": {
-          "item_type": "drink",
           "flavor": "豆漿",
           "size": "大杯",
           "temp": "冰"
-        }
-      },
-      {
-        "name": "add_to_cart",
-        "args": {
-          "item_type": "drink",
-          "flavor": "豆漿",
-          "size": "中杯",
-          "temp": "溫"
         }
       }
     ],
@@ -705,13 +662,12 @@
       }
     ],
     "expected_tools": [
-      "add_to_cart"
+      "add_combo"
     ],
     "expected_args": [
       {
-        "name": "add_to_cart",
+        "name": "add_combo",
         "args": {
-          "item_type": "combo",
           "combo_name": "套餐一"
         }
       }
@@ -733,13 +689,12 @@
       }
     ],
     "expected_tools": [
-      "add_to_cart"
+      "add_combo"
     ],
     "expected_args": [
       {
-        "name": "add_to_cart",
+        "name": "add_combo",
         "args": {
-          "item_type": "combo",
           "combo_name": "套餐四"
         }
       }
@@ -769,13 +724,12 @@
       }
     ],
     "expected_tools": [
-      "add_to_cart"
+      "add_combo"
     ],
     "expected_args": [
       {
-        "name": "add_to_cart",
+        "name": "add_combo",
         "args": {
-          "item_type": "combo",
           "combo_name": "套餐B"
         }
       }
@@ -804,13 +758,12 @@
       }
     ],
     "expected_tools": [
-      "add_to_cart"
+      "add_combo"
     ],
     "expected_args": [
       {
-        "name": "add_to_cart",
+        "name": "add_combo",
         "args": {
-          "item_type": "combo",
           "combo_name": "套餐二"
         }
       }
@@ -831,13 +784,12 @@
       }
     ],
     "expected_tools": [
-      "add_to_cart"
+      "add_combo"
     ],
     "expected_args": [
       {
-        "name": "add_to_cart",
+        "name": "add_combo",
         "args": {
-          "item_type": "combo",
           "combo_name": "套餐三"
         }
       }
@@ -852,7 +804,9 @@
     "description": "H1: 結帳 — 先問內用外帶",
     "category": "checkout",
     "session_context": {
-      "cart_items": ["起司蛋餅 x1"],
+      "cart_items": [
+        "起司蛋餅 x1"
+      ],
       "cart_count": 1
     },
     "messages": [
@@ -877,7 +831,9 @@
     "description": "H2: 結帳多輪 — 內用外帶→付款方式→完成",
     "category": "multi_round",
     "session_context": {
-      "cart_items": ["起司蛋餅 x1"],
+      "cart_items": [
+        "起司蛋餅 x1"
+      ],
       "cart_count": 1
     },
     "messages": [
@@ -961,7 +917,9 @@
     "description": "I2: 取消不存在的品項",
     "category": "edge_case",
     "session_context": {
-      "cart_items": ["大冰紅茶 x1"],
+      "cart_items": [
+        "大冰紅茶 x1"
+      ],
       "cart_count": 1
     },
     "messages": [
@@ -1008,13 +966,12 @@
       }
     ],
     "expected_tools": [
-      "add_to_cart"
+      "add_egg_pancake"
     ],
     "expected_args": [
       {
-        "name": "add_to_cart",
+        "name": "add_egg_pancake",
         "args": {
-          "item_type": "egg_pancake",
           "flavor": "起司"
         }
       }
@@ -1035,21 +992,13 @@
       }
     ],
     "expected_tools": [
-      "add_to_cart"
+      "add_egg_pancake"
     ],
     "expected_args": [
       {
-        "name": "add_to_cart",
+        "name": "add_egg_pancake",
         "args": {
-          "item_type": "egg_pancake",
           "flavor": "玉米蛋餅"
-        }
-      },
-      {
-        "name": "add_to_cart",
-        "args": {
-          "item_type": "snack",
-          "flavor": "蔥抓餅"
         }
       }
     ],
@@ -1082,7 +1031,10 @@
     "description": "K1: 簡單完整流程 — 點飯糰→蛋餅→結帳",
     "category": "long_conversation",
     "session_context": {
-      "cart_items": ["鮪魚飯糰(紫米/辣) x1", "起司蛋餅 x1"],
+      "cart_items": [
+        "鮪魚飯糰(紫米/辣) x1",
+        "起司蛋餅 x1"
+      ],
       "cart_count": 2
     },
     "messages": [
@@ -1153,7 +1105,13 @@
     "description": "K2: 真實複雜流程 — 大量品項逐一補齊後結帳",
     "category": "long_conversation",
     "session_context": {
-      "cart_items": ["鮪魚飯糰(紫米/辣) x1", "玉米蛋餅 x2", "大冰紅茶 x1", "套餐二(白米/溫) x1", "薯餅 x2"],
+      "cart_items": [
+        "鮪魚飯糰(紫米/辣) x1",
+        "玉米蛋餅 x2",
+        "大冰紅茶 x1",
+        "套餐二(白米/溫) x1",
+        "薯餅 x2"
+      ],
       "cart_count": 7
     },
     "messages": [
@@ -1246,13 +1204,12 @@
       }
     ],
     "expected_tools": [
-      "add_to_cart"
+      "add_drink"
     ],
     "expected_args": [
       {
-        "name": "add_to_cart",
+        "name": "add_drink",
         "args": {
-          "item_type": "drink",
           "flavor": "豆漿",
           "size": "大杯",
           "temp": "冰"

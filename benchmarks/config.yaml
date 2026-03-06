@@ -40,24 +40,25 @@ tts:
 
 llm:
   models:
-    - id: qwen3-30b-a3b
-      name: "Qwen3-30B-A3B"
+    - id: qwen3.5-9b
+      name: "Qwen3.5-9B (no_think)"
       adapter: openai_compatible
       params:
         base_url: "http://127.0.0.1:1234/v1"
-        model: "Qwen3-30B-A3B-Q3_K_S.gguf"
+        model: "unsloth/qwen3.5-9b"
         temperature: 0.0
         repeat_penalty: 1.0   # 避免 llama.cpp 預設 1.1 懲罰 priming 重複 token
         min_p: 0.0
-    - id: qwen3-30b-a3b-raw
-      name: "Qwen3-30B-A3B (Raw Completion)"
-      adapter: raw_completion
+    - id: qwen3.5-9b-think
+      name: "Qwen3.5-9B (think)"
+      adapter: openai_compatible
       params:
-        base_url: "http://127.0.0.1:1234"
-        model: "Qwen3-30B-A3B-Q3_K_S.gguf"
-        temperature: 0.0
+        base_url: "http://127.0.0.1:1234/v1"
+        model: "unsloth/qwen3.5-9b"
+        temperature: 0.6
         repeat_penalty: 1.0
         min_p: 0.0
+        enable_thinking: true
   metrics: [tool_call_accuracy, response_latency, scenario_pass_rate]
 
 e2e:
