@@ -3,7 +3,7 @@ from typing import Dict, Any, List, Callable, Optional, Set
 from src.dm.dialogue_manager import DialogueManager
 from src.dm.session_store import InMemorySessionStore
 from src.dm import cart_manager
-from src.tools.menu import menu_price_service
+from src.tools.menu import menu_price_service, menu_state_service
 
 # 導入各工具的別名映射
 from src.tools.riceball_tool import FLAVOR_ALIASES as RICEBALL_ALIASES
@@ -91,7 +91,322 @@ class ToolRegistry:
         """將點心別名轉換為標準名稱"""
         return self._resolve_alias(flavor, SNACK_ALIASES)
 
-    # ============ 工具實現 ============
+    def _next_item_id(self, session: Dict[str, Any], prefix: str) -> str:
+        """分配下一個 item_id，同時遞增計數器"""
+        counter = session.get("cart_id_counter", 0) + 1
+        session["cart_id_counter"] = counter
+        return f"{prefix}_{counter}"
+
+    # ============ 品項專屬工具 ============
+
+    def add_riceball(
+        self,
+        flavor: Optional[str] = None,
+        rice: Optional[str] = None,
+        large: bool = False,
+        extra_egg: bool = False,
+        spicy: bool = False,
+        quantity: int = 1,
+        customization: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """加入飯糰到購物車。flavor（口味）和 rice（米種）都必填。"""
+        try:
+            # 缺欄位檢查
+            missing = []
+            if not flavor:
+                missing.append("flavor")
+            if not rice:
+                missing.append("rice")
+            if missing:
+                if "flavor" in missing and "rice" in missing:
+                    msg = "請問飯糰要什麼口味？以及米種要白米、紫米還是混米？"
+                elif "flavor" in missing:
+                    msg = "請問飯糰要什麼口味？"
+                else:
+                    msg = "請問米種要白米、紫米還是混米？"
+                return {"ok": False, "missing": missing, "message": msg}
+
+            session = self.get_current_session()
+            resolved_flavor = self._resolve_riceball_flavor(flavor)
+            item_id = self._next_item_id(session, "riceball")
+
+            item: Dict[str, Any] = {
+                "item_id": item_id,
+                "itemtype": "riceball",
+                "flavor": resolved_flavor,
+                "rice": rice,
+                "large": bool(large),
+                "extra_egg": bool(extra_egg),
+                "spicy": bool(spicy),
+                "quantity": max(1, quantity),
+            }
+            if customization:
+                item["customization"] = customization
+
+            session["cart"].append(item)
+
+            display_name = f"{rice}{resolved_flavor}"
+            return {
+                "ok": True,
+                "item_id": item_id,
+                "message": f"已加入 {quantity}份 {display_name}",
+                "cart_count": len(session["cart"]),
+            }
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def add_drink(
+        self,
+        flavor: Optional[str] = None,
+        size: Optional[str] = None,
+        temp: Optional[str] = None,
+        quantity: int = 1,
+        customization: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """加入飲料到購物車。flavor（品項）、size（杯型）、temp（溫度）都必填。"""
+        try:
+            missing = []
+            if not flavor:
+                missing.append("flavor")
+            if not size:
+                missing.append("size")
+            if not temp:
+                missing.append("temp")
+            if missing:
+                parts = []
+                if "flavor" in missing:
+                    parts.append("飲料品項")
+                if "size" in missing:
+                    parts.append("杯型（中杯/大杯）")
+                if "temp" in missing:
+                    parts.append("溫度（冰/溫/熱）")
+                msg = f"請問{' 和 '.join(parts)}？"
+                return {"ok": False, "missing": missing, "message": msg}
+
+            session = self.get_current_session()
+            resolved_flavor = self._resolve_drink_flavor(flavor)
+            resolved_size = self._resolve_drink_size(size)
+            resolved_temp = self._resolve_drink_temp(temp)
+            item_id = self._next_item_id(session, "drink")
+
+            item: Dict[str, Any] = {
+                "item_id": item_id,
+                "itemtype": "drink",
+                "drink": resolved_flavor,
+                "size": resolved_size,
+                "temp": resolved_temp,
+                "quantity": max(1, quantity),
+            }
+            if customization:
+                item["customization"] = customization
+
+            session["cart"].append(item)
+
+            display_name = f"{resolved_size}{resolved_temp}{resolved_flavor}"
+            return {
+                "ok": True,
+                "item_id": item_id,
+                "message": f"已加入 {quantity}份 {display_name}",
+                "cart_count": len(session["cart"]),
+            }
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def add_carrier(
+        self,
+        carrier: Optional[str] = None,
+        flavor: Optional[str] = None,
+        quantity: int = 1,
+        customization: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """加入吐司/漢堡/饅頭系列到購物車。carrier（載體）和 flavor（餡料）都必填。"""
+        try:
+            missing = []
+            if not carrier:
+                missing.append("carrier")
+            if not flavor:
+                missing.append("flavor")
+            if missing:
+                parts = []
+                if "carrier" in missing:
+                    parts.append("載體類型（吐司/漢堡/饅頭）")
+                if "flavor" in missing:
+                    parts.append("餡料口味")
+                msg = f"請問{' 和 '.join(parts)}？"
+                return {"ok": False, "missing": missing, "message": msg}
+
+            session = self.get_current_session()
+            item_id = self._next_item_id(session, "carrier")
+
+            item: Dict[str, Any] = {
+                "item_id": item_id,
+                "itemtype": "carrier",
+                "carrier": carrier,
+                "flavor": flavor,
+                "quantity": max(1, quantity),
+            }
+            if customization:
+                item["customization"] = customization
+
+            session["cart"].append(item)
+
+            display_name = f"{flavor}{carrier}"
+            return {
+                "ok": True,
+                "item_id": item_id,
+                "message": f"已加入 {quantity}份 {display_name}",
+                "cart_count": len(session["cart"]),
+            }
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def add_egg_pancake(
+        self,
+        flavor: Optional[str] = None,
+        quantity: int = 1,
+        customization: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """加入蛋餅到購物車。flavor（口味）必填。"""
+        try:
+            if not flavor:
+                return {"ok": False, "missing": ["flavor"], "message": "請問蛋餅要什麼口味？"}
+
+            session = self.get_current_session()
+            resolved_flavor = self._resolve_egg_pancake_flavor(flavor)
+            item_id = self._next_item_id(session, "egg_pancake")
+
+            item: Dict[str, Any] = {
+                "item_id": item_id,
+                "itemtype": "egg_pancake",
+                "flavor": resolved_flavor,
+                "quantity": max(1, quantity),
+            }
+            if customization:
+                item["customization"] = customization
+
+            session["cart"].append(item)
+
+            return {
+                "ok": True,
+                "item_id": item_id,
+                "message": f"已加入 {quantity}份 {resolved_flavor}",
+                "cart_count": len(session["cart"]),
+            }
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def add_snack(
+        self,
+        flavor: Optional[str] = None,
+        quantity: int = 1,
+        customization: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """加入點心到購物車。flavor（品項名稱）必填。"""
+        try:
+            if not flavor:
+                return {"ok": False, "missing": ["flavor"], "message": "請問要什麼點心？"}
+
+            session = self.get_current_session()
+            resolved_flavor = self._resolve_snack_flavor(flavor)
+            item_id = self._next_item_id(session, "snack")
+
+            item: Dict[str, Any] = {
+                "item_id": item_id,
+                "itemtype": "snack",
+                "snack": resolved_flavor,
+                "quantity": max(1, quantity),
+            }
+            if customization:
+                item["customization"] = customization
+
+            session["cart"].append(item)
+
+            return {
+                "ok": True,
+                "item_id": item_id,
+                "message": f"已加入 {quantity}份 {resolved_flavor}",
+                "cart_count": len(session["cart"]),
+            }
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def add_combo(
+        self,
+        combo_name: Optional[str] = None,
+        rice: Optional[str] = None,
+        temp: Optional[str] = None,
+        flavor: Optional[str] = None,
+        customization: Optional[str] = None,
+        quantity: int = 1,
+    ) -> Dict[str, Any]:
+        """加入套餐到購物車。combo_name 必填，其他依套餐要求。"""
+        try:
+            if not combo_name:
+                return {"ok": False, "missing": ["combo_name"], "message": "請問要哪個套餐？"}
+
+            # 用現有函式檢查套餐必填欄位
+            missing_msg = check_combo_required(combo_name, temp, flavor, rice, customization)
+            if missing_msg:
+                return {"ok": False, "message": missing_msg}
+
+            session = self.get_current_session()
+            item_id = self._next_item_id(session, "combo")
+
+            item: Dict[str, Any] = {
+                "item_id": item_id,
+                "itemtype": "combo",
+                "combo_name": combo_name,
+                "quantity": max(1, quantity),
+            }
+            if temp:
+                item["drink_temp"] = temp
+            if rice:
+                item["rice"] = rice
+            if flavor:
+                item["sub_flavor"] = flavor
+            if customization:
+                item["customization"] = customization
+
+            session["cart"].append(item)
+
+            return {
+                "ok": True,
+                "item_id": item_id,
+                "message": f"已加入 {quantity}份 {combo_name}",
+                "cart_count": len(session["cart"]),
+            }
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def update_draft(self, items: list) -> Dict[str, Any]:
+        """直接覆蓋 session draft（待確認品項，不分配 item_id）。"""
+        try:
+            session = self.get_current_session()
+            session["draft"] = list(items)
+            return {
+                "ok": True,
+                "draft_count": len(items),
+                "message": f"已記錄 {len(items)} 項待確認品項",
+            }
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def modify_cart_item(self, item_id: str, field: str, new_value: Any) -> Dict[str, Any]:
+        """直接修改購物車中某品項的欄位值。需要 item_id（從 get_cart_summary 取得）。"""
+        try:
+            session = self.get_current_session()
+            cart = session.get("cart", [])
+
+            for item in cart:
+                if item.get("item_id") == item_id:
+                    item[field] = new_value
+                    return {"ok": True, "message": f"已修改 {item_id}.{field} = {new_value}"}
+
+            return {"ok": False, "message": f"找不到 item_id={item_id}"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    # ============ 原有工具（backward compat，保留方法本體） ============
 
     def add_to_cart(
         self,
@@ -109,7 +424,7 @@ class ToolRegistry:
         customization: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        添加品項到購物車
+        添加品項到購物車（已廢棄，保留作 backward compat）
 
         Args:
             item_type: 品項類型 (riceball, drink, carrier, egg_pancake, jam_toast, snack, combo)
@@ -132,7 +447,7 @@ class ToolRegistry:
             session = self.get_current_session()
 
             # 構建品項框架
-            item = {
+            item: Dict[str, Any] = {
                 "itemtype": item_type,
                 "quantity": max(1, quantity),
             }
@@ -238,6 +553,7 @@ class ToolRegistry:
     def remove_from_cart(
         self,
         index: Optional[int] = None,
+        item_id: Optional[str] = None,
         last: bool = False,
         all: bool = False,
     ) -> Dict[str, Any]:
@@ -246,6 +562,7 @@ class ToolRegistry:
 
         Args:
             index: 要移除的品項索引（1 開始）
+            item_id: 要移除的品項 ID（優先）
             last: 是否移除最後一項
             all: 是否清空購物車
 
@@ -262,6 +579,18 @@ class ToolRegistry:
             if all:
                 session["cart"] = []
                 return {"ok": True, "message": "已清空購物車"}
+
+            # item_id 優先
+            if item_id is not None:
+                for i, item in enumerate(cart):
+                    if item.get("item_id") == item_id:
+                        cart.pop(i)
+                        return {
+                            "ok": True,
+                            "message": f"已移除 {item_id}",
+                            "cart_count": len(cart),
+                        }
+                return {"ok": False, "message": f"找不到 item_id={item_id}"}
 
             if last:
                 cart.pop()
@@ -292,22 +621,15 @@ class ToolRegistry:
 
     def get_cart_summary(self) -> Dict[str, Any]:
         """
-        取得購物車摘要
+        取得購物車摘要（含 item_id 和 draft_items）
 
         Returns:
             購物車摘要
         """
         try:
             session = self.get_current_session()
-            cart = session["cart"]
-
-            if not cart:
-                return {
-                    "ok": True,
-                    "cart_count": 0,
-                    "items": [],
-                    "message": "購物車為空",
-                }
+            cart = session.get("cart", [])
+            draft = session.get("draft", [])
 
             items = []
             total_price = 0
@@ -331,21 +653,52 @@ class ToolRegistry:
                 if price_info and price_info.get("status") == "success":
                     item_total = cart_manager.extract_total(price_info, qty)
                     total_price += item_total
-                    price_str = f" {item_total}元"
+                    price_str = f"{item_total}元"
                 else:
                     price_str = ""
 
                 items.append({
+                    "item_id": item.get("item_id", ""),
                     "index": i,
                     "name": name,
                     "quantity": qty,
                     "price": price_str,
                 })
 
+            # 格式化 draft 品項
+            draft_items = []
+            for i, item in enumerate(draft, 1):
+                item_type = item.get("itemtype", "unknown")
+                if item_type == "riceball":
+                    name = f"{item.get('rice', '')}·{item.get('flavor', '飯糰')}"
+                elif item_type == "drink":
+                    name = f"{item.get('drink', '飲料')}({item.get('size', '')} {item.get('temp', '')})"
+                elif item_type == "carrier":
+                    name = f"{item.get('carrier', '載體')}·{item.get('flavor', '')}"
+                else:
+                    name = item.get("flavor") or item.get(item_type) or item_type
+
+                draft_items.append({
+                    "index": i,
+                    "name": name,
+                    "status": "待確認",
+                })
+
+            if not cart and not draft:
+                return {
+                    "ok": True,
+                    "cart_count": 0,
+                    "items": [],
+                    "draft_items": [],
+                    "total_price": 0,
+                    "message": "購物車為空",
+                }
+
             return {
                 "ok": True,
                 "cart_count": len(cart),
                 "items": items,
+                "draft_items": draft_items,
                 "total_price": total_price,
                 "message": f"購物車共 {len(cart)} 項，總計 {total_price} 元",
             }
@@ -368,7 +721,7 @@ class ToolRegistry:
 
             if not category:
                 # 返回所有分類
-                categories = set()
+                categories: Set[str] = set()
                 for item in menu_data:
                     if item.get("category"):
                         categories.add(item["category"])
@@ -379,11 +732,13 @@ class ToolRegistry:
                     "message": f"菜單共有 {len(categories)} 個分類",
                 }
 
-            # 返回特定分類的品項
+            # 返回特定分類的品項（含售罄狀態）
+            sold_out = set(menu_state_service.get_effective_sold_out())
             items = [
                 {
                     "name": item.get("name"),
                     "price": item.get("price"),
+                    "available": item.get("name") not in sold_out,
                 }
                 for item in menu_data
                 if item.get("category") == category
@@ -401,82 +756,6 @@ class ToolRegistry:
                 "items": items,
                 "count": len(items),
                 "message": f"{category}共有 {len(items)} 項",
-            }
-
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
-
-    def get_price(
-        self,
-        item_type: str,
-        flavor: Optional[str] = None,
-        rice: Optional[str] = None,
-        size: Optional[str] = None,
-        temp: Optional[str] = None,
-        large: bool = False,
-        extra_egg: bool = False,
-    ) -> Dict[str, Any]:
-        """
-        查詢品項價格
-
-        Args:
-            item_type: 品項類型
-            flavor: 口味
-            rice: 米種（飯糰）
-            size: 杯型（飲料）
-            temp: 溫度（飲料）
-            large: 是否加大（飯糰）
-            extra_egg: 是否加蛋（飯糰）
-
-        Returns:
-            價格信息
-        """
-        try:
-            # 根據品項類型解析別名
-            resolved_flavor = flavor
-            resolved_size = size
-            resolved_temp = temp
-
-            if item_type == "riceball":
-                resolved_flavor = self._resolve_riceball_flavor(flavor)
-            elif item_type == "drink":
-                resolved_flavor = self._resolve_drink_flavor(flavor)
-                resolved_size = self._resolve_drink_size(size)
-                resolved_temp = self._resolve_drink_temp(temp)
-            elif item_type == "egg_pancake":
-                resolved_flavor = self._resolve_egg_pancake_flavor(flavor)
-            elif item_type == "snack":
-                resolved_flavor = self._resolve_snack_flavor(flavor)
-
-            item = {
-                "itemtype": item_type,
-                "flavor": resolved_flavor,
-                "rice": rice,
-                "size": resolved_size,
-                "temp": resolved_temp,
-                "large": large,
-                "extra_egg": extra_egg,
-            }
-
-            price_info = cart_manager.get_price_info(item)
-
-            if not price_info:
-                return {
-                    "ok": False,
-                    "message": f"無法計算 {flavor or item_type} 的價格",
-                }
-
-            if price_info.get("status") != "success":
-                return {
-                    "ok": False,
-                    "message": price_info.get("message", "價格計算失敗"),
-                }
-
-            return {
-                "ok": True,
-                "item": flavor or item_type,
-                "price": price_info.get("total_price"),
-                "details": price_info,
             }
 
         except Exception as e:
@@ -512,7 +791,6 @@ class ToolRegistry:
                     "ok": False,
                     "message": f"以下品項無法計算價格，請確認後重試：{'、'.join(unpriceable_items)}"
                 }
-
 
             # 正規化 dine_type / payment_method
             resolved_dine = _DINE_TYPE_MAP.get(dine_type, dine_type)
@@ -631,71 +909,200 @@ class ToolRegistry:
             {
                 "type": "function",
                 "function": {
-                    "name": "add_to_cart",
-                    "description": "添加品項到購物車。飯糰需要口味+米種，飲料需要品項+杯型+溫度，蛋餅/吐司/漢堡/饅頭需要口味，套餐需要套餐名。",
+                    "name": "add_riceball",
+                    "description": "加入飯糰到購物車。flavor（口味）和 rice（米種）都必填。缺一則追問。",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "item_type": {
-                                "type": "string",
-                                "enum": ["riceball", "drink", "carrier", "egg_pancake", "jam_toast", "snack", "combo"],
-                                "description": "品項類型：riceball(飯糰)、drink(飲料)、carrier(吐司/漢堡/饅頭)、egg_pancake(蛋餅)、jam_toast(果醬吐司)、snack(點心)、combo(套餐)",
-                            },
                             "flavor": {
                                 "type": "string",
-                                "description": "品項口味或名稱。飯糰如：源味傳統、香燻培根、醬燒里肌。飲料如：有糖豆漿、純鮮奶茶。蛋餅如：原味蛋餅、起司蛋餅。載體如：豬肉蛋、火腿蛋。",
+                                "description": "飯糰口味，如：源味傳統、香燻培根、醬燒里肌、起司蛋、鮪魚蛋等",
                             },
                             "rice": {
                                 "type": "string",
                                 "enum": ["白米", "紫米", "混米"],
-                                "description": "米種 - 飯糰專用，必填",
+                                "description": "米種，必填",
+                            },
+                            "large": {
+                                "type": "boolean",
+                                "default": False,
+                                "description": "是否加大",
+                            },
+                            "extra_egg": {
+                                "type": "boolean",
+                                "default": False,
+                                "description": "是否加蛋",
+                            },
+                            "spicy": {
+                                "type": "boolean",
+                                "default": False,
+                                "description": "是否加辣菜脯",
+                            },
+                            "quantity": {
+                                "type": "integer",
+                                "default": 1,
+                                "description": "數量",
+                            },
+                            "customization": {
+                                "type": "string",
+                                "description": "客製化需求",
+                            },
+                        },
+                        "required": ["flavor", "rice"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "add_drink",
+                    "description": "加入飲料到購物車。flavor（品項）、size（杯型）、temp（溫度）都必填。",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "flavor": {
+                                "type": "string",
+                                "description": "飲料名稱，如：有糖豆漿、純鮮奶茶、紅茶拿鐵等",
                             },
                             "size": {
                                 "type": "string",
-                                "enum": ["中杯", "大杯", "薄片", "厚片"],
-                                "description": "飲料杯型(中杯/大杯)或果醬吐司厚度(薄片/厚片)",
+                                "enum": ["中杯", "大杯"],
+                                "description": "杯型，必填",
                             },
                             "temp": {
                                 "type": "string",
                                 "enum": ["冰", "溫", "熱"],
-                                "description": "溫度 - 飲料專用，必填",
+                                "description": "溫度，必填",
                             },
+                            "quantity": {"type": "integer", "default": 1},
+                            "customization": {"type": "string"},
+                        },
+                        "required": ["flavor", "size", "temp"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "add_carrier",
+                    "description": "加入吐司/漢堡/饅頭系列到購物車。carrier（載體）和 flavor（餡料）都必填。",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
                             "carrier": {
                                 "type": "string",
                                 "enum": ["吐司", "漢堡", "饅頭"],
-                                "description": "載體類型 - 吐司/漢堡/饅頭專用",
+                                "description": "載體類型，必填",
                             },
+                            "flavor": {
+                                "type": "string",
+                                "description": "餡料口味，如：豬肉蛋、火腿蛋、起司蛋等",
+                            },
+                            "quantity": {"type": "integer", "default": 1},
+                            "customization": {"type": "string"},
+                        },
+                        "required": ["carrier", "flavor"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "add_egg_pancake",
+                    "description": "加入蛋餅到購物車。flavor（口味）必填。",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "flavor": {
+                                "type": "string",
+                                "description": "蛋餅口味，如：原味、起司、培根、鮪魚等",
+                            },
+                            "quantity": {"type": "integer", "default": 1},
+                            "customization": {"type": "string"},
+                        },
+                        "required": ["flavor"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "add_snack",
+                    "description": "加入點心到購物車。flavor（品項名稱）必填。",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "flavor": {
+                                "type": "string",
+                                "description": "點心名稱，如：薯餅、薯條、雞塊等",
+                            },
+                            "quantity": {"type": "integer", "default": 1},
+                            "customization": {"type": "string"},
+                        },
+                        "required": ["flavor"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "add_combo",
+                    "description": "加入套餐到購物車。combo_name 必填，其他依套餐要求。",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
                             "combo_name": {
                                 "type": "string",
                                 "enum": ["套餐一", "套餐二", "套餐三", "套餐四", "套餐A", "套餐B", "兒童餐"],
-                                "description": "套餐名稱 - 套餐專用",
+                                "description": "套餐名稱，必填",
                             },
-                            "quantity": {
-                                "type": "integer",
-                                "description": "數量，預設 1",
-                                "default": 1,
-                            },
-                            "large": {
-                                "type": "boolean",
-                                "description": "是否加大 - 飯糰用",
-                                "default": False,
-                            },
-                            "extra_egg": {
-                                "type": "boolean",
-                                "description": "是否加蛋 - 飯糰用",
-                                "default": False,
-                            },
-                            "spicy": {
-                                "type": "boolean",
-                                "description": "是否加辣菜脯 - 飯糰用",
-                                "default": False,
-                            },
-                            "customization": {
-                                "type": "string",
-                                "description": "客製化需求，如：不要小黃瓜、不要醬油膏、裝一起、不要切等",
+                            "rice": {"type": "string", "enum": ["白米", "紫米", "混米"]},
+                            "temp": {"type": "string", "enum": ["冰", "溫", "熱"]},
+                            "flavor": {"type": "string"},
+                            "quantity": {"type": "integer", "default": 1},
+                            "customization": {"type": "string"},
+                        },
+                        "required": ["combo_name"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "update_draft",
+                    "description": "儲存待確認的品項到 draft 區（覆蓋寫入）。用於收集不完整資訊時暫存，LLM 確認齊全後再 call add_* 真正加入購物車。",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "items": {
+                                "type": "array",
+                                "description": "待確認品項列表，格式同購物車品項",
+                                "items": {"type": "object"},
                             },
                         },
-                        "required": ["item_type"],
+                        "required": ["items"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "modify_cart_item",
+                    "description": "直接修改購物車中某品項的欄位值。需要 item_id（從 get_cart_summary 取得）。",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "item_id": {
+                                "type": "string",
+                                "description": "品項 ID，如 riceball_1、drink_2",
+                            },
+                            "field": {
+                                "type": "string",
+                                "description": "要修改的欄位，如 rice、flavor、quantity、temp、size",
+                            },
+                            "new_value": {"description": "新值"},
+                        },
+                        "required": ["item_id", "field", "new_value"],
                     },
                 },
             },
@@ -703,10 +1110,14 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "remove_from_cart",
-                    "description": "從購物車移除品項。index=指定位置，last=最後一項，all=清空。",
+                    "description": "從購物車移除品項。item_id=指定品項（優先），index=指定位置，last=最後一項，all=清空。",
                     "parameters": {
                         "type": "object",
                         "properties": {
+                            "item_id": {
+                                "type": "string",
+                                "description": "品項 ID（優先），如 riceball_1、drink_2",
+                            },
                             "index": {
                                 "type": "integer",
                                 "description": "品項索引（1 開始），不能與 last 或 all 同時使用",
@@ -729,7 +1140,7 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "get_cart_summary",
-                    "description": "取得購物車品項列表和總價。",
+                    "description": "取得購物車品項列表和總價（含 item_id 和 draft 待確認品項）。",
                     "parameters": {
                         "type": "object",
                         "properties": {},
@@ -740,7 +1151,7 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "query_menu",
-                    "description": "查詢菜單分類或品項。category 指定分類，不填則返回所有分類。",
+                    "description": "查詢菜單分類或品項（含售罄狀態）。category 指定分類，不填則返回所有分類。",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -749,49 +1160,6 @@ class ToolRegistry:
                                 "description": "菜單分類（飯糰、飲品、蛋餅等），不指定則返回所有分類",
                             },
                         },
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_price",
-                    "description": "查詢品項價格。",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "item_type": {
-                                "type": "string",
-                                "description": "品項類型",
-                            },
-                            "flavor": {
-                                "type": "string",
-                                "description": "口味或品項名稱",
-                            },
-                            "rice": {
-                                "type": "string",
-                                "description": "米種 (紫米/白米/混米)",
-                            },
-                            "size": {
-                                "type": "string",
-                                "description": "杯型 (中杯/大杯)",
-                            },
-                            "temp": {
-                                "type": "string",
-                                "description": "溫度 (冰的/溫的)",
-                            },
-                            "large": {
-                                "type": "boolean",
-                                "description": "是否加大",
-                                "default": False,
-                            },
-                            "extra_egg": {
-                                "type": "boolean",
-                                "description": "是否加蛋",
-                                "default": False,
-                            },
-                        },
-                        "required": ["item_type"],
                     },
                 },
             },
@@ -851,13 +1219,23 @@ class ToolRegistry:
             工具映射字典
         """
         return {
-            "add_to_cart": self.add_to_cart,
+            # 品項專屬工具（新）
+            "add_riceball": self.add_riceball,
+            "add_drink": self.add_drink,
+            "add_carrier": self.add_carrier,
+            "add_egg_pancake": self.add_egg_pancake,
+            "add_snack": self.add_snack,
+            "add_combo": self.add_combo,
+            "update_draft": self.update_draft,
+            "modify_cart_item": self.modify_cart_item,
+            # 共用工具
             "remove_from_cart": self.remove_from_cart,
             "get_cart_summary": self.get_cart_summary,
             "query_menu": self.query_menu,
-            "get_price": self.get_price,
             "finalize_order": self.finalize_order,
             "preview_checkout": self.preview_checkout,
+            # backward compat（已廢棄，保留避免舊呼叫崩潰）
+            "add_to_cart": self.add_to_cart,
         }
 
     def get_allowed_args(self) -> Dict[str, Set[str]]:
@@ -868,32 +1246,24 @@ class ToolRegistry:
             參數映射字典
         """
         return {
-            "add_to_cart": {
-                "item_type",
-                "flavor",
-                "rice",
-                "size",
-                "temp",
-                "carrier",
-                "combo_name",
-                "quantity",
-                "large",
-                "extra_egg",
-                "spicy",
-                "customization",
-            },
-            "remove_from_cart": {"index", "last", "all"},
+            # 品項專屬工具（新）
+            "add_riceball": {"flavor", "rice", "large", "extra_egg", "spicy", "quantity", "customization"},
+            "add_drink": {"flavor", "size", "temp", "quantity", "customization"},
+            "add_carrier": {"carrier", "flavor", "quantity", "customization"},
+            "add_egg_pancake": {"flavor", "quantity", "customization"},
+            "add_snack": {"flavor", "quantity", "customization"},
+            "add_combo": {"combo_name", "rice", "temp", "flavor", "quantity", "customization"},
+            "update_draft": {"items"},
+            "modify_cart_item": {"item_id", "field", "new_value"},
+            # 共用工具
+            "remove_from_cart": {"index", "item_id", "last", "all"},
             "get_cart_summary": set(),
             "query_menu": {"category"},
-            "get_price": {
-                "item_type",
-                "flavor",
-                "rice",
-                "size",
-                "temp",
-                "large",
-                "extra_egg",
-            },
             "finalize_order": {"dine_type", "payment_method"},
             "preview_checkout": {"dine_type", "payment_method"},
+            # backward compat
+            "add_to_cart": {
+                "item_type", "flavor", "rice", "size", "temp", "carrier",
+                "combo_name", "quantity", "large", "extra_egg", "spicy", "customization",
+            },
         }
