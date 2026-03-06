@@ -985,7 +985,7 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "add_carrier",
-                    "description": "加入吐司/漢堡/饅頭系列到購物車。carrier（載體）和 flavor（餡料）都必填。饅頭需確認口味（如黑糖夾蛋、原味夾蛋），客人只說「饅頭夾蛋」時要追問口味。",
+                    "description": "加入吐司/漢堡/饅頭系列到購物車。carrier（載體）和 flavor（餡料）都必填。饅頭需確認口味（如黑糖夾蛋、白饅夾蛋），客人只說「饅頭夾蛋」時要追問口味。",
                     "parameters": {
                         "type": "object",
                         "properties": {
