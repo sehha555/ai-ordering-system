@@ -19,17 +19,17 @@ ITEM_RULES: dict[str, ItemRule] = {
         prompt_label="飯糰",
         required=["flavor", "rice"],
         optional=["spicy", "extra_egg"],
-        prompt_desc="必填：口味、米種。辣菜脯預設不加，加蛋預設蔥蛋不用問。",
+        prompt_desc="必填：口味、米種（紫米/白米）。分兩輪問：先問米種，再問辣菜脯。加蛋預設蔥蛋不用問。",
         missing_prompts={
             "flavor": "飯糰什麼口味",
-            "rice": "紫米白米還是混米",
+            "rice": "紫米還是白米",
         },
     ),
     "drink": ItemRule(
         prompt_label="飲料",
         required=["flavor", "size", "temp"],
         optional=[],
-        prompt_desc="必填：品名、杯型（中/大）、溫度（冰/溫）。甜度不用問。",
+        prompt_desc="必填：品名、杯型（中/大）、溫度（冰/溫）。豆漿預設有糖不用問。缺杯型溫度時用季節預設建議。",
         missing_prompts={
             "flavor": "什麼飲料",
             "size": "大杯還是中杯",
@@ -37,10 +37,10 @@ ITEM_RULES: dict[str, ItemRule] = {
         },
     ),
     "carrier": ItemRule(
-        prompt_label="載體（吐司/漢堡/饅頭）",
+        prompt_label="載體（吐司/漢堡）",
         required=["carrier", "flavor"],
         optional=[],
-        prompt_desc="必填：載體種類（吐司/漢堡/饅頭）、配料口味。只說配料未說載體就追問。",
+        prompt_desc="必填：載體種類、配料口味。只問「吐司還是漢堡」，不主動提饅頭。客人自己說饅頭則接受，追問饅頭口味（黑糖/芋頭/白饅頭等）。",
         missing_prompts={
             "carrier": "吐司還是漢堡",
             "flavor": "什麼口味",
@@ -64,7 +64,7 @@ ITEM_RULES: dict[str, ItemRule] = {
         prompt_label="點心",
         required=[],
         optional=[],
-        prompt_desc="無必填，直接加入購物車。",
+        prompt_desc="無必填，直接加入購物車。鐵板麵預設加蛋不用問。",
         missing_prompts={},
     ),
     "combo": ItemRule(
@@ -111,7 +111,7 @@ def check_combo_required(
     reqs = COMBO_REQUIREMENTS.get(combo_name, {})
 
     if reqs.get("needs_rice") and not rice:
-        missing_parts.append("飯糰要紫米白米還是混米")
+        missing_parts.append("飯糰要紫米還是白米")
 
     if reqs.get("needs_mantou_flavor") and not flavor:
         missing_parts.append("饅頭要什麼口味")
