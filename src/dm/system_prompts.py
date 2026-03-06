@@ -134,23 +134,6 @@ class SystemPromptBuilder:
         self._base_prompt = content.strip()
         return self._base_prompt
 
-    def _generate_tool_usage_rules(self) -> str:
-        """生成工具使用規則（精簡版，與 system_prompt.md 互補不重複）"""
-        return """# 點餐決策三步驟
-收到點餐請求時依序執行：
-
-步驟一【解析】辨識品項；聽不確定時從菜單指南找最相近的品項向客人確認
-步驟二【核對】確認必填欄位是否齊全：
-  飯糰：口味 + 米種（必填）
-  飲料：品名 + 大小 + 溫度（必填）
-  載體：配料口味 + 載體種類（吐司/漢堡/饅頭，必填）
-  蛋餅：口味（必填）
-  點心/套餐：照記，缺資訊由系統追問
-步驟三【行動】
-  齊全 → call tool
-  有缺 → 一次追問所有缺的欄位，不分開問
-  多品項 → 先 call 齊全的，再追問缺的"""
-
     def _generate_menu_domain_guide(self) -> str:
         """生成菜單領域指南（Triad Engine Format B），結果快取避免重複讀檔"""
         if self._menu_summary is not None:
@@ -359,8 +342,6 @@ class SystemPromptBuilder:
         """
         parts = [
             self._load_base_prompt(),
-            "",
-            self._generate_tool_usage_rules(),
             "",
             self._generate_menu_domain_guide(),
         ]

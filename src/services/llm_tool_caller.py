@@ -82,13 +82,16 @@ class LLMToolCaller:
         messages: List[Dict[str, Any]],
         tools_schema: Optional[List[Dict[str, Any]]] = None,
         tool_choice: Optional[str] = None,
-        temperature: float = 0.0,
+        temperature: float = 0.3,
     ) -> Dict[str, Any]:
         """call_llm 的非阻塞版，用於 async context（如 run_turn_stream）。"""
         payload: Dict[str, Any] = {
             "model": self.model,
             "messages": messages,
             "temperature": temperature,
+            "top_p": 0.8,
+            "top_k": 20,
+            "min_p": 0.01,
         }
         if tools_schema is not None:
             payload["tools"] = tools_schema
@@ -102,12 +105,15 @@ class LLMToolCaller:
         messages: List[Dict[str, Any]],
         tools_schema: Optional[List[Dict[str, Any]]] = None,
         tool_choice: Optional[str] = None,  # "auto" | "required" | {"type":"function",...}
-        temperature: float = 0.0,
+        temperature: float = 0.3,
     ) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
             "model": self.model,
             "messages": messages,
             "temperature": temperature,
+            "top_p": 0.8,
+            "top_k": 20,
+            "min_p": 0.01,
         }
         if tools_schema is not None:
             payload["tools"] = tools_schema
@@ -222,7 +228,6 @@ class LLMToolCaller:
                     messages=messages,
                     tools_schema=tools_schema,
                     tool_choice="auto",
-                    temperature=0.0,
                 )
             choices = resp.get("choices") or []
             if not choices:
@@ -300,7 +305,7 @@ class LLMToolCaller:
         self,
         *,
         messages: List[Dict[str, Any]],
-        temperature: float = 0.0,
+        temperature: float = 0.3,
         max_tokens: Optional[int] = None,
     ) -> AsyncIterator[str]:
         """串流呼叫 LLM，逐 token yield content delta。僅用於最終文字回覆（無 tools）。"""
@@ -308,6 +313,9 @@ class LLMToolCaller:
             "model": self.model,
             "messages": messages,
             "temperature": temperature,
+            "top_p": 0.8,
+            "top_k": 20,
+            "min_p": 0.01,
             "stream": True,
         }
         if max_tokens is not None:
@@ -370,7 +378,6 @@ class LLMToolCaller:
                     messages=messages,
                     tools_schema=tools_schema,
                     tool_choice="auto",
-                    temperature=0.0,
                 )
 
             choices = resp.get("choices") or []

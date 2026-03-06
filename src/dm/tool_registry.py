@@ -910,7 +910,7 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "add_riceball",
-                    "description": "加入飯糰到購物車。flavor（口味）和 rice（米種）都必填，缺一則追問。flavor 只填口味名稱，不帶「飯糰」後綴（如「鮪魚」而非「鮪魚飯糰」）。spicy 是 boolean（true/false）。",
+                    "description": "加入飯糰到購物車。當客人說「一個鮪魚飯糰白米」「紫米培根加辣」時調用。flavor（口味）和 rice（米種）都必填，缺一則追問。flavor 只填口味名稱不帶「飯糰」後綴。spicy 是 boolean。",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -956,7 +956,7 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "add_drink",
-                    "description": "加入飲料到購物車。flavor（品項）、size（杯型）、temp（溫度）都必填。",
+                    "description": "加入飲料到購物車。當客人說「一杯大冰紅茶」「中杯溫豆漿」時調用。flavor（品項）、size（杯型）、temp（溫度）都必填。",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -985,7 +985,7 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "add_carrier",
-                    "description": "加入吐司/漢堡/饅頭系列到購物車。carrier（載體）和 flavor（餡料）都必填。饅頭需確認口味（如黑糖夾蛋、白饅夾蛋），客人只說「饅頭夾蛋」時要追問口味。",
+                    "description": "加入吐司/漢堡/饅頭系列到購物車。當客人說「火腿蛋吐司」「起司蛋漢堡」「黑糖饅頭夾蛋」時調用。carrier（載體）和 flavor（餡料）都必填。客人只說「饅頭夾蛋」未指定饅頭口味時要追問。",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -1009,7 +1009,7 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "add_egg_pancake",
-                    "description": "加入蛋餅到購物車。flavor（口味）必填。",
+                    "description": "加入蛋餅到購物車。當客人說「一個起司蛋餅」「原味蛋餅」時調用。flavor（口味）必填。",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -1028,7 +1028,7 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "add_snack",
-                    "description": "加入點心到購物車。包含：薯餅、蘿蔔糕、韭菜餡餅、蔥抓餅、鐵板麵系列（玉米麵、蘑菇麵等）。flavor 必填，填品項名稱（鐵板麵只填口味，如「玉米」「蘑菇」）。",
+                    "description": "加入點心到購物車。當客人說「一份薯餅」「蘿蔔糕加蛋」「玉米鐵板麵」時調用。包含：薯餅、蘿蔔糕、韭菜餡餅、蔥抓餅、鐵板麵系列。flavor 必填，鐵板麵只填口味（如「玉米」「蘑菇」）。",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -1047,7 +1047,7 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "add_combo",
-                    "description": "加入套餐到購物車。套餐一/二/三/四/A/B/兒童餐，或「X號餐」別名（如二號餐=套餐二）。combo_name 必填，call 後依 ok:false 訊息追問缺少的規格。",
+                    "description": "加入套餐到購物車。當客人說「套餐一」「二號餐」「兒童餐」時調用。combo_name 必填，call 後依 ok:false 訊息追問缺少的規格。",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -1072,7 +1072,7 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "remove_from_cart",
-                    "description": "從購物車移除品項。item_id=指定品項（優先），index=指定位置，last=最後一項，all=清空。",
+                    "description": "從購物車移除品項。當客人說「把飯糰取消」「移除最後一個」「全部清掉」時調用。item_id=指定品項（優先），index=指定位置，last=最後一項，all=清空。購物車空時不調用。",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -1102,7 +1102,7 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "query_menu",
-                    "description": "查詢菜單分類或品項（含售罄狀態）。category 指定分類，不填則返回所有分類。",
+                    "description": "查詢菜單分類或品項（含售罄狀態與價格）。當客人問「有什麼飲料」「蛋餅多少錢」「菜單」時調用。category 指定分類，不填則返回所有分類。",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -1118,7 +1118,7 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "finalize_order",
-                    "description": "完成結帳並送出訂單。條件：購物車有品項 + 已確認內用/外帶 + 已確認付款方式，三者都滿足才調用。",
+                    "description": "完成結帳並送出訂單。當客人確認內用/外帶和付款方式後調用。條件：購物車有品項 + 已確認內用/外帶 + 已確認付款方式，三者都滿足才調用。",
                     "parameters": {
                         "type": "object",
                         "properties": {

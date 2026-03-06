@@ -165,12 +165,12 @@
         "content": "你們有賣什麼飲料"
       }
     ],
-    "expected_tools": [],
-    "expected_args": [],
+    "expected_tools": ["query_menu"],
+    "expected_args": [{"name": "query_menu", "args": {"category": "飲品"}}],
     "expected_response_contains": [
       "飲"
     ],
-    "expected_behavior": "列出飲料品項（系統已提供菜單指南，不強制 query_menu）"
+    "expected_behavior": "查詢飲品菜單後列出品項"
   },
   {
     "id": "riceball_all_info",
