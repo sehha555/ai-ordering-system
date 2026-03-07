@@ -69,9 +69,33 @@ def _load_static_context():
     return system_prompt, tools_schema
 
 
-def _create_fresh_tool_context():
-    """每個 test case 建立新的 tool context（避免購物車狀態污染）"""
-    registry = _build_registry()
+def _create_fresh_tool_context(session_context: dict | None = None):
+    """每個 test case 建立新的 tool context（避免購物車狀態污染）
+
+    若 session_context 含 cart_items，會預填購物車讓 checkout 場景能正常運作。
+    """
+    from src.dm.session_store import InMemorySessionStore
+    store = InMemorySessionStore()
+    from src.dm.dialogue_manager import DialogueManager
+    from src.dm.tool_registry import ToolRegistry
+    dm = DialogueManager(llm=None, store=store)
+    registry = ToolRegistry(dm, store)
+    registry.set_session_id("benchmark_test")
+
+    # 預填購物車（checkout 等場景需要）
+    if session_context and session_context.get("cart_items"):
+        cart = []
+        for i, item_text in enumerate(session_context["cart_items"]):
+            # 解析 "起司蛋餅 x1" 格式
+            name = item_text.split(" x")[0] if " x" in item_text else item_text
+            cart.append({
+                "item_id": f"pre_{i+1}",
+                "itemtype": "preloaded",
+                "flavor": name,
+                "quantity": 1,
+            })
+        store.set("benchmark_test", {"cart": cart})
+
     return registry.get_tool_map(), registry.get_allowed_args()
 
 
@@ -122,6 +146,36 @@ def _execute_tool(tool_map: dict, allowed_args: dict, name: str, arguments: dict
         return tool_map[name](**safe_args)
     except Exception as e:
         return {"ok": False, "error": f"tool_exec_error:{type(e).__name__}"}
+
+
+def _is_followup_question(text: str) -> bool:
+    """判斷是否為追問缺資訊的問句（vs 通用「還要什麼」確認）"""
+    if "？" not in text:
+        return False
+    cleaned = re.sub(r'還要什麼[嗎？]*', '', text)
+    cleaned = re.sub(r'還需要什麼[嗎？]*', '', cleaned)
+    cleaned = re.sub(r'好[，,～~]?\s*', '', cleaned)
+    return "？" in cleaned
+
+
+def _apply_response_template(model_text: str, tool_calls: list, exec_results: list) -> str:
+    """Response Template：ok:true 後用 code 構建回覆（對齊 production llm_tool_caller.py）"""
+    if not tool_calls or not exec_results:
+        return model_text
+
+    last_exec = exec_results[-1]
+    if not last_exec.get("ok"):
+        return model_text
+
+    # 模型在追問缺資訊 → 保留
+    if _is_followup_question(model_text):
+        return model_text
+
+    tool_msg = last_exec.get("message", "")
+    if not tool_msg:
+        return model_text
+
+    return f"好，{tool_msg}～還要什麼？"
 
 
 def _format_session_context(ctx: dict) -> str:
@@ -214,7 +268,7 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
 
     def run(self, test_case: dict, timeout: float = 60) -> dict:
         self._ensure_static_context()
-        tool_map, allowed_args = _create_fresh_tool_context()
+        tool_map, allowed_args = _create_fresh_tool_context(test_case.get("session_context"))
         base_url = self.params["base_url"]
         model = self.params["model"]
         temperature = self.params.get("temperature", 0.0)
@@ -230,6 +284,7 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
         messages.extend(_inject_session_context(test_case["messages"], test_case.get("session_context")))
 
         all_tool_calls = []
+        all_exec_results = []  # Response Template 用
         total_tokens = 0
         total_prompt_tokens = 0
         total_completion_tokens = 0
@@ -283,6 +338,8 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
                 if _step > 0 and raw_content:
                     raw_content = "好，" + raw_content
                 response_text = _clean_content(raw_content, [])
+                # Response Template：ok:true 後用 code 構建回覆
+                response_text = _apply_response_template(response_text, all_tool_calls, all_exec_results)
                 break
 
             all_tool_calls.extend(
@@ -299,6 +356,7 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
             all_ok = True
             for tc in step_tool_calls:
                 exec_result = _execute_tool(tool_map, allowed_args, tc["name"], tc["arguments"])
+                all_exec_results.append(exec_result)
                 if not exec_result.get("ok"):
                     all_ok = False
                 # 對齊 production（llm_tool_caller.py）：用 role=tool + tool_call_id
@@ -362,7 +420,7 @@ class RawCompletionAdapter(BaseLLMAdapter):
 
     def run(self, test_case: dict, timeout: float = 60) -> dict:
         self._ensure_static_context()
-        tool_map, allowed_args = _create_fresh_tool_context()
+        tool_map, allowed_args = _create_fresh_tool_context(test_case.get("session_context"))
         base_url = self.params["base_url"]
         temperature = self.params.get("temperature", 0.0)
 

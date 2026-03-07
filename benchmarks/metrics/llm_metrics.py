@@ -92,6 +92,63 @@ def response_quality_check(response: str, expected_contains: list[str]) -> float
     return matched / len(expected_contains)
 
 
+import re as _re
+
+# 幻覺偵測 pattern（系統有問題/故障/出錯等）
+_HALLUCINATION_RE = _re.compile(
+    r'(?:不好意思|抱歉|對不起)[^。！？]*(?:系統|有問題|出錯|故障|異常)'
+)
+
+# ok:true 後回覆最大長度（超過視為冗長）
+_OK_TRUE_MAX_CHARS = 40
+
+# 查詢類工具 — 回覆本來就該列資訊，不適用 verbose 懲罰
+_QUERY_TOOLS = {"query_menu"}
+
+
+def response_score(
+    response: str,
+    expected_contains: list[str],
+    tool_calls: list[dict],
+    expected_tools: list[str],
+) -> dict:
+    """綜合回覆品質評分
+
+    Returns:
+        {"score": float, "keyword_score": float, "penalties": list[str]}
+    """
+    penalties: list[str] = []
+
+    # 1. 關鍵詞命中率
+    keyword_score = response_quality_check(response, expected_contains)
+    if keyword_score < 1.0:
+        missing = [kw for kw in expected_contains if kw not in response]
+        penalties.append(f"keyword_miss:{','.join(missing)}")
+
+    # 2. 幻覺偵測
+    has_hallucination = bool(_HALLUCINATION_RE.search(response))
+    if has_hallucination:
+        penalties.append("hallucination")
+
+    # 3. ok:true 後回覆冗長（有成功 tool call 且回覆超長）
+    #    跳過 verbose 檢查：查詢類工具、沒有預期 keyword 的場景
+    actual_tool_names = {tc["name"] for tc in tool_calls} if tool_calls else set()
+    is_query_tool = bool(actual_tool_names & _QUERY_TOOLS)
+    has_ok_tool = (bool(tool_calls) and bool(expected_tools)
+                   and not is_query_tool and bool(expected_contains))
+    if has_ok_tool and len(response) > _OK_TRUE_MAX_CHARS:
+        penalties.append(f"verbose:{len(response)}chars")
+
+    # 計算總分
+    score = keyword_score
+    if has_hallucination:
+        score *= 0.0  # 幻覺直接歸零
+    if has_ok_tool and len(response) > _OK_TRUE_MAX_CHARS:
+        score *= 0.5  # 冗長扣半
+
+    return {"score": score, "keyword_score": keyword_score, "penalties": penalties}
+
+
 def _percentile(values: list[float], p: int) -> float:
     """計算百分位數（p=50 → 中位數）"""
     if not values:
@@ -154,10 +211,19 @@ def compute_llm_metrics(test_cases: list[dict], test_data: list[dict], pass_thre
                 rq = response_quality_check(run.get("response", ""), expected_contains)
                 total_response_quality += rq
 
-                if scores["f1"] >= pass_threshold:
+                rs = response_score(
+                    run.get("response", ""),
+                    expected_contains,
+                    run.get("tool_calls", []),
+                    expected_tools,
+                )
+
+                if scores["f1"] >= pass_threshold and rs["score"] >= pass_threshold:
                     case_passed = True
-                else:
+                elif scores["f1"] < pass_threshold:
                     case_fail_reason = f"tool_call_f1={scores['f1']:.2f} < {pass_threshold}"
+                else:
+                    case_fail_reason = f"response_score={rs['score']:.2f} ({','.join(rs['penalties'])})"
             else:
                 error_msg = run.get("error", "unknown")
                 if "timed out" in error_msg.lower() or "timeout" in error_msg.lower():

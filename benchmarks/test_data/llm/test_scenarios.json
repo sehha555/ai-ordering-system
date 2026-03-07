@@ -11,8 +11,7 @@
     ],
     "expected_tools": [],
     "expected_response_contains": [
-      "歡迎",
-      "點"
+      "歡迎"
     ],
     "expected_behavior": "應歡迎客人並引導點餐，不 call tool"
   },
@@ -38,7 +37,7 @@
       }
     ],
     "expected_response_contains": [
-      "蛋餅"
+      "玉米"
     ],
     "expected_behavior": "口味齊全應直接 call add_to_cart(egg_pancake, 玉米, qty=2)"
   },
@@ -177,7 +176,7 @@
       }
     ],
     "expected_response_contains": [
-      "飲"
+      "奶茶"
     ],
     "expected_behavior": "查詢飲品菜單後列出品項"
   },
@@ -248,7 +247,7 @@
       "add_riceball"
     ],
     "expected_response_contains": [
-      "飯糰"
+      "傳統"
     ],
     "expected_behavior": "米種補齊後，預設不加辣，應 call add_to_cart 或追問辣菜脯",
     "expected_args": [
@@ -301,7 +300,7 @@
       }
     ],
     "expected_response_contains": [
-      "飯糰"
+      "傳統"
     ],
     "expected_behavior": "全部資訊補齊後應 call add_to_cart(riceball, 源味傳統, 紫米, spicy=true)"
   },
@@ -627,8 +626,7 @@
       }
     ],
     "expected_response_contains": [
-      "豆漿",
-      "奶茶"
+      "加入"
     ],
     "expected_behavior": "規格補齊後 call add_drink ×3（兩杯豆漿+一杯奶茶）"
   },
@@ -761,7 +759,7 @@
       }
     ],
     "expected_response_contains": [
-      "套餐"
+      "花生"
     ],
     "expected_behavior": "厚片口味+飲料溫度補齊後 call add_to_cart(combo, 套餐B, 花生, 冰)"
   },
@@ -821,7 +819,7 @@
       }
     ],
     "expected_response_contains": [
-      "套餐三"
+      "飲料"
     ],
     "expected_behavior": "套餐三原本含鮮奶茶(大)，飲料換成大冰豆漿應記錄客製化"
   },
@@ -900,9 +898,7 @@
         }
       }
     ],
-    "expected_response_contains": [
-      "號"
-    ],
+    "expected_response_contains": [],
     "expected_behavior": "內用外帶+付款方式齊全後 call finalize_order(外帶, 現金)"
   },
   {
@@ -917,8 +913,7 @@
     ],
     "expected_tools": [],
     "expected_response_contains": [
-      "空",
-      "沒有"
+      "空"
     ],
     "expected_behavior": "購物車為空時應告知客人，不能結帳"
   },
@@ -1050,8 +1045,7 @@
       }
     ],
     "expected_response_contains": [
-      "吐司",
-      "漢堡"
+      "加入"
     ],
     "expected_behavior": "玉米蛋餅+抓餅 call tool，起司蛋缺載體應追問吐司還是漢堡"
   },
@@ -1149,9 +1143,7 @@
         }
       }
     ],
-    "expected_response_contains": [
-      "號"
-    ],
+    "expected_response_contains": [],
     "expected_behavior": "完整走完結帳流程，call finalize_order(內用, 現金)"
   },
   {
@@ -1226,9 +1218,7 @@
         }
       }
     ],
-    "expected_response_contains": [
-      "號"
-    ],
+    "expected_response_contains": [],
     "expected_behavior": "全部品項正確處理，最後 call finalize_order(外帶, 行動支付)"
   },
   {

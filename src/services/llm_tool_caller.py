@@ -14,9 +14,6 @@ from src.dm.tool_priming import get_priming_messages
 _PRIMING_MESSAGES = get_priming_messages()
 _NO_THINK_PREFIX = "/no_think\n"  # 關閉 Qwen3 thinking mode，降低延遲
 
-# 允許 early TTS 播報的工具（tool call 成功後立即送語音，降低 TTFA）
-_EARLY_TTS_TOOLS = {"add_to_cart", "remove_from_cart"}
-
 from src.utils import SENTENCE_PUNCTS as _SENTENCE_PUNCTS
 
 # Qwen 模型有時把 tool call 輸出到 content 而非 tool_calls 欄位
@@ -37,6 +34,45 @@ _APOLOGY_SYSTEM_RE = re.compile(
 def _strip_hallucinated_apology(text: str) -> str:
     """移除模型在 tool result 後幻想出的系統錯誤道歉"""
     return _APOLOGY_SYSTEM_RE.sub('', text).strip()
+
+
+def _is_followup_question(text: str) -> bool:
+    """判斷是否為追問缺資訊的問句（vs 通用「還要什麼」確認）"""
+    if "？" not in text:
+        return False
+    # 移除通用確認語（不算追問）
+    cleaned = re.sub(r'還要什麼[嗎？]*', '', text)
+    cleaned = re.sub(r'還需要什麼[嗎？]*', '', cleaned)
+    cleaned = re.sub(r'好[，,～~]?\s*', '', cleaned)
+    # 清理後仍有「？」→ 是追問缺資訊
+    return "？" in cleaned
+
+
+def _apply_response_template(model_text: str, tool_trace: List[Dict[str, Any]]) -> str:
+    """Response Template：ok:true 後用 code 構建回覆，取代模型生成。
+
+    規則：
+    - 最後一個 tool exec 是 ok:true 且有 message → 替換為 template
+    - 模型在追問缺資訊（非通用確認）→ 保留
+    - ok:false / 無 tool call → 保留模型回覆
+    """
+    if not tool_trace:
+        return model_text
+
+    last_exec = tool_trace[-1].get("exec", {})
+    if not last_exec.get("ok"):
+        return model_text
+
+    # 模型在追問缺資訊 → 保留
+    if _is_followup_question(model_text):
+        return model_text
+
+    tool_result = last_exec.get("result")
+    tool_msg = tool_result.get("message", "") if isinstance(tool_result, dict) else ""
+    if not tool_msg:
+        return model_text
+
+    return f"好，{tool_msg}～還要什麼？"
 
 
 class LLMToolCaller:
@@ -249,6 +285,10 @@ class LLMToolCaller:
             if not tool_call:
                 # 最終回覆（或模型決定不用工具）
                 assistant_text = _strip_hallucinated_apology(msg.get("content") or "")
+
+                # Response Template：ok:true 後用 code 構建回覆，取代模型生成
+                assistant_text = _apply_response_template(assistant_text, last_tool_trace)
+
                 new_history = history + [{"role": "user", "content": user_text},
                                         {"role": "assistant", "content": assistant_text}]
                 logger.info("[LLM] run_turn 完成, tool_calls={}", len(last_tool_trace))
@@ -406,7 +446,9 @@ class LLMToolCaller:
 
             if not tool_call:
                 # Phase 2：用 Phase 1 已取得的完整回覆，按標點切段 yield
-                full_text = msg.get("content") or ""
+                full_text = _strip_hallucinated_apology(msg.get("content") or "")
+                # Response Template：ok:true 後用 code 構建回覆
+                full_text = _apply_response_template(full_text, last_tool_trace)
 
                 if len(full_text) <= 5:
                     if full_text:
@@ -450,14 +492,11 @@ class LLMToolCaller:
 
             yield {"type": "tool_call", "tool_call": tool_call, "exec": exec_result}
 
-            # 提前送出 tool result message 作為首段語音，大幅降低 TTFA
-            # 只對加入/移除購物車觸發，避免 query_menu 等工具意外播報
-            tool_name = tool_call.get("function", {}).get("name", "")
-            if tool_name in _EARLY_TTS_TOOLS and exec_result.get("ok"):
-                tool_result = exec_result.get("result")
-                tool_msg = tool_result.get("message", "") if isinstance(tool_result, dict) else ""
-                if tool_msg:
-                    yield {"type": "early_tts", "content": tool_msg}
+            # 提前送出 Response Template 作為首段語音，大幅降低 TTFA
+            tool_result_data = exec_result.get("result")
+            tool_msg = tool_result_data.get("message", "") if isinstance(tool_result_data, dict) else ""
+            if exec_result.get("ok") and tool_msg:
+                yield {"type": "early_tts", "content": f"好，{tool_msg}～還要什麼？"}
 
             tool_call_id = tool_call.get("id", "toolcall_0")
             messages.append({
@@ -465,6 +504,10 @@ class LLMToolCaller:
                 "tool_call_id": tool_call_id,
                 "content": json.dumps(exec_result, ensure_ascii=False),
             })
+
+            # ok:true 時 assistant prefill 引導正確回覆格式
+            if exec_result.get("ok"):
+                messages.append({"role": "assistant", "content": "好，", "prefix": True})
 
         logger.warning("[LLM] run_turn_stream 超過最大步數 {}", self.max_steps)
         fallback = "抱歉，處理您的請求時發生問題，請再說一次"
