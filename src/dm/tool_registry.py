@@ -119,11 +119,11 @@ class ToolRegistry:
                 missing.append("rice")
             if missing:
                 if "flavor" in missing and "rice" in missing:
-                    msg = "請問飯糰要什麼口味？以及米種要白米、紫米還是混米？"
+                    msg = "請問飯糰要什麼口味？紫米白米？"
                 elif "flavor" in missing:
                     msg = "請問飯糰要什麼口味？"
                 else:
-                    msg = "請問米種要白米、紫米還是混米？"
+                    msg = "飯糰要紫米白米？"
                 return {"ok": False, "missing": missing, "message": msg}
 
             session = self.get_current_session()
@@ -176,10 +176,8 @@ class ToolRegistry:
                 parts = []
                 if "flavor" in missing:
                     parts.append("飲料品項")
-                if "size" in missing:
-                    parts.append("杯型（中杯/大杯）")
-                if "temp" in missing:
-                    parts.append("溫度（冰/溫/熱）")
+                if "size" in missing or "temp" in missing:
+                    parts.append("規格（中冰/中溫/大冰/大溫）")
                 msg = f"請問{' 和 '.join(parts)}？"
                 return {"ok": False, "missing": missing, "message": msg}
 

@@ -22,18 +22,17 @@ ITEM_RULES: dict[str, ItemRule] = {
         prompt_desc="必填：口味、米種。辣菜脯預設不加，加蛋預設蔥蛋不用問。",
         missing_prompts={
             "flavor": "飯糰什麼口味",
-            "rice": "紫米白米還是混米",
+            "rice": "飯糰要紫米白米？",
         },
     ),
     "drink": ItemRule(
         prompt_label="飲料",
         required=["flavor", "size", "temp"],
         optional=[],
-        prompt_desc="必填：品名、杯型（中/大）、溫度（冰/溫）。甜度不用問。",
+        prompt_desc="必填：品名、規格（中冰/中溫/大冰/大溫）。甜度不用問。",
         missing_prompts={
             "flavor": "什麼飲料",
-            "size": "大杯還是中杯",
-            "temp": "冰的還是溫的",
+            "size_temp": "中冰還是中溫",
         },
     ),
     "carrier": ItemRule(

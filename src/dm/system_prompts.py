@@ -3,9 +3,18 @@ from typing import Optional, Dict
 import json
 import os
 import re
+from datetime import datetime
 from pathlib import Path
 from src.dm.session_context import SessionContext
 from src.config.settings import settings
+
+
+def _get_drink_default_ask() -> str:
+    """根據月份決定飲料追問的預設順序（冬天溫在前，夏天冰在前）"""
+    month = datetime.now().month
+    if month in (11, 12, 1, 2, 3):
+        return "預設問「中溫還是中冰」（冬天）"
+    return "預設問「中冰還是中溫」（夏天）"
 
 # 分類 key → 中文名稱對應表（用於售完資訊注入，僅列具代表性的分類）
 _CATEGORY_KEY_TO_LABEL: Dict[str, str] = {
@@ -131,6 +140,7 @@ class SystemPromptBuilder:
         from src.dm.item_rules import generate_item_logic  # noqa: PLC0415
         content = content.replace("{store_name}", settings.STORE_NAME)
         content = content.replace("{item_logic}", generate_item_logic())
+        content = content.replace("{drink_default_ask}", _get_drink_default_ask())
         self._base_prompt = content.strip()
         return self._base_prompt
 

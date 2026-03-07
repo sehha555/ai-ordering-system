@@ -98,10 +98,10 @@
     ],
     "expected_tools": [],
     "expected_response_contains": [
-      "冰",
-      "大"
+      "中冰",
+      "中溫"
     ],
-    "expected_behavior": "缺溫度和杯型應追問"
+    "expected_behavior": "缺規格應用簡稱追問（中冰/中溫）"
   },
   {
     "id": "snack_simple",
@@ -221,11 +221,10 @@
     ],
     "expected_tools": [],
     "expected_response_contains": [
-      "米",
       "紫米",
       "白米"
     ],
-    "expected_behavior": "有口味但缺米種，應追問紫米白米還是混米"
+    "expected_behavior": "有口味但缺米種，應追問紫米白米"
   },
   {
     "id": "riceball_multi_round",
@@ -576,7 +575,7 @@
       "冰",
       "溫"
     ],
-    "expected_behavior": "合併追問溫度+杯型，不分開問三次"
+    "expected_behavior": "合併追問規格（中冰/中溫等），不分開問三次"
   },
   {
     "id": "drink_batch_resolved",
@@ -998,6 +997,29 @@
       "蛋餅"
     ],
     "expected_behavior": "理解起絲=起司、蛋兵=蛋餅，確認或直接處理皆可"
+  },
+  {
+    "id": "sold_out_item",
+    "description": "I5: 售完品項 — 告知並建議替代",
+    "category": "edge_case",
+    "session_context": {
+      "cart_items": [],
+      "cart_count": 0,
+      "sold_out": [
+        "玉米蛋餅"
+      ]
+    },
+    "messages": [
+      {
+        "role": "user",
+        "content": "一個玉米蛋餅"
+      }
+    ],
+    "expected_tools": [],
+    "expected_response_contains": [
+      "售完"
+    ],
+    "expected_behavior": "告知玉米蛋餅已售完，建議其他選擇，不 call tool"
   },
   {
     "id": "multi_item_mixed",

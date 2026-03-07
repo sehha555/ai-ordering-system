@@ -33,10 +33,11 @@ def format_tool_result(result: dict) -> str:
 
 
 def _tool_resp(call_id: str, result: dict) -> dict:
-    """構建 tool response（role:user + <tool_result> tag，繞過 server middleware 慢路徑）"""
+    """構建 tool response（role:tool + tool_call_id，對齊 production llm_tool_caller.py）"""
     return {
-        "role": "user",
-        "content": format_tool_result(result),
+        "role": "tool",
+        "tool_call_id": call_id,
+        "content": json.dumps(result, ensure_ascii=False),
     }
 
 
@@ -63,8 +64,8 @@ def get_priming_messages() -> list[dict]:
             "flavor": "鮭魚", "rice": "白米", "spicy": False,
         }),
     })
-    msgs.append(_tool_resp("c1", {"ok": True, "message": "已加入：白米鮭魚飯糰"}))
-    msgs.append({"role": "assistant", "content": "好，一個白米鮭魚飯糰～還要什麼？"})
+    msgs.append(_tool_resp("c1", {"ok": True, "item_id": "rb_1", "message": "已加入 1份 白米鮭魚", "cart_count": 1}))
+    msgs.append({"role": "assistant", "content": "好，白米鮭魚飯糰～還要什麼？"})
 
     # Demo 2: 載體缺 → 追問 → 補齊後 call（完整多輪循環）
     # 品項：培根蛋（test cases 用起司蛋/火腿蛋），覆蓋「缺必填→追問→補齊→call」
@@ -78,8 +79,8 @@ def get_priming_messages() -> list[dict]:
             "carrier": "吐司", "flavor": "培根蛋",
         }),
     })
-    msgs.append(_tool_resp("c2", {"ok": True, "message": "已加入：培根蛋吐司"}))
-    msgs.append({"role": "assistant", "content": "好，一個培根蛋吐司～還要什麼？"})
+    msgs.append(_tool_resp("c2", {"ok": True, "item_id": "cr_1", "message": "已加入 1份 培根蛋吐司", "cart_count": 2}))
+    msgs.append({"role": "assistant", "content": "好，培根蛋吐司～還要什麼？"})
 
     # Demo 3: 套餐數字別名 → call → ok:false → 追問
     # 品項：三號餐（test cases 用套餐一/四），同時示範別名解析 + ok:false 反饋循環
@@ -95,8 +96,8 @@ def get_priming_messages() -> list[dict]:
     msgs.append({"role": "assistant", "content": "飲料要冰的還是溫的？"})
 
     # Demo 4: 多品項部分缺 — call 齊全的 + 追問缺的（含 add_drink 示範）
-    # 品項：花生吐司 + 大冰十穀漿（齊全） + 奶茶（缺杯型/溫度）
-    # 教學：齊全先 call（含 add_drink），缺的合併追問
+    # 品項：花生吐司 + 大冰十穀漿（齊全） + 奶茶（缺規格）
+    # 教學：齊全先 call（含 add_drink），缺的用簡稱追問（中冰/中溫）
     msgs.append({"role": "user", "content": "一個花生吐司 一杯大冰十穀漿 一杯奶茶"})
     msgs.append({
         "role": "assistant",
@@ -105,7 +106,7 @@ def get_priming_messages() -> list[dict]:
             "carrier": "吐司", "flavor": "花生",
         }),
     })
-    msgs.append(_tool_resp("c4a", {"ok": True, "message": "已加入：花生吐司"}))
+    msgs.append(_tool_resp("c4a", {"ok": True, "item_id": "cr_3", "message": "已加入 1份 花生吐司", "cart_count": 3}))
     msgs.append({
         "role": "assistant",
         "content": None,
@@ -113,8 +114,8 @@ def get_priming_messages() -> list[dict]:
             "flavor": "十穀漿", "size": "大杯", "temp": "冰",
         }),
     })
-    msgs.append(_tool_resp("c4b", {"ok": True, "message": "已加入：大杯冰十穀漿"}))
-    msgs.append({"role": "assistant", "content": "好，奶茶大杯還是中杯？冰的還是溫的？"})
+    msgs.append(_tool_resp("c4b", {"ok": True, "item_id": "dk_1", "message": "已加入 1份 大杯冰十穀漿", "cart_count": 4}))
+    msgs.append({"role": "assistant", "content": "好，奶茶要中冰還是中溫？"})
 
     # Demo 5: 結帳完整流程 → finalize_order（Line Pay，與 test H2 現金不重疊）
     msgs.append({"role": "user", "content": "好了 買單"})
@@ -130,7 +131,7 @@ def get_priming_messages() -> list[dict]:
         }),
     })
     msgs.append(_tool_resp("c5", {"ok": True, "order_id": "B023"}))
-    msgs.append({"role": "assistant", "content": "好，23 號～"})
+    msgs.append({"role": "assistant", "content": "好，23號～"})
 
     # Demo 6: 邊界 — 品項不在購物車 → 不 call tool（最後位置，近因效應強化保護行為）
     # 品項：奶茶（test cases 用蛋餅），行為模式相同但品項不重疊

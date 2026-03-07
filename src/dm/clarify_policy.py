@@ -1,6 +1,6 @@
 from typing import Dict, Any, List
 
-RICE_CHOICES_TEXT = "還差米種，你要紫米、白米還是混米？"
+RICE_CHOICES_TEXT = "飯糰要紫米白米？"
 
 
 def recompute_missing_slots(rtype: str, frame: Dict[str, Any]) -> List[str]:
@@ -48,10 +48,8 @@ def clarify_message(rtype: str, missing: List[str], pending_frame: Dict[str, Any
         return pending_frame.get("_price_driven_msg", "確認換杯型嗎？")
 
     if rtype == "drink":
-        if f == "temp":
-            return "你要冰的、溫的？"
-        if f == "size":
-            return "大杯還中杯？"
+        if f in ("temp", "size", "size_temp"):
+            return "中冰還是中溫？"
         return "請問要什麼飲料？"
     if rtype == "riceball":
         if f == "rice":

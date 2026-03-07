@@ -28,6 +28,16 @@ _TOOL_CALL_RE = re.compile(
     re.DOTALL,
 )
 
+# Qwen3.5-9B 常見的「系統有問題」幻覺清除
+_APOLOGY_SYSTEM_RE = re.compile(
+    r'[，。！]?\s*(?:不好意思|抱歉|對不起)[^。！]*(?:系統|有問題|出錯|故障|異常)[^。！]*[。！]?'
+)
+
+
+def _strip_hallucinated_apology(text: str) -> str:
+    """移除模型在 tool result 後幻想出的系統錯誤道歉"""
+    return _APOLOGY_SYSTEM_RE.sub('', text).strip()
+
 
 class LLMToolCaller:
     def __init__(
@@ -238,7 +248,7 @@ class LLMToolCaller:
 
             if not tool_call:
                 # 最終回覆（或模型決定不用工具）
-                assistant_text = msg.get("content") or ""
+                assistant_text = _strip_hallucinated_apology(msg.get("content") or "")
                 new_history = history + [{"role": "user", "content": user_text},
                                         {"role": "assistant", "content": assistant_text}]
                 logger.info("[LLM] run_turn 完成, tool_calls={}", len(last_tool_trace))
@@ -272,6 +282,10 @@ class LLMToolCaller:
                 "tool_call_id": tool_call_id,
                 "content": json.dumps(exec_result, ensure_ascii=False),
             })
+
+            # 4) ok:true 時 assistant prefill 引導正確回覆格式（避免「系統有問題」幻覺）
+            if exec_result.get("ok"):
+                messages.append({"role": "assistant", "content": "好，", "prefix": True})
 
         logger.warning("[LLM] run_turn 超過最大步數 {}", self.max_steps)
         return {"ok": False, "error": "max_steps_exceeded", "history": history, "tool_trace": last_tool_trace}

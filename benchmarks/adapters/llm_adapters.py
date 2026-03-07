@@ -42,7 +42,6 @@ def _extract_json_objects(text: str) -> list[dict]:
 
 
 from benchmarks.adapters.base import BaseLLMAdapter
-from src.dm.tool_priming import format_tool_result
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 if str(PROJECT_ROOT) not in sys.path:
@@ -83,7 +82,7 @@ def _load_priming_messages():
 
 
 def _clean_content(content: str, parsed_objs: list[dict] | None = None) -> str:
-    """清理 content 中的 raw tool call 文字（兩個 adapter 共用）"""
+    """清理 content 中的 raw tool call 文字 + 模型幻覺（兩個 adapter 共用）"""
     text = content or ""
     text = re.sub(r'<\|im_start\|>', '', text)
     text = re.sub(r'</?tool_call>', '', text)
@@ -94,6 +93,9 @@ def _clean_content(content: str, parsed_objs: list[dict] | None = None) -> str:
                 text = text.replace(json.dumps(obj, ensure_ascii=False), '')
             except Exception:
                 pass
+    # 清除 Qwen3.5-9B 常見的「系統有問題」幻覺
+    text = re.sub(r'[，。！]?\s*不好意思[^。！]*(?:系統|有問題|出錯|故障|異常)[^。！]*[。！]?', '', text)
+    text = re.sub(r'[，。！]?\s*(?:抱歉|對不起)[^。！]*(?:系統|有問題|出錯|故障|異常)[^。！]*[。！]?', '', text)
     return text.strip()
 
 
@@ -132,6 +134,11 @@ def _format_session_context(ctx: dict) -> str:
             lines.append(f"  - {item}")
     else:
         lines.append("購物車：空")
+
+    sold_out = ctx.get("sold_out", [])
+    if sold_out:
+        lines.append(f"\n【售完資訊】\n售完：{'、'.join(sold_out)}")
+
     return "\n".join(lines)
 
 
@@ -228,6 +235,7 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
         total_completion_tokens = 0
         actual_model = ""
         response_text = ""
+        raw_responses = []  # 記錄每步原始 LLM 輸出（debug 用）
 
         enable_thinking = self.params.get("enable_thinking", False)
 
@@ -263,9 +271,18 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
 
             message = data["choices"][0]["message"]
             step_tool_calls, raw_objs = self._parse_tool_calls(message)
+            raw_responses.append({
+                "step": _step,
+                "content": message.get("content"),
+                "tool_calls": [tc["function"]["name"] for tc in message.get("tool_calls", [])],
+            })
 
             if not step_tool_calls:
-                response_text = _clean_content(message.get("content"), [])
+                raw_content = message.get("content") or ""
+                # 如果上一步有 prefill "好，"，補到回覆前面
+                if _step > 0 and raw_content:
+                    raw_content = "好，" + raw_content
+                response_text = _clean_content(raw_content, [])
                 break
 
             all_tool_calls.extend(
@@ -273,23 +290,35 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
             )
             response_text = _clean_content(message.get("content"), raw_objs)
 
-            assistant_msg = {"role": "assistant", "content": message.get("content")}
+            # tool_calls 時 content 設 None（對齊 priming 格式，避免 model 看到自己的錯誤文字後延伸）
+            assistant_msg = {"role": "assistant", "content": None}
             if message.get("tool_calls"):
                 assistant_msg["tool_calls"] = message["tool_calls"]
             messages.append(assistant_msg)
 
+            all_ok = True
             for tc in step_tool_calls:
                 exec_result = _execute_tool(tool_map, allowed_args, tc["name"], tc["arguments"])
+                if not exec_result.get("ok"):
+                    all_ok = False
+                # 對齊 production（llm_tool_caller.py）：用 role=tool + tool_call_id
+                tool_call_id = tc.get("_raw", {}).get("id", f"toolcall_{_step}")
                 messages.append({
-                    "role": "user",
-                    "content": format_tool_result(exec_result),
+                    "role": "tool",
+                    "tool_call_id": tool_call_id,
+                    "content": json.dumps(exec_result, ensure_ascii=False),
                 })
+
+            # ok:true 時 assistant prefill 引導正確回覆格式
+            if all_ok:
+                messages.append({"role": "assistant", "content": "好，", "prefix": True})
 
         if actual_model and actual_model != model:
             logger.warning("模型不符！請求 %s → 實際 %s（LM Studio 可能 fallback）", model, actual_model)
 
         return {
             "response": response_text,
+            "raw_responses": raw_responses,
             "tool_calls": all_tool_calls,
             "actual_model": actual_model,
             "tokens": total_tokens,
