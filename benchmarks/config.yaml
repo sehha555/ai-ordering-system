@@ -51,6 +51,30 @@ llm:
         top_k: 20
         min_p: 0.01
         repeat_penalty: 1.0   # 避免 llama.cpp 預設 1.1 懲罰 priming 重複 token
+    - id: qwen3.5-9b-lora
+      name: "Qwen3.5-9B QLoRA (finetuned)"
+      adapter: openai_compatible
+      params:
+        base_url: "http://127.0.0.1:1234/v1"
+        model: "qwen3.5-9b-lora-finetuned"
+        temperature: 0.3
+        top_p: 0.8
+        top_k: 20
+        min_p: 0.01
+        repeat_penalty: 1.0
+        # finetuned 模型不需要 force_no_think（訓練資料無 think tokens）
+    - id: qwen3.5-4b-lora
+      name: "Qwen3.5-4B LoRA (finetuned)"
+      adapter: openai_compatible
+      params:
+        base_url: "http://127.0.0.1:1234/v1"
+        model: "qwen3.5-4b-lora-finetuned"
+        temperature: 0.3
+        top_p: 0.8
+        top_k: 20
+        min_p: 0.01
+        repeat_penalty: 1.0
+        force_no_think: true
   metrics: [tool_call_accuracy, response_latency, scenario_pass_rate]
 
 e2e:

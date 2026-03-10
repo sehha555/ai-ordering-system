@@ -46,3 +46,13 @@ benchmarks/reports/
 
 # Agent Team 暫存紀錄
 .claude/team-chat.jsonl
+
+# LoRA 訓練產物（大型二進位，不追蹤）
+training_data/lora_output*/
+training_data/merged_model*/
+training_data/*.gguf
+training_data/*.safetensors
+training_env/
+
+# Node
+node_modules/
