@@ -1,7 +1,7 @@
 # LoRA 訓練資料
 
-> 生成日期：2026-03-08 ~ 03-09
-> 總筆數：**997 筆** ✅（目標 1,000-1,100）
+> 生成日期：2026-03-08 ~ 03-10
+> 總筆數：**1,067 筆** ✅（目標 1,000-1,100）
 > 格式：OpenAI chat format JSONL（messages + tools）
 
 ## 檔案清單
@@ -27,38 +27,45 @@
 | `category_fbg_final.jsonl` | F+B+G 收尾（離題45/追問10/風格10） | 65 |
 | `category_g_reply_style.jsonl` | G. 回覆風格 batch1 | 30 |
 | `category_g2_reply_style.jsonl` | G. 回覆風格 batch2 | 60 |
+| `category_h_edge_cases.jsonl` | H. 邊界場景（修正/跳轉/模糊/矛盾/改量/改結帳） | 70 |
 | `samples.jsonl` | 初始樣本 | 7 |
-| **`all_training_data.jsonl`** | **全部合併** | **997** |
+| **`all_training_data.jsonl`** | **全部合併** | **1,067** |
 
 ## Tool 使用統計
 
 | Tool | 出現次數 |
 |------|----------|
-| finalize_order | 911 |
-| add_drink | 364 |
-| add_riceball | 269 |
-| add_carrier | 254 |
-| add_egg_pancake | 201 |
-| add_snack | 181 |
+| finalize_order | 984 |
+| add_drink | 393 |
+| add_riceball | 297 |
+| add_carrier | 271 |
+| add_egg_pancake | 224 |
+| add_snack | 194 |
 | add_combo | 89 |
+| remove_from_cart | 25 |
 | query_menu | 23 |
 
 ## 各類別進度
 
-| 類別 | 現有 | 目標 | 達成率 |
-|------|------|------|--------|
-| A 直接 call | 295 | 300 | 98% |
-| B 追問 | 100 | 100 | 100% |
-| C ok:false | 100 | 100 | 100% |
-| D 俗稱 | 150 | 150 | 100% |
-| E 多品項 | 150 | 150 | 100% |
-| F 不 call | 95 | 100 | 95% |
-| G 回覆風格 | 100 | 100 | 100% |
-| **合計** | **997** | **~1,000** | **100%** |
+| 類別 | 筆數 | 說明 |
+|------|------|------|
+| A 直接 call | 295 | 各品項覆蓋 + 客製化 + quantity |
+| B 追問 | 100 | 標準追問鏈 |
+| C ok:false | 100 | 缺欄位/不存在/售完/空車結帳 |
+| D 俗稱 | 150 | 飲料簡稱/食物俗稱/歧義確認 |
+| E 多品項 | 150 | 2-5 品項連續 call |
+| F 不 call | 95 | 離題/打招呼/沒有的東西 |
+| G 回覆風格 | 100 | 簡潔回覆 + 結帳格式 |
+| H 邊界場景 | 70 | 修正/品類跳轉/模糊回答/矛盾/追加減量/改結帳 |
+| 初始樣本 | 7 | |
+| **合計** | **1,067** | |
 
 ## 品質檢查
 
-- [x] 997/997 筆 JSON 格式合法
-- [x] arguments 全部是 JSON object（合併時自動修復 15 筆 stringified）
-- [x] 901/997 筆含 finalize_order（96 筆為 F 類不點餐場景）
-- [x] 每個 tool_calls 陣列只含 1 個 call
+- [x] 1,067/1,067 筆 JSON 格式合法
+- [x] arguments 全部是 JSON object（合併時自動修復 stringified）
+- [x] 984/1,067 筆含 finalize_order（83 筆為 F 類不點餐場景）
+- [x] remove_from_cart 場景覆蓋（25 筆）
+- [ ] 菜單一致性驗證（flavor 值 vs menu_all.json）
+- [ ] Schema required fields 驗證
+- [ ] 執行驗證（arguments 能否通過 tool function）
