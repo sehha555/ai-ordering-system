@@ -240,7 +240,7 @@ function OrderTicket({
         <AnimatePresence mode="popLayout">
           {items.map((item, index) => (
             <motion.div
-              key={item.name}
+              key={`${item.name}-${item.details}`}
               initial={{ opacity: 0, y: -14 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 6, scale: 0.97 }}

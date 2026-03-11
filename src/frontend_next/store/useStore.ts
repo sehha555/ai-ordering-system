@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { AppState, AppStatus, CartItem, CheckoutPreview, CheckoutStep, OrderResult } from '../types';
 
 // 生成唯一的工作階段 ID
-const generateSessionId = () => 'session-' + Date.now();
+const generateSessionId = () => crypto.randomUUID();
 
 export const useStore = create<AppState>((set) => ({
   // 語音和訂購
