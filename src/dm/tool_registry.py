@@ -706,19 +706,23 @@ class ToolRegistry:
 
     def query_menu(self, category: Optional[str] = None) -> Dict[str, Any]:
         """
-        查詢菜單
+        查詢菜單分類或品項。
+        不指定 category 時回傳所有分類名稱；
+        指定 category 時回傳該分類品項（含售罄狀態與價格）；
+        分類為「飯糰」時額外附上成分表。
 
         Args:
-            category: 菜單分類（飯糰、飲品、蛋餅等）
+            category: 菜單分類（飯糰、飲品、蛋餅等），不填則回傳所有分類
 
         Returns:
-            菜單信息
+            {"ok": True, "categories": [...]} 或
+            {"ok": True, "category": "...", "items": [...], "count": N}
         """
         try:
             menu_data = menu_price_service.get_raw_menu()
 
             if not category:
-                # 返回所有分類
+                # 回傳所有分類名稱
                 categories: Set[str] = set()
                 for item in menu_data:
                     if item.get("category"):
@@ -730,7 +734,7 @@ class ToolRegistry:
                     "message": f"菜單共有 {len(categories)} 個分類",
                 }
 
-            # 返回特定分類的品項（含售罄狀態）
+            # 回傳特定分類品項（含售罄狀態）
             sold_out = set(menu_state_service.get_effective_sold_out())
             items = [
                 {
@@ -748,13 +752,29 @@ class ToolRegistry:
                     "message": f"找不到分類「{category}」",
                 }
 
-            return {
+            result: Dict[str, Any] = {
                 "ok": True,
                 "category": category,
                 "items": items,
                 "count": len(items),
                 "message": f"{category}共有 {len(items)} 項",
             }
+
+            # 飯糰分類額外附上成分表（幫助確認客人所說俗稱）
+            if category == "飯糰":
+                import json as _json
+                import os as _os
+                recipes_path = _os.path.join(
+                    _os.path.dirname(_os.path.abspath(__file__)),
+                    "..", "tools", "menu", "riceball_recipes.json",
+                )
+                try:
+                    with open(recipes_path, encoding="utf-8") as _f:
+                        result["recipes"] = _json.load(_f)
+                except Exception:
+                    pass  # 成分表讀取失敗不影響主流程
+
+            return result
 
         except Exception as e:
             return {"ok": False, "error": str(e)}
@@ -1100,13 +1120,13 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "query_menu",
-                    "description": "查詢菜單分類或品項（含售罄狀態與價格）。當客人問「有什麼飲料」「蛋餅多少錢」「菜單」時調用。category 指定分類，不填則返回所有分類。",
+                    "description": "當客人問有什麼可以點、詢問菜單內容、或你不確定某品項是否存在時調用。回傳分類清單或指定分類的品項（含售罄狀態與價格）；飯糰分類額外附成分表。category 不填則回傳所有分類名稱。",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "category": {
                                 "type": "string",
-                                "description": "菜單分類（飯糰、飲品、蛋餅等），不指定則返回所有分類",
+                                "description": "菜單分類，如：飯糰、飲品、蛋餅、吐司、漢堡、饅頭、點心、果醬吐司、套餐等。不指定則回傳所有分類名稱",
                             },
                         },
                     },

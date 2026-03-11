@@ -299,6 +299,9 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
             send_messages = list(messages)
             if enable_thinking:
                 send_messages.append({"role": "assistant", "content": "<think>\n", "prefix": True})
+            elif self.params.get("force_no_think", False):
+                # Qwen3.5 預設 think，需主動注入空 think block 跳過
+                send_messages.append({"role": "assistant", "content": "<think>\n</think>\n", "prefix": True})
 
             payload = {
                 "model": model,

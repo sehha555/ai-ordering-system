@@ -19,37 +19,42 @@ class EdgeTTSModel(TTSModel):
 
 
 class Qwen3TTSModel(TTSModel):
-    """使用 Qwen3-TTS-12Hz-1.7B-CustomVoice 本地模型的 TTS 服務"""
+    """Qwen3-TTS 本地模型，輸出 MP3 bytes（與 Edge TTS 格式一致）"""
 
-    def __init__(self, model_id: str = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice", speaker: str = "Vivian"):
+    def __init__(
+        self,
+        model_id: str = "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice",
+        speaker: str = "Vivian",
+    ):
         self._model_id = model_id
         self._speaker = speaker
         self._model = None
+        self._fallback = EdgeTTSModel()
         self._load()
 
     def _load(self):
         try:
             import torch
-            from qwen_tts import Qwen3TTSModel as _Qwen3TTSModel
+            from qwen_tts import Qwen3TTSModel as _Qwen3TTS
 
             dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
             device_map = "cuda:0" if torch.cuda.is_available() else "cpu"
-            logger.info(f"[TTS] 正在載入 Qwen3-TTS {self._model_id}...")
-            self._model = _Qwen3TTSModel.from_pretrained(
+            logger.info("[TTS] 正在載入 Qwen3-TTS {}...", self._model_id)
+            self._model = _Qwen3TTS.from_pretrained(
                 self._model_id,
                 device_map=device_map,
                 dtype=dtype,
             )
-            logger.info("[TTS] Qwen3-TTS 模型已載入，speaker={}", self._speaker)
+            logger.info("[TTS] Qwen3-TTS 已載入，speaker={}", self._speaker)
         except ImportError:
-            logger.error("[TTS] 未安裝 qwen-tts，請執行: pip install qwen-tts")
+            logger.error("[TTS] 未安裝 qwen-tts，將 fallback 到 Edge TTS")
         except Exception as e:
-            logger.error(f"[TTS] Qwen3-TTS 載入失敗: {e}")
+            logger.error("[TTS] Qwen3-TTS 載入失敗: {}，將 fallback 到 Edge TTS", e)
 
-    def _synthesize(self, text: str) -> bytes:
-        """同步合成，回傳 WAV bytes"""
-        import scipy.io.wavfile as wavfile
+    def _synthesize_mp3(self, text: str) -> bytes:
+        """同步合成，回傳 MP3 bytes"""
         import numpy as np
+        from pydub import AudioSegment
 
         wavs, sr = self._model.generate_custom_voice(
             text=text,
@@ -62,25 +67,42 @@ class Qwen3TTSModel(TTSModel):
         audio = np.array(audio, dtype=np.float32)
         if audio.ndim > 1:
             audio = audio[0]
+        # float32 → int16 PCM
         audio_int16 = (audio * 32767).clip(-32768, 32767).astype(np.int16)
+
+        # PCM → MP3（透過 pydub + ffmpeg）
+        segment = AudioSegment(
+            data=audio_int16.tobytes(),
+            sample_width=2,  # 16-bit
+            frame_rate=sr,
+            channels=1,
+        )
         buf = io.BytesIO()
-        wavfile.write(buf, sr, audio_int16)
+        segment.export(buf, format="mp3", bitrate="128k")
         return buf.getvalue()
 
     async def run_stream(self, text: str) -> AsyncIterator[bytes]:
+        # 模型未載入 → fallback Edge TTS
         if self._model is None:
-            logger.error("[TTS] Qwen3-TTS 未載入，無法合成語音")
+            logger.warning("[TTS] Qwen3-TTS 未載入，fallback 到 Edge TTS")
+            async for chunk in self._fallback.run_stream(text):
+                yield chunk
             return
 
-        loop = asyncio.get_event_loop()
-        audio_bytes = await loop.run_in_executor(None, self._synthesize, text)
-        yield audio_bytes
+        try:
+            loop = asyncio.get_event_loop()
+            audio_bytes = await loop.run_in_executor(None, self._synthesize_mp3, text)
+            yield audio_bytes
+        except Exception as e:
+            logger.error("[TTS] Qwen3-TTS 合成失敗: {}，fallback 到 Edge TTS", e)
+            async for chunk in self._fallback.run_stream(text):
+                yield chunk
 
 
 def create_tts_model(backend: str = "edgetts") -> TTSModel:
     """工廠函式：依 backend 建立 TTS 模型"""
     if backend == "qwen3tts":
-        from src.config.models import QWEN3TTS_MODEL
-        return Qwen3TTSModel(model_id=QWEN3TTS_MODEL)
+        from src.config.models import QWEN3TTS_MODEL, QWEN3TTS_SPEAKER
+        return Qwen3TTSModel(model_id=QWEN3TTS_MODEL, speaker=QWEN3TTS_SPEAKER)
     else:
         return EdgeTTSModel()
