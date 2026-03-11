@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     TTS_BACKEND: str = "edgetts"          # "edgetts" | "qwen3tts"
     SENSEVOICE_MODEL: str = "iic/SenseVoiceSmall"
     SENSEVOICE_HUB: str = "ms"            # "ms" = ModelScope
-    QWEN3TTS_MODEL: str = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+    QWEN3TTS_MODEL: str = "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice"
     QWEN3TTS_SPEAKER: str = "Vivian"
 
     # --- LLM 服務 ---
@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     LOG_FORMAT: str = "color"             # "color" | "json"
     LOG_RETENTION_DAYS: int = 7           # dev 7 天、prod 建議 30 天
     PERF_SLOW_THRESHOLD: float = 5.0
+
+    # --- 上傳限制 ---
+    MAX_AUDIO_SIZE_BYTES: int = 10 * 1024 * 1024  # 10MB
 
     # --- API 限流 ---
     RATE_LIMIT_DIALOGUE: str = "10/minute"

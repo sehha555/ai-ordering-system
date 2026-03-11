@@ -66,8 +66,8 @@ def test_order_persistence_on_submitted(test_env):
 
 def test_api_security_unauthorized(client, monkeypatch):
     """需設定 API_KEY 才會啟用驗證"""
-    import src.api.app as app_mod
-    monkeypatch.setattr(app_mod, "API_KEY", "test-secret-key")
+    import src.api.auth as auth_mod
+    monkeypatch.setattr(auth_mod, "API_KEY", "test-secret-key")
 
     # Missing header
     response = client.get("/orders")

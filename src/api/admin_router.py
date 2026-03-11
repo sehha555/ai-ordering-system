@@ -13,7 +13,7 @@ import os
 from datetime import datetime
 from typing import Literal, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -21,8 +21,13 @@ from src.tools.menu import menu_state_service
 from src.config.menu_constants import build_menu_categories
 from src.repository.order_repository import order_repo
 from src.api.order_broadcaster import order_broadcaster, format_order_for_admin
+from src.api.auth import get_api_key
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter(
+    prefix="/admin",
+    tags=["admin"],
+    dependencies=[Depends(get_api_key)],
+)
 
 # ── 菜單資料路徑（讀取所有品項名稱供驗證用）────────────────────────────
 _MENU_PATH = os.path.join(

@@ -1,8 +1,7 @@
 # src/api/voice_router.py
-from fastapi import APIRouter, UploadFile, File, Depends, Form
+from fastapi import APIRouter, UploadFile, File, Depends, Form, HTTPException
 from fastapi.responses import StreamingResponse
-from fastapi.security.api_key import APIKeyHeader
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import asyncio
 import json
 import os
@@ -13,16 +12,12 @@ from src.services.asr_postprocess import postprocess
 from src.services.streaming_orchestrator import StreamingOrchestrator
 from src.services.tts_implementations import create_tts_model
 from src.config.models import TTS_BACKEND
-from src.config.settings import settings
+from src.api.auth import api_key_header
 
 router = APIRouter()
 
 # 啟動時初始化 TTS（避免每次 request 重新載入模型）
 _streaming_tts = create_tts_model(TTS_BACKEND)
-
-# API Key 驗證
-API_KEY = settings.API_KEY
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 async def get_api_key_optional(api_key: str = Depends(api_key_header)):
@@ -129,7 +124,7 @@ class StreamingDMAdapter:
 
 class TextChatRequest(BaseModel):
     """純文字輸入請求（用於自動追問等跳過 ASR 的場景）"""
-    text: str
+    text: str = Field(..., max_length=500)
     session_id: str
 
 
@@ -180,6 +175,10 @@ async def voice_chat(
     """
     logger.info("[VOICE] 收到語音請求: session_id={}", session_id)
     audio_bytes = await file.read()
+
+    from src.config.settings import settings
+    if len(audio_bytes) > settings.MAX_AUDIO_SIZE_BYTES:
+        raise HTTPException(status_code=413, detail="音訊檔案超過 10MB 上限")
 
     # 估算時長：webm/opus 通常 ~32kbps，過短視為空白音訊跳過 ASR
     estimated_duration_ms = len(audio_bytes) / (32 * 1024 / 8) * 1000

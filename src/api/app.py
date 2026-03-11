@@ -3,13 +3,12 @@ import os
 import re
 import json
 import uuid
-from fastapi import FastAPI, HTTPException, Security, Depends, File, UploadFile, Form
+from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security.api_key import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from loguru import logger
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -204,7 +203,7 @@ _container.asr_service = _asr_service
 class TextDialogueRequest(BaseModel):
     """文本對話請求"""
     session_id: str
-    text: str
+    text: str = Field(..., max_length=500)
 
 
 class TextDialogueResponse(BaseModel):
@@ -246,17 +245,8 @@ async def _run_dialogue_turn(session_id: str, user_text: str) -> tuple:
 
     return result, session
 
-API_KEY = settings.API_KEY
-if not API_KEY:
-    logger.warning("[AUTH] API_KEY 未設定，API Key 驗證已停用（僅限開發環境）")
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+from src.api.auth import get_api_key  # noqa: E402
 
-def get_api_key(api_key: str = Security(api_key_header)):
-    if not API_KEY:
-        return "dev"  # 開發模式，跳過驗證
-    if api_key != API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid API Key")
-    return api_key
 
 def validate_order_id(order_id: str):
     if not re.match(r"^[A-Z0-9-]+$", order_id) or len(order_id) > 20:
@@ -503,6 +493,9 @@ async def voice_dialogue(
 
         content = await audio_file.read()
         logger.info("[VOICE] 收到音訊大小: {} bytes, 副檔名: {}", len(content), ext)
+
+        if len(content) > settings.MAX_AUDIO_SIZE_BYTES:
+            raise HTTPException(status_code=413, detail="音訊檔案超過 10MB 上限")
 
         if len(content) < 1000:
             logger.warning("[VOICE] 音訊檔案太小，可能是空的或錄音失敗")
