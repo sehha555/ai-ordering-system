@@ -32,9 +32,11 @@ async def readiness():
     if not db_writable:
         all_ok = False
 
+    # 延遲 import（避免模組載入順序造成循環依賴）
+    from src.services import container
+
     # 2. Session Store 狀態（透過 ping() 公開方法）
     try:
-        from src.services import container
         store_type = type(container.session_store).__name__
         checks["session_store"] = {"type": store_type, "status": "ok"}
 
@@ -65,7 +67,6 @@ async def readiness():
 
     # 4. ASR 模型已載入
     try:
-        from src.services import container
         asr_loaded = bool(getattr(container.asr_service, "model", None))
         checks["asr"] = "ok" if asr_loaded else "not_loaded"
         if not asr_loaded:
