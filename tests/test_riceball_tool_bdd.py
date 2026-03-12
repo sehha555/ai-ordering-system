@@ -136,7 +136,7 @@ def missing_slots_should_contain(context, slot_name):
 
 @then('系統的澄清問句應詢問白米/紫米/混米')
 def clarification_should_ask_for_rice(context):
-    assert "米種" in context['last_response']
+    assert "紫米" in context['last_response'] or "白米" in context['last_response']
     
 def test_pure_riceball_parser_for_danbing():
     """

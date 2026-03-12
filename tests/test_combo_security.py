@@ -60,12 +60,13 @@ def test_drink_keyword_should_not_trigger_combo(dm_session):
     while "結帳" not in response and "元" not in response and steps < 5:
         if "還需要什麼" in response:
             break
-        if "冰" in response or "溫" in response:
+        if "中冰還是中溫" in response:
+            response = dm.handle(session_id, "中杯冰的")
+        elif "冰" in response or "溫" in response:
             response = dm.handle(session_id, "冰的")
         elif "大杯" in response or "中杯" in response:
             response = dm.handle(session_id, "中杯")
         else:
-            # Maybe it already added it?
             break
         steps += 1
 

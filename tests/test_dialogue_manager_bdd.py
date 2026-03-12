@@ -79,7 +79,7 @@ def bot_should_ask_for_rice(context):
 @then(parsers.parse('機器人應提醒尚缺米種'))
 def bot_should_warn_missing_rice(context):
     last_response = context["responses"][-1]
-    assert "還差米種" in last_response
+    assert "紫米" in last_response or "白米" in last_response
 
 @then(parsers.parse('回應中不應包含「{text}」'))
 def response_should_not_contain(context, text):

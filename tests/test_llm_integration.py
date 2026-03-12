@@ -27,9 +27,9 @@ class TestDialogueManagerBasic:
         msg = dm.get_clarify_message("drink", ["temp"])
         assert "冰" in msg or "溫" in msg
 
-        # 飲料杯型
+        # 飲料杯型（clarify_policy 統一用 "中冰還是中溫？" 問 size/temp）
         msg = dm.get_clarify_message("drink", ["size"])
-        assert "大杯" in msg or "中杯" in msg
+        assert "中冰" in msg or "中溫" in msg
 
         # 飯糰米種
         msg = dm.get_clarify_message("riceball", ["rice"])

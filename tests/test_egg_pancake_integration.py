@@ -32,4 +32,4 @@ def test_egg_pancake_riceball_routing_priority(dm, session_id):
     """
     response = dm.handle(session_id, "我要蛋餅飯糰")
     # Assert that it asks for rice type, which is specific to the riceball tool flow.
-    assert "米種" in response
+    assert "紫米" in response or "白米" in response

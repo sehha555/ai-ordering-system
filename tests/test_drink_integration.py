@@ -41,7 +41,7 @@ def test_order_medium_unsweetened_soy_milk_success(dm_session):
 
     # User orders, DM asks for temp
     response = dm.handle(session_id, "我要一杯無糖豆漿中杯")
-    assert "你要冰的、溫的？" in response
+    assert "中冰還是中溫？" in response
     
     # Provide missing temp
     response = dm.handle(session_id, "冰的")

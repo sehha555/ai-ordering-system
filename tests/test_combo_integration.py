@@ -31,12 +31,12 @@ def test_order_combo_two_success(dm_session):
     # 1. Order Combo Two
     response = dm.handle(session_id, "我要套餐二")
     # Expect clarification for rice of 鮪魚飯糰 (first sub-item)
-    assert "還差米種，你要紫米、白米還是混米？" in response
+    assert "飯糰要紫米白米？" in response
 
     # 2. Provide rice for 鮪魚飯糰
     response = dm.handle(session_id, "白米")
     # Expect clarification for temp of 中杯豆漿 (second sub-item)
-    assert "你要冰的、溫的？" in response
+    assert "中冰還是中溫？" in response
 
     # 3. Provide temp for 中杯豆漿
     response = dm.handle(session_id, "冰的")

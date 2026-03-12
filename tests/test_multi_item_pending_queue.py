@@ -47,7 +47,7 @@ def test_multi_item_one_pending(dm_session):
 
     response = dm.handle(session_id, "我要一杯豆漿跟一份薯餅")
     # It should ask for the first pending item, which is the drink
-    assert "你要冰的、溫的？" in response
+    assert "中冰還是中溫？" in response
     
     session = dm.store.get(session_id)
     assert len(session["cart"]) == 1 # The complete item (hash brown) is in cart
@@ -74,7 +74,7 @@ def test_multi_item_two_pending_and_queue(dm_session):
 
     response = dm.handle(session_id, "我要豆漿跟一個鮪魚蛋")
     # It should ask for the first pending item (drink)
-    assert "你要冰的、溫的？" in response
+    assert "中冰還是中溫？" in response
     
     session = dm.store.get(session_id)
     assert len(session["cart"]) == 0
