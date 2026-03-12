@@ -41,7 +41,7 @@ describe('CheckoutFlow', () => {
       expect(screen.getByText('內用')).toBeInTheDocument();
       expect(screen.getByText('外帶')).toBeInTheDocument();
       expect(screen.getByText('現金')).toBeInTheDocument();
-      expect(screen.getByText('行動支付')).toBeInTheDocument();
+      expect(screen.getByText('Line Pay')).toBeInTheDocument();
     });
 
     it('應顯示購物車內容和總計', () => {
