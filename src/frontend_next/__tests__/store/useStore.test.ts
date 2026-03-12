@@ -22,9 +22,9 @@ describe('useStore', () => {
       expect(state.total).toBe(0);
     });
 
-    it('應生成 session-xxx 格式的 sessionId', () => {
+    it('應生成 UUID v4 格式的 sessionId', () => {
       const state = useStore.getState();
-      expect(state.sessionId).toMatch(/^session-\d+$/);
+      expect(state.sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     });
 
     it('checkoutStep 應為 0', () => {

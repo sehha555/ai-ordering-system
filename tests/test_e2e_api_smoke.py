@@ -209,10 +209,10 @@ def test_list_orders(client, test_env):
 
 def test_unauthorized_access(client, monkeypatch):
     """12. 未授權存取測試（需設定 API_KEY 才會啟用驗證）"""
-    import src.api.app as app_mod
+    import src.api.auth as auth_mod
 
     # 設定 API_KEY 以啟用驗證
-    monkeypatch.setattr(app_mod, "API_KEY", "test-secret-key")
+    monkeypatch.setattr(auth_mod, "API_KEY", "test-secret-key")
 
     # 無 header
     r = client.get("/orders")
