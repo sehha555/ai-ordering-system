@@ -3,15 +3,13 @@ import os
 import re
 import json
 import uuid
-from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, Form
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from typing import Optional
-from pydantic import BaseModel, Field
 from loguru import logger
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -23,13 +21,13 @@ from src.utils.db_backup import backup_database
 from src.utils.perf_collector import perf_collector
 from src.dm.dialogue_manager import DialogueManager
 from src.dm.session_store import create_session_store
-from src.dm import cart_manager
 from src.dm.system_prompts import SystemPromptBuilder
 from src.services.asr_service import create_asr_service
 from src.config.models import ASR_BACKEND
 from src.services.tts_service import TTSService
 from src.services.llm_tool_caller import LLMToolCaller
 from src.dm.tool_registry import ToolRegistry
+from src.api.rate_limit import limiter
 
 # 初始化日誌系統
 setup_logging()
@@ -48,12 +46,14 @@ def load_store_config():
 
 # 載入設定
 STORE_CONFIG = load_store_config()
-from src.api.voice_router import router as voice_router
-from src.api.health import router as health_router
-from src.api.admin_router import router as admin_router
-from src.config.menu_constants import build_menu_categories
+from src.api.voice_router import router as voice_router  # noqa: E402
+from src.api.health import router as health_router  # noqa: E402
+from src.api.admin_router import router as admin_router  # noqa: E402
+from src.api.checkout_router import router as checkout_router  # noqa: E402
+from src.api.service_test_router import router as service_test_router  # noqa: E402
+from src.config.menu_constants import build_menu_categories  # noqa: E402
 
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager  # noqa: E402
 
 
 def _validate_startup():
@@ -126,8 +126,7 @@ async def lifespan(app):
 
 app = FastAPI(title="Yuan Rice Ball Order API", lifespan=lifespan)
 
-# 全域限流器（default_limits 作為 fallback，涵蓋未個別設定的路由）
-limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
+# 全域限流器
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -158,6 +157,8 @@ app.add_middleware(RequestIdMiddleware)
 app.include_router(health_router)
 app.include_router(voice_router, prefix="/api", tags=["voice"])
 app.include_router(admin_router)
+app.include_router(checkout_router)
+app.include_router(service_test_router)
 
 # 掛載靜態檔案（如果目錄存在）
 _frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")
@@ -181,6 +182,7 @@ async def _session_cleanup_loop():
                 logger.info("背景清理 {} 個過期 session", cleaned)
         except Exception as e:
             logger.error("Session 清理失敗: {}", e)
+
 _llm_caller = LLMToolCaller(
     base_url=settings.LLM_BASE_URL,
     model=settings.LLM_MODEL,
@@ -192,58 +194,12 @@ _asr_service = create_asr_service(ASR_BACKEND, language="zh")
 _tts_service = TTSService(voice="female", rate="+0%")
 
 # 同步到服務容器，供其他模組使用（消除循環依賴）
-from src.services import container as _container
+from src.services import container as _container  # noqa: E402
 _container.session_store = _session_store
 _container.llm_caller = _llm_caller
 _container.tool_registry = _tool_registry
 _container.asr_service = _asr_service
-
-
-
-class TextDialogueRequest(BaseModel):
-    """文本對話請求"""
-    session_id: str
-    text: str = Field(..., max_length=500)
-
-
-class TextDialogueResponse(BaseModel):
-    """文本對話響應"""
-    session_id: str
-    response: str
-    status: str = "ok"
-
-
-async def _run_dialogue_turn(session_id: str, user_text: str) -> tuple:
-    """執行一輪對話核心邏輯，回傳 (result, session) 供各端點自行處理回傳格式。
-
-    包含：set_session_id → get session → setdefault llm_history →
-    build_context_message → run_turn → update history → redis 回寫
-    """
-    from src.dm.system_prompts import build_context_message
-    from src.dm.session_context import SessionContext
-
-    _tool_registry.set_session_id(session_id)
-
-    session = _session_store.get(session_id)
-    session.setdefault("llm_history", [])
-
-    ctx = build_context_message(SessionContext.from_session(session))
-
-    result = _llm_caller.run_turn(
-        system_prompt=SystemPromptBuilder().build(),
-        user_text=user_text,
-        history=session["llm_history"],
-        tools_schema=_tool_registry.get_tools_schema(),
-        tool_map=_tool_registry.get_tool_map(),
-        allowed_args=_tool_registry.get_allowed_args(),
-        context=ctx,
-    )
-
-    if result.get("ok"):
-        session["llm_history"] = result.get("history", session["llm_history"])
-        _session_store.set(session_id, session)  # Redis 回寫
-
-    return result, session
+_container.tts_service = _tts_service
 
 from src.api.auth import get_api_key  # noqa: E402
 
@@ -319,475 +275,3 @@ async def list_orders(
 ):
     orders = order_repo.list_orders(date=date, status=status, limit=limit, offset=offset)
     return {"items": orders, "count": len(orders)}
-
-
-# ============================================================================
-# 購物車 API
-# ============================================================================
-
-@app.get("/cart/summary")
-@limiter.limit(settings.RATE_LIMIT_QUERY)
-async def get_cart_summary(
-    request: Request,
-    session_id: str,
-    api_key: str = Depends(get_api_key)
-):
-    """
-    取得購物車摘要
-    """
-    try:
-        session = _session_store.get(session_id)
-        cart = session.get("cart", [])
-
-        if not cart:
-            return {
-                "ok": True,
-                "cart_count": 0,
-                "items": [],
-                "total_price": 0,
-                "message": "購物車為空",
-            }
-
-        items = []
-        total_price = 0
-
-        for i, item in enumerate(cart, 1):
-            qty = int(item.get("quantity", 1) or 1)
-
-            # 格式化品項名稱
-            name = cart_manager.format_item(item)
-
-            # 計算價格
-            price_info = cart_manager.get_price_info(item)
-            if price_info and price_info.get("status") == "success":
-                item_total = cart_manager.extract_total(price_info, qty)
-                total_price += item_total
-                price_str = f"${item_total}"
-            else:
-                price_str = ""
-
-            items.append({
-                "index": i,
-                "name": name,
-                "quantity": qty,
-                "price": price_str,
-            })
-
-        return {
-            "ok": True,
-            "cart_count": len(cart),
-            "items": items,
-            "total_price": total_price,
-            "message": f"購物車共 {len(cart)} 項，總計 ${total_price}",
-        }
-
-    except Exception as e:
-        return {"ok": False, "error": str(e), "items": [], "total_price": 0}
-
-
-# ============================================================================
-# 語音對話 API 端點
-# ============================================================================
-
-@app.post("/dialogue/text", response_model=TextDialogueResponse)
-@limiter.limit(settings.RATE_LIMIT_DIALOGUE)
-async def text_dialogue(request: Request, body: TextDialogueRequest, api_key: str = Depends(get_api_key)):
-    """
-    文本對話端點（文字輸入，文字輸出）
-    使用 LLM + Function Calling 處理點餐邏輯
-    """
-    try:
-        session_id = body.session_id
-        user_text = body.text
-
-        logger.info("[TEXT] 收到文字: '{}'", user_text)
-
-        result, _session = await _run_dialogue_turn(session_id, user_text)
-
-        if result.get("ok"):
-            response_text = result.get("assistant_text", "") or "好的，還需要什麼嗎？"
-            logger.info("[TEXT] LLM 回應: '{}'", response_text)
-            return TextDialogueResponse(session_id=session_id, response=response_text, status="ok")
-        else:
-            logger.error("[TEXT] LLM 錯誤: {}", result.get('error'))
-            return TextDialogueResponse(
-                session_id=session_id,
-                response="抱歉，系統暫時無法處理，請稍後再試。",
-                status="error",
-            )
-
-    except Exception as e:
-        logger.exception("[TEXT] 異常")
-        return TextDialogueResponse(session_id=body.session_id, response=f"錯誤: {str(e)}", status="error")
-
-
-@app.post("/dialogue/llm")
-@limiter.limit(settings.RATE_LIMIT_DIALOGUE)
-async def llm_dialogue(request: Request, body: TextDialogueRequest, api_key: str = Depends(get_api_key)):
-    """
-    LLM 對話端點（使用 Qwen2.5 + Function Calling）
-
-    用例：
-        curl -X POST http://localhost:8000/dialogue/llm \
-          -H "X-API-Key: yuan-secret-key" \
-          -H "Content-Type: application/json" \
-          -d '{"session_id": "user123", "text": "我要一個紫米傳統飯糰"}'
-    """
-    try:
-        session_id = body.session_id
-        user_text = body.text
-
-        logger.info("[LLM] 收到請求: session={}, text={}", session_id, user_text)
-
-        result, _session = await _run_dialogue_turn(session_id, user_text)
-
-        logger.info("[LLM] 結果: ok={}, tool_trace={} calls", result.get('ok'), len(result.get('tool_trace', [])))
-
-        if result.get("ok"):
-            response_text = result.get("assistant_text", "") or "好的，還需要什麼嗎？"
-            return {
-                "session_id": session_id,
-                "response": response_text,
-                "status": "ok",
-                "tool_calls": len(result.get("tool_trace", [])),
-            }
-        else:
-            return {
-                "session_id": session_id,
-                "response": "抱歉，處理請求時發生錯誤",
-                "status": "error",
-                "error": result.get("error"),
-            }
-
-    except Exception as e:
-        logger.exception("[LLM] 異常")
-        return {
-            "session_id": body.session_id,
-            "response": f"錯誤: {str(e)}",
-            "status": "error",
-        }
-
-
-@app.post("/dialogue/voice")
-@limiter.limit(settings.RATE_LIMIT_DIALOGUE)
-async def voice_dialogue(
-    request: Request,
-    session_id: str = Form(...),
-    audio_file: UploadFile = File(...),
-    api_key: str = Depends(get_api_key)
-):
-    """
-    語音對話端點（語音輸入，語音輸出）
-    """
-    import tempfile
-    import subprocess
-
-    try:
-        logger.info("[VOICE] === 開始處理語音請求 ===")
-        logger.info("[VOICE] session_id: {}, filename: {}, content_type: {}", session_id, audio_file.filename, audio_file.content_type)
-
-        # 從檔名取得副檔名
-        ext = ".webm"
-        if audio_file.filename:
-            ext = "." + audio_file.filename.split(".")[-1] if "." in audio_file.filename else ".webm"
-
-        content = await audio_file.read()
-        logger.info("[VOICE] 收到音訊大小: {} bytes, 副檔名: {}", len(content), ext)
-
-        if len(content) > settings.MAX_AUDIO_SIZE_BYTES:
-            raise HTTPException(status_code=413, detail="音訊檔案超過 10MB 上限")
-
-        if len(content) < 1000:
-            logger.warning("[VOICE] 音訊檔案太小，可能是空的或錄音失敗")
-            return {
-                "session_id": session_id,
-                "status": "error",
-                "error": "音訊檔案太小，請重新錄音",
-                "response": None,
-                "audio_url": None
-            }
-
-        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
-            tmp.write(content)
-            tmp_path = tmp.name
-        logger.debug("[VOICE] 已保存到: {}", tmp_path)
-
-        # 如果是 webm 格式，用 ffmpeg 轉換為 wav
-        if ext.lower() == ".webm":
-            wav_path = tmp_path.replace(".webm", ".wav")
-            logger.debug("[VOICE] 開始 ffmpeg 轉換: {} -> {}", tmp_path, wav_path)
-            try:
-                subprocess.run([
-                    "ffmpeg", "-y", "-i", tmp_path,
-                    "-ar", "16000", "-ac", "1", "-f", "wav", wav_path
-                ], capture_output=True, check=True)
-                logger.debug("[VOICE] ffmpeg 轉換成功")
-                os.unlink(tmp_path)
-                tmp_path = wav_path
-            except subprocess.CalledProcessError as e:
-                logger.error("[VOICE] ffmpeg 轉換失敗: {}", e.stderr.decode())
-                return {
-                    "session_id": session_id,
-                    "status": "error",
-                    "error": f"音訊轉換失敗: {e.stderr.decode()[:200]}",
-                    "response": None,
-                    "audio_url": None
-                }
-
-        # 檢查轉換後的檔案
-        wav_size = os.path.getsize(tmp_path)
-        logger.debug("[VOICE] WAV 檔案大小: {} bytes", wav_size)
-
-        try:
-            # 使用 ASR 將語音轉為文字
-            logger.info("[VOICE] 開始 ASR 轉錄...")
-            asr_result = _asr_service.transcribe(tmp_path)
-            logger.info("[VOICE] ASR 結果: {}", asr_result)
-
-            if asr_result.get("error"):
-                return {
-                    "session_id": session_id,
-                    "status": "error",
-                    "asr_error": asr_result.get("error"),
-                    "response": None,
-                    "audio_url": None
-                }
-
-            user_text = asr_result.get("text", "")
-            logger.info("[VOICE] 識別到的文字: '{}'", user_text)
-
-            if not user_text:
-                return {
-                    "session_id": session_id,
-                    "status": "error",
-                    "error": "無法識別語音內容",
-                    "response": None,
-                    "audio_url": None
-                }
-
-            # 調用 LLM 對話
-            logger.info("[VOICE] 調用 LLM 處理: '{}'", user_text)
-            llm_result, _session = await _run_dialogue_turn(session_id, user_text)
-
-            if llm_result.get("ok"):
-                dialogue_response = llm_result.get("assistant_text", "") or "好的，還需要什麼嗎？"
-                logger.info("[VOICE] LLM 回應: '{}'", dialogue_response)
-            else:
-                logger.error("[VOICE] LLM 錯誤: {}", llm_result.get('error'))
-                dialogue_response = "抱歉，系統暫時無法處理，請稍後再試。"
-
-            # 使用 TTS 將回應轉為語音
-            tts_result = _tts_service.speak(dialogue_response)
-
-            return {
-                "session_id": session_id,
-                "status": "ok",
-                "user_text": user_text,
-                "response": dialogue_response,
-                "audio_url": tts_result.get("file_path")
-            }
-
-        finally:
-            # 清理臨時文件
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
-
-    except Exception as e:
-        logger.exception("[VOICE] 語音對話異常")
-        return {
-            "session_id": session_id,
-            "status": "error",
-            "error": str(e),
-            "response": None,
-            "audio_url": None
-        }
-
-
-@app.get("/llm/test")
-@limiter.limit(settings.RATE_LIMIT_TEST)
-async def test_llm(request: Request, api_key: str = Depends(get_api_key)):
-    """
-    測試 LLM 服務狀態
-    """
-    try:
-        import requests
-        resp = requests.get("http://127.0.0.1:1234/v1/models", timeout=5)
-        models = resp.json().get("data", [])
-        return {
-            "service": "LLM (LM Studio)",
-            "status": "ready",
-            "model": _llm_caller.model,
-            "available_models": [m.get("id") for m in models],
-        }
-    except Exception as e:
-        return {
-            "service": "LLM (LM Studio)",
-            "status": "error",
-            "error": str(e),
-        }
-
-
-@app.get("/asr/test")
-@limiter.limit(settings.RATE_LIMIT_TEST)
-async def test_asr(request: Request, api_key: str = Depends(get_api_key)):
-    """
-    測試 ASR 服務狀態
-    """
-    return {
-        "service": f"ASR ({_asr_service.__class__.__name__})",
-        "status": "ready" if _asr_service.model else "not_loaded",
-        "model": getattr(_asr_service, "model_name", "unknown"),
-        "language": "zh"
-    }
-
-
-@app.get("/tts/test")
-@limiter.limit(settings.RATE_LIMIT_TEST)
-async def test_tts(request: Request, api_key: str = Depends(get_api_key)):
-    """
-    測試 TTS 服務狀態
-    """
-    return {
-        "service": "TTS (Edge TTS)",
-        "status": "ready" if _tts_service.engine else "not_loaded",
-        "properties": _tts_service.get_properties()
-    }
-
-
-@app.post("/tts/speak")
-@limiter.limit(settings.RATE_LIMIT_TEST)
-async def tts_speak(
-    request: Request,
-    text: str,
-    api_key: str = Depends(get_api_key)
-):
-    """
-    直接調用 TTS 將文字轉為語音
-    """
-    result = _tts_service.speak(text)
-    return result
-
-
-@app.get("/tts/play")
-@limiter.limit(settings.RATE_LIMIT_TEST)
-async def tts_play(
-    request: Request,
-    path: str,
-    api_key: str = Depends(get_api_key)
-):
-    """
-    播放 TTS 生成的音訊檔案
-    """
-    from fastapi.responses import FileResponse
-
-    # 安全檢查：只允許播放 TTS 輸出目錄的檔案
-    import tempfile
-    tts_dir = os.path.realpath(os.path.join(tempfile.gettempdir(), "tts_output"))
-
-    # 解析真實路徑（防 symlink traversal），Windows 大小寫不敏感比較
-    real_path = os.path.realpath(path)
-
-    if not real_path.lower().startswith(tts_dir.lower()):
-        raise HTTPException(status_code=403, detail="Access denied")
-
-    if not os.path.exists(real_path):
-        raise HTTPException(status_code=404, detail="Audio file not found")
-
-    return FileResponse(
-        real_path,
-        media_type="audio/mpeg",
-        filename="response.mp3"
-    )
-
-
-# ============================================================================
-# 結帳 API
-# ============================================================================
-
-class CheckoutRequest(BaseModel):
-    """結帳請求"""
-    session_id: str
-    dine_type: str  # "dine-in" | "take-out"
-    payment_method: str  # "cash" | "mobile"
-
-
-@app.post("/api/checkout")
-@limiter.limit(settings.RATE_LIMIT_CHECKOUT)
-async def checkout(request: Request, body: CheckoutRequest):
-    """
-    處理結帳請求
-    - 從 session_store 讀取購物車
-    - 寫入訂單到 orders.db
-    - 取餐號碼：每日遞增，最少兩位補零
-    - 儲存對話紀錄（SQLite + JSON 檔）
-    - 清空 session 的 llm_history 和購物車
-    """
-    try:
-        session_id = body.session_id
-        dine_type = body.dine_type
-        payment_method = body.payment_method
-
-        logger.info("[CHECKOUT] 開始結帳: session_id={}, dine_type={}, payment={}", session_id, dine_type, payment_method)
-
-        # 1. 從 session_store 讀取購物車
-        session = _session_store.get(session_id)
-        cart = session.get("cart", [])
-        if not cart:
-            raise HTTPException(status_code=400, detail="購物車是空的，無法結帳")
-        llm_history = session.get("llm_history", [])
-
-        logger.info("[CHECKOUT] 購物車: {} 項", len(cart))
-
-        # 2. 計算總價
-        total_price = cart_manager.calculate_cart_total(cart)
-
-        logger.info("[CHECKOUT] 總計: ${}", total_price)
-
-        # 3. 生成取餐號碼
-        order_number = order_repo.get_next_order_number()
-        logger.info("[CHECKOUT] 取餐號碼: {}", order_number)
-
-        # 4. 建立訂單
-        from datetime import datetime
-        # order_id 必須只包含大寫字母、數字和連字符
-        order_id = f"ORD-{datetime.now().strftime('%m%d')}-{str(uuid.uuid4())[:8].upper()}"
-
-        order_payload = {
-            "order_id": order_id,
-            "session_id": session_id,
-            "order_number": order_number,
-            "dine_type": dine_type,
-            "payment_method": payment_method,
-            "items": cart,
-            "total_price": total_price,
-            "status": "submitted",
-            "created_at": datetime.now().isoformat()
-        }
-
-        # 5. 寫入訂單
-        order_repo.save_order(order_payload, session_id)
-        logger.info("[CHECKOUT] 訂單已保存: {}", order_id)
-
-        # 6. 儲存對話紀錄
-        order_repo.save_conversation_log(session_id, order_number, llm_history)
-        order_repo.save_conversation_log_json(session_id, order_number, cart, total_price, dine_type, llm_history)
-        logger.info("[CHECKOUT] 對話紀錄已保存")
-
-        # 7. 清空 session（llm_history 和購物車）
-        session["llm_history"] = []
-        session["cart"] = []
-        _session_store.set(session_id, session)  # Redis 回寫
-        logger.debug("[CHECKOUT] Session 已清除")
-
-        return {
-            "status": "ok",
-            "order_number": order_number,
-            "order_id": order_id,
-            "total": total_price,
-            "dine_type": dine_type,
-            "payment_method": payment_method
-        }
-
-    except Exception as e:
-        logger.exception("[CHECKOUT] 結帳異常")
-        raise HTTPException(status_code=500, detail=str(e))

@@ -1,0 +1,165 @@
+# src/api/checkout_router.py
+"""結帳 + 購物車 API Router"""
+
+import uuid
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from loguru import logger
+from starlette.requests import Request
+
+from src.api.auth import get_api_key
+from src.api.rate_limit import limiter
+from src.config.settings import settings
+from src.dm import cart_manager
+from src.repository.order_repository import order_repo
+from src.services import container
+
+router = APIRouter(tags=["checkout"])
+
+
+class CheckoutRequest(BaseModel):
+    """結帳請求"""
+    session_id: str
+    dine_type: str  # "dine-in" | "take-out"
+    payment_method: str  # "cash" | "mobile"
+
+
+@router.get("/cart/summary")
+@limiter.limit(settings.RATE_LIMIT_QUERY)
+async def get_cart_summary(
+    request: Request,
+    session_id: str,
+    api_key: str = Depends(get_api_key)
+):
+    """取得購物車摘要"""
+    try:
+        session = container.session_store.get(session_id)
+        cart = session.get("cart", [])
+
+        if not cart:
+            return {
+                "ok": True,
+                "cart_count": 0,
+                "items": [],
+                "total_price": 0,
+                "message": "購物車為空",
+            }
+
+        items = []
+        total_price = 0
+
+        for i, item in enumerate(cart, 1):
+            qty = int(item.get("quantity", 1) or 1)
+
+            # 格式化品項名稱
+            name = cart_manager.format_item(item)
+
+            # 計算價格
+            price_info = cart_manager.get_price_info(item)
+            if price_info and price_info.get("status") == "success":
+                item_total = cart_manager.extract_total(price_info, qty)
+                total_price += item_total
+                price_str = f"${item_total}"
+            else:
+                price_str = ""
+
+            items.append({
+                "index": i,
+                "name": name,
+                "quantity": qty,
+                "price": price_str,
+            })
+
+        return {
+            "ok": True,
+            "cart_count": len(cart),
+            "items": items,
+            "total_price": total_price,
+            "message": f"購物車共 {len(cart)} 項，總計 ${total_price}",
+        }
+
+    except Exception as e:
+        return {"ok": False, "error": str(e), "items": [], "total_price": 0}
+
+
+@router.post("/api/checkout")
+@limiter.limit(settings.RATE_LIMIT_CHECKOUT)
+async def checkout(request: Request, body: CheckoutRequest):
+    """
+    處理結帳請求
+    - 從 session_store 讀取購物車
+    - 寫入訂單到 orders.db
+    - 取餐號碼：每日遞增，最少兩位補零
+    - 儲存對話紀錄（SQLite + JSON 檔）
+    - 清空 session 的 llm_history 和購物車
+    """
+    try:
+        session_id = body.session_id
+        dine_type = body.dine_type
+        payment_method = body.payment_method
+
+        logger.info("[CHECKOUT] 開始結帳: session_id={}, dine_type={}, payment={}", session_id, dine_type, payment_method)
+
+        # 1. 從 session_store 讀取購物車
+        session = container.session_store.get(session_id)
+        cart = session.get("cart", [])
+        if not cart:
+            raise HTTPException(status_code=400, detail="購物車是空的，無法結帳")
+        llm_history = session.get("llm_history", [])
+
+        logger.info("[CHECKOUT] 購物車: {} 項", len(cart))
+
+        # 2. 計算總價
+        total_price = cart_manager.calculate_cart_total(cart)
+
+        logger.info("[CHECKOUT] 總計: ${}", total_price)
+
+        # 3. 生成取餐號碼
+        order_number = order_repo.get_next_order_number()
+        logger.info("[CHECKOUT] 取餐號碼: {}", order_number)
+
+        # 4. 建立訂單
+        # order_id 必須只包含大寫字母、數字和連字符
+        order_id = f"ORD-{datetime.now().strftime('%m%d')}-{str(uuid.uuid4())[:8].upper()}"
+
+        order_payload = {
+            "order_id": order_id,
+            "session_id": session_id,
+            "order_number": order_number,
+            "dine_type": dine_type,
+            "payment_method": payment_method,
+            "items": cart,
+            "total_price": total_price,
+            "status": "submitted",
+            "created_at": datetime.now().isoformat()
+        }
+
+        # 5. 寫入訂單
+        order_repo.save_order(order_payload, session_id)
+        logger.info("[CHECKOUT] 訂單已保存: {}", order_id)
+
+        # 6. 儲存對話紀錄
+        order_repo.save_conversation_log(session_id, order_number, llm_history)
+        order_repo.save_conversation_log_json(session_id, order_number, cart, total_price, dine_type, llm_history)
+        logger.info("[CHECKOUT] 對話紀錄已保存")
+
+        # 7. 清空 session（llm_history 和購物車）
+        session["llm_history"] = []
+        session["cart"] = []
+        container.session_store.set(session_id, session)  # Redis 回寫
+        logger.debug("[CHECKOUT] Session 已清除")
+
+        return {
+            "status": "ok",
+            "order_number": order_number,
+            "order_id": order_id,
+            "total": total_price,
+            "dine_type": dine_type,
+            "payment_method": payment_method
+        }
+
+    except Exception as e:
+        logger.exception("[CHECKOUT] 結帳異常")
+        raise HTTPException(status_code=500, detail=str(e))

@@ -9,6 +9,7 @@ from src.repository.order_repository import OrderRepository
 # 持有 order_repo 單例引用的模組
 import src.repository.order_repository as repo_mod
 import src.api.app as api_mod
+import src.api.checkout_router as checkout_mod
 import src.dm.cart_manager as dm_mod
 
 
@@ -26,12 +27,14 @@ def test_env():
     old_repos = {
         "repo": repo_mod.order_repo,
         "api": api_mod.order_repo,
+        "checkout": checkout_mod.order_repo,
         "dm": dm_mod.order_repo
     }
 
     # 全面注入測試用 repo
     repo_mod.order_repo = test_repo
     api_mod.order_repo = test_repo
+    checkout_mod.order_repo = test_repo
     dm_mod.order_repo = test_repo
 
     yield test_repo
@@ -39,6 +42,7 @@ def test_env():
     # 復原單例
     repo_mod.order_repo = old_repos["repo"]
     api_mod.order_repo = old_repos["api"]
+    checkout_mod.order_repo = old_repos["checkout"]
     dm_mod.order_repo = old_repos["dm"]
 
     # 清理檔案 (retry Windows 鎖定)
@@ -59,7 +63,7 @@ def client(test_env):
 
 
 # ============================================================================
-# 12 個 E2E API 煙霧測試
+# 11 個 E2E API 煙霧測試（已移除 /dialogue/* 舊版端點）
 # ============================================================================
 
 API_KEY_HEADER = {"X-API-Key": "yuan-secret-key"}
@@ -121,21 +125,8 @@ def test_tts_status(client):
     assert data["status"] in ("ready", "not_loaded")
 
 
-def test_dialogue_text(client):
-    """7. POST /dialogue/text - 文本對話"""
-    sid = str(uuid.uuid4())
-    r = client.post("/dialogue/text",
-                    json={"session_id": sid, "text": "你好"},
-                    headers=API_KEY_HEADER)
-    assert r.status_code == 200
-    data = r.json()
-    assert "response" in data
-    assert data["session_id"] == sid
-    # status 可能是 ok 或 error（取決於 LLM 服務是否啟動）
-
-
 def test_cart_summary(client, test_env):
-    """8. GET /cart/summary - 取得購物車摘要"""
+    """7. GET /cart/summary - 取得購物車摘要"""
     from src.api.app import _session_store
     sid = str(uuid.uuid4())
     session = _session_store.get(sid)
@@ -149,7 +140,7 @@ def test_cart_summary(client, test_env):
 
 
 def test_checkout(client, test_env):
-    """9. POST /api/checkout - 完整結帳流程"""
+    """8. POST /api/checkout - 完整結帳流程"""
     from src.api.app import _session_store
     sid = str(uuid.uuid4())
     session = _session_store.get(sid)
@@ -169,7 +160,7 @@ def test_checkout(client, test_env):
 
 
 def test_get_order(client, test_env):
-    """10. GET /orders/{id} - 查詢單筆訂單"""
+    """9. GET /orders/{id} - 查詢單筆訂單"""
     from src.api.app import _session_store
     sid = str(uuid.uuid4())
     session = _session_store.get(sid)
@@ -189,7 +180,7 @@ def test_get_order(client, test_env):
 
 
 def test_list_orders(client, test_env):
-    """11. GET /orders - 列表查詢訂單"""
+    """10. GET /orders - 列表查詢訂單"""
     from src.api.app import _session_store
     # 建立 2 筆訂單
     for _ in range(2):
@@ -208,7 +199,7 @@ def test_list_orders(client, test_env):
 
 
 def test_unauthorized_access(client, monkeypatch):
-    """12. 未授權存取測試（需設定 API_KEY 才會啟用驗證）"""
+    """11. 未授權存取測試（需設定 API_KEY 才會啟用驗證）"""
     import src.api.auth as auth_mod
 
     # 設定 API_KEY 以啟用驗證

@@ -8,9 +8,11 @@ if TYPE_CHECKING:
     from src.services.llm_tool_caller import LLMToolCaller
     from src.dm.tool_registry import ToolRegistry
     from src.services.asr_service import ASRService
+    from src.services.tts_service import TTSService
 
 # 服務實例（由 app.py 模組層級初始化）
 session_store: "SessionStore | None" = None
 llm_caller: "LLMToolCaller | None" = None
 tool_registry: "ToolRegistry | None" = None
 asr_service: "ASRService | None" = None
+tts_service: "TTSService | None" = None

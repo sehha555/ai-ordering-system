@@ -9,6 +9,7 @@ from src.repository.order_repository import OrderRepository
 # 這些是持有 order_repo 單例引用的模組
 import src.repository.order_repository as repo_mod
 import src.api.app as api_mod
+import src.api.checkout_router as checkout_mod
 import src.dm.cart_manager as dm_mod
 
 def get_unique_test_db():
@@ -23,19 +24,22 @@ def test_env():
     old_repos = {
         "repo": repo_mod.order_repo,
         "api": api_mod.order_repo,
+        "checkout": checkout_mod.order_repo,
         "dm": dm_mod.order_repo
     }
-    
+
     # 全面注入測試用 repo
     repo_mod.order_repo = test_repo
     api_mod.order_repo = test_repo
+    checkout_mod.order_repo = test_repo
     dm_mod.order_repo = test_repo
-    
+
     yield test_repo
-    
+
     # 復原單例
     repo_mod.order_repo = old_repos["repo"]
     api_mod.order_repo = old_repos["api"]
+    checkout_mod.order_repo = old_repos["checkout"]
     dm_mod.order_repo = old_repos["dm"]
     
     # 清理檔案 (retry Windows 鎖定)

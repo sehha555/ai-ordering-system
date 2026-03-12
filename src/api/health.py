@@ -34,13 +34,13 @@ async def readiness():
 
     # 2. Session Store 狀態（透過 ping() 公開方法）
     try:
-        from src.api.app import _session_store
-        store_type = type(_session_store).__name__
+        from src.services import container
+        store_type = type(container.session_store).__name__
         checks["session_store"] = {"type": store_type, "status": "ok"}
 
-        if hasattr(_session_store, "ping"):
+        if hasattr(container.session_store, "ping"):
             try:
-                ok = _session_store.ping()
+                ok = container.session_store.ping()
                 checks["session_store"]["ping"] = "ok" if ok else "failed"
                 if not ok:
                     all_ok = False
@@ -65,8 +65,8 @@ async def readiness():
 
     # 4. ASR 模型已載入
     try:
-        from src.api.app import _asr_service
-        asr_loaded = bool(getattr(_asr_service, "model", None))
+        from src.services import container
+        asr_loaded = bool(getattr(container.asr_service, "model", None))
         checks["asr"] = "ok" if asr_loaded else "not_loaded"
         if not asr_loaded:
             all_ok = False
