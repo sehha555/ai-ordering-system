@@ -825,7 +825,7 @@
   },
   {
     "id": "checkout_ask_dine",
-    "description": "H1: 結帳 — 先問內用外帶",
+    "description": "H1: 結帳 — 回覆帶 [CHECKOUT] tag 並問內用外帶",
     "category": "checkout",
     "session_context": {
       "cart_items": [
@@ -845,15 +845,16 @@
     ],
     "expected_tools": [],
     "expected_response_contains": [
+      "[CHECKOUT]",
       "內用",
       "外帶"
     ],
-    "expected_behavior": "結帳時應先問內用還是外帶，不直接 call finalize_order"
+    "expected_behavior": "結帳時回覆帶 [CHECKOUT] tag 並問內用外帶，不 call 任何工具"
   },
   {
     "id": "checkout_multi_round",
-    "description": "H2: 結帳多輪 — 內用外帶→付款方式→完成",
-    "category": "multi_round",
+    "description": "H2: 結帳觸發 — 回覆帶 [CHECKOUT] tag 並問內用外帶",
+    "category": "checkout",
     "session_context": {
       "cart_items": [
         "起司蛋餅 x1"
@@ -868,38 +869,15 @@
       {
         "role": "user",
         "content": "不用了 結帳"
-      },
-      {
-        "role": "assistant",
-        "content": "內用還是外帶"
-      },
-      {
-        "role": "user",
-        "content": "外帶"
-      },
-      {
-        "role": "assistant",
-        "content": "現金還是行動支付"
-      },
-      {
-        "role": "user",
-        "content": "現金"
       }
     ],
-    "expected_tools": [
-      "finalize_order"
+    "expected_tools": [],
+    "expected_response_contains": [
+      "[CHECKOUT]",
+      "內用",
+      "外帶"
     ],
-    "expected_args": [
-      {
-        "name": "finalize_order",
-        "args": {
-          "dine_type": "外帶",
-          "payment_method": "cash"
-        }
-      }
-    ],
-    "expected_response_contains": [],
-    "expected_behavior": "內用外帶+付款方式齊全後 call finalize_order(外帶, 現金)"
+    "expected_behavior": "結帳觸發時回覆帶 [CHECKOUT] tag 並問內用外帶，不 call 任何工具"
   },
   {
     "id": "checkout_empty_cart",
@@ -1076,7 +1054,7 @@
   },
   {
     "id": "long_simple_flow",
-    "description": "K1: 簡單完整流程 — 點飯糰→蛋餅→結帳",
+    "description": "K1: 簡單完整流程 — 點飯糰→蛋餅→結帳觸發",
     "category": "long_conversation",
     "session_context": {
       "cart_items": [
@@ -1112,43 +1090,18 @@
       },
       {
         "role": "user",
-        "content": "不用了"
-      },
-      {
-        "role": "assistant",
-        "content": "內用還是外帶"
-      },
-      {
-        "role": "user",
-        "content": "內用"
-      },
-      {
-        "role": "assistant",
-        "content": "現金還是行動支付"
-      },
-      {
-        "role": "user",
-        "content": "現金"
+        "content": "不用了 結帳"
       }
     ],
-    "expected_tools": [
-      "finalize_order"
+    "expected_tools": [],
+    "expected_response_contains": [
+      "[CHECKOUT]"
     ],
-    "expected_args": [
-      {
-        "name": "finalize_order",
-        "args": {
-          "dine_type": "內用",
-          "payment_method": "cash"
-        }
-      }
-    ],
-    "expected_response_contains": [],
-    "expected_behavior": "完整走完結帳流程，call finalize_order(內用, 現金)"
+    "expected_behavior": "點餐完畢客人說結帳，回覆帶 [CHECKOUT] tag，不 call 任何工具"
   },
   {
     "id": "long_real_complex",
-    "description": "K2: 真實複雜流程 — 大量品項逐一補齊後結帳",
+    "description": "K2: 真實複雜流程 — 大量品項逐一補齊後結帳觸發",
     "category": "long_conversation",
     "session_context": {
       "cart_items": [
@@ -1187,39 +1140,14 @@
       },
       {
         "role": "user",
-        "content": "兩份薯餅 就這樣"
-      },
-      {
-        "role": "assistant",
-        "content": "內用還是外帶"
-      },
-      {
-        "role": "user",
-        "content": "外帶"
-      },
-      {
-        "role": "assistant",
-        "content": "現金還是行動支付"
-      },
-      {
-        "role": "user",
-        "content": "行動支付"
+        "content": "兩份薯餅 就這樣 結帳"
       }
     ],
-    "expected_tools": [
-      "finalize_order"
+    "expected_tools": [],
+    "expected_response_contains": [
+      "[CHECKOUT]"
     ],
-    "expected_args": [
-      {
-        "name": "finalize_order",
-        "args": {
-          "dine_type": "外帶",
-          "payment_method": "行動"
-        }
-      }
-    ],
-    "expected_response_contains": [],
-    "expected_behavior": "全部品項正確處理，最後 call finalize_order(外帶, 行動支付)"
+    "expected_behavior": "全部品項正確處理，客人說結帳後回覆帶 [CHECKOUT] tag，不 call 任何工具"
   },
   {
     "id": "long_off_topic_recovery",
