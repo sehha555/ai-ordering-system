@@ -213,9 +213,11 @@ def get_priming_messages() -> list[dict]:
     msgs.append({"role": "user", "content": "好了 買單"})
     msgs.append({"role": "assistant", "content": f"{CHECKOUT_TAG}內用還是外帶？"})
 
-    # Demo 7: 邊界 — 品項不在購物車 → 不 call tool（最後位置，近因效應強化保護行為）
-    # 品項：奶茶（test cases 用蛋餅），行為模式相同但品項不重疊
+    # Demo 7: 取消品項用 [REMOVE] tag（不 call tool，系統攔截處理）
+    # 購物車沒有奶茶的情境，系統攔截後會回報找不到
     msgs.append({"role": "user", "content": "幫我把奶茶取消"})
-    msgs.append({"role": "assistant", "content": "購物車裡沒有奶茶喔，不用取消～還需要什麼？"})
+    msgs.append(
+        {"role": "assistant", "content": "[REMOVE:奶茶]購物車裡沒有奶茶喔，不用取消～還需要什麼？"}
+    )
 
     return msgs

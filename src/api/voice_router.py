@@ -15,10 +15,46 @@ from src.config.models import TTS_BACKEND
 from src.api.auth import api_key_header
 from src.dm.tool_priming import CHECKOUT_TAG
 
+import re
+
 # 結帳狀態機常數
 _CK_DINE = "CHECKOUT_DINE"
 _CK_PAY = "CHECKOUT_PAY"
 _CK_STATES = (_CK_DINE, _CK_PAY)
+
+# 偵測點餐意圖的關鍵字（結帳中反悔 → 退出結帳回 LLM）
+_ORDER_INTENT_KEYWORDS = [
+    "飯糰",
+    "蛋餅",
+    "吐司",
+    "漢堡",
+    "饅頭",
+    "鐵板麵",
+    "薯餅",
+    "蘿蔔糕",
+    "蔥抓餅",
+    "餡餅",
+    "點心",
+    "果醬吐司",
+    "豆漿",
+    "奶茶",
+    "紅茶",
+    "綠茶",
+    "咖啡",
+    "果汁",
+    "套餐",
+    "加一",
+    "再一",
+    "多一",
+    "還要",
+    "點一",
+    "來一",
+    "給我",
+    "我要",
+]
+
+# [REMOVE] tag 正則
+_REMOVE_RE = re.compile(r"\[REMOVE:(.+?)\]")
 
 router = APIRouter()
 
@@ -68,8 +104,29 @@ class StreamingDMAdapter:
             return "line_pay"
         return None
 
+    @staticmethod
+    def _has_order_intent(text: str) -> bool:
+        """檢查 text 是否包含點餐意圖關鍵字"""
+        return any(kw in text for kw in _ORDER_INTENT_KEYWORDS)
+
+    @staticmethod
+    def _patch_last_assistant(history: list[dict], content: str) -> None:
+        """覆寫 history 中最後一條 assistant 回覆"""
+        for msg in reversed(history):
+            if msg.get("role") == "assistant":
+                msg["content"] = content
+                return
+
+    def _exit_checkout(self, session: dict, _session_store) -> None:
+        """清除結帳狀態並回寫 session（反悔出口用）"""
+        session.pop("checkout_status", None)
+        session.pop("checkout_dine_type", None)
+        _session_store.set(self._session_id, session)
+
     async def _checkout_step(self, text: str, session: dict):
-        """結帳狀態機：根據 checkout_status 處理 user input，不經 LLM"""
+        """結帳狀態機：根據 checkout_status 處理 user input，不經 LLM。
+        未 yield 任何事件 = 反悔退出，caller 應 fallthrough 到 LLM。
+        """
         from src.services import container
         from src.dm import cart_manager
 
@@ -88,6 +145,10 @@ class StreamingDMAdapter:
                 session["checkout_dine_type"] = dine
                 session["checkout_status"] = _CK_PAY
                 reply = "現金還是行動支付？"
+            elif self._has_order_intent(text):
+                # 反悔：intent 檢查必須在 parse 失敗後才執行
+                self._exit_checkout(session, _session_store)
+                return
             else:
                 reply = "請問是內用還是外帶？"
 
@@ -102,7 +163,6 @@ class StreamingDMAdapter:
                     dine_type=dine,
                     payment_method=pay,
                 )
-                # 清除結帳狀態
                 session.pop("checkout_status", None)
                 session.pop("checkout_dine_type", None)
                 if result.get("ok"):
@@ -111,6 +171,10 @@ class StreamingDMAdapter:
                     reply = f"好，{order_number}號～"
                 else:
                     reply = result.get("message", "結帳失敗，請再試一次")
+            elif self._has_order_intent(text):
+                # 反悔：intent 檢查必須在 parse 失敗後才執行
+                self._exit_checkout(session, _session_store)
+                return
             else:
                 reply = "請問要現金還是行動支付？"
 
@@ -150,9 +214,13 @@ class StreamingDMAdapter:
 
         # ── 結帳狀態機攔截：不經 LLM ──
         if session.get("checkout_status") in _CK_STATES:
+            yielded = False
             async for evt in self._checkout_step(text, session):
+                yielded = True
                 yield evt
-            return
+            if yielded:
+                return
+            # 反悔出口：_checkout_step 已 in-place 清除狀態並回寫，直接 fallthrough
 
         logger.info(
             "[VOICE-STREAM] LLM 串流處理: '{}', 購物車: {} 項", text, len(session.get("cart", []))
@@ -200,11 +268,39 @@ class StreamingDMAdapter:
                     else:
                         session["checkout_status"] = _CK_DINE
                         full_text = full_text.replace(CHECKOUT_TAG, "")
-                    # 覆寫 history 中最後一條 assistant 回覆
-                    for msg in reversed(session["llm_history"]):
-                        if msg.get("role") == "assistant":
-                            msg["content"] = full_text
-                            break
+                    self._patch_last_assistant(session["llm_history"], full_text)
+
+                # ── [REMOVE:...] 攔截 ──
+                if "[REMOVE:" in full_text:
+                    remove_match = _REMOVE_RE.search(full_text)
+                    if remove_match:
+                        remove_target = remove_match.group(1).strip()
+                        cart = session.get("cart", [])
+                        remove_result: dict = {"ok": False, "message": "移除失敗"}
+
+                        if remove_target == "all":
+                            remove_result = _tool_registry.remove_from_cart(all=True)
+                        elif remove_target == "last":
+                            remove_result = _tool_registry.remove_from_cart(last=True)
+                        else:
+                            matched_id = None
+                            for item in cart:
+                                if remove_target in cart_manager.format_item(item):
+                                    matched_id = item.get("item_id")
+                                    break
+                            if matched_id:
+                                remove_result = _tool_registry.remove_from_cart(item_id=matched_id)
+                            else:
+                                remove_result = {
+                                    "ok": False,
+                                    "message": f"購物車裡沒有{remove_target}",
+                                }
+
+                        full_text = _REMOVE_RE.sub("", full_text).strip()
+                        if not full_text:
+                            msg_text = remove_result.get("message", "已移除")
+                            full_text = f"{msg_text}～還需要什麼？"
+                        self._patch_last_assistant(session["llm_history"], full_text)
 
                 _session_store.set(self._session_id, session)
 

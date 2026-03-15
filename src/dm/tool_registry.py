@@ -1117,38 +1117,8 @@ class ToolRegistry:
                     },
                 },
             },
-            # update_draft 和 modify_cart_item 從 schema 移除（減少 tool 數量，避免模型誤用）
-            # 方法保留在 tool_map 供前端/內部呼叫
-            {
-                "type": "function",
-                "function": {
-                    "name": "remove_from_cart",
-                    "description": "從購物車移除品項。當客人說「把飯糰取消」「移除最後一個」「全部清掉」時調用。item_id=指定品項（優先），index=指定位置，last=最後一項，all=清空。購物車空時不調用。",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "item_id": {
-                                "type": "string",
-                                "description": "品項 ID（優先），如 riceball_1、drink_2",
-                            },
-                            "index": {
-                                "type": "integer",
-                                "description": "品項索引（1 開始），不能與 last 或 all 同時使用",
-                            },
-                            "last": {
-                                "type": "boolean",
-                                "description": "是否移除最後一項",
-                                "default": False,
-                            },
-                            "all": {
-                                "type": "boolean",
-                                "description": "是否清空購物車",
-                                "default": False,
-                            },
-                        },
-                    },
-                },
-            },
+            # update_draft / modify_cart_item / remove_from_cart 從 schema 移除
+            # 方法保留在 tool_map 供 voice_router 直接呼叫
             {
                 "type": "function",
                 "function": {
