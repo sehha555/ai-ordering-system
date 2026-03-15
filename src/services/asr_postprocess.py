@@ -1,9 +1,13 @@
 """ASR 輸出後處理：簡轉繁 + 領域詞彙修正 + 無意義文本過濾"""
+
 import re
 import opencc
 
 _converter = opencc.OpenCC("s2twp")  # 簡體→繁體（台灣用語偏好）
-_PUNCTUATION_RE = re.compile(r'[，。？！、；：「」,.?!\s]')
+_PUNCTUATION_RE = re.compile(r"[，。？！、；：「」,.?!\s]")
+
+# 語氣詞黑名單：單獨出現時無意義，不應觸發 LLM 呼叫（單字元，用 character class 一次比對）
+_FILLER_RE = re.compile(r"[嗯啊呃喔哦欸唉嘿哈呀噯誒吖嘎嗚啦]")
 
 # 領域詞彙修正表：ASR 常見錯誤 → 正確菜單用語
 # 同時包含簡體和 opencc 轉繁後的錯誤詞，確保兩階段都能修正
@@ -135,8 +139,10 @@ def postprocess(text: str) -> str:
         if wrong in text:
             text = text.replace(wrong, correct)
     text = text.strip()
-    # Step 3: 過濾無意義結果（純標點、單字等 — VAD 誤觸空白音訊常產生「。」）
-    content = _PUNCTUATION_RE.sub('', text)
-    if len(content) < 2:
+    # Step 2.5: 語氣詞過濾（只用於判斷，不修改原始文本）
+    content_check = _FILLER_RE.sub("", text)
+    # Step 3: 過濾無意義結果（純標點、單字、純語氣詞）
+    content_check = _PUNCTUATION_RE.sub("", content_check)
+    if len(content_check) < 2:
         return ""
     return text

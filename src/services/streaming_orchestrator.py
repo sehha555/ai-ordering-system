@@ -14,7 +14,7 @@ from src.utils import SENTENCE_PUNCTS as _SENTENCE_PUNCTS
 
 # 對話 log 目錄（lazy init，首次寫入時才建立）
 _CONV_LOG_DIR = Path(__file__).resolve().parents[2] / "logs" / "conversations"
-_SAFE_ID_RE = _re.compile(r'[^\w\-]')
+_SAFE_ID_RE = _re.compile(r"[^\w\-]")
 
 
 def _append_turn_log(session_id: str | None, turn: dict) -> None:
@@ -22,7 +22,7 @@ def _append_turn_log(session_id: str | None, turn: dict) -> None:
     if not session_id:
         return
     _CONV_LOG_DIR.mkdir(parents=True, exist_ok=True)
-    safe_id = _SAFE_ID_RE.sub('_', session_id)
+    safe_id = _SAFE_ID_RE.sub("_", session_id)
     path = _CONV_LOG_DIR / f"{safe_id}.jsonl"
     try:
         with open(path, "a", encoding="utf-8") as f:
@@ -30,8 +30,9 @@ def _append_turn_log(session_id: str | None, turn: dict) -> None:
     except (OSError, TypeError, ValueError) as e:
         logger.warning("[CONV_LOG] 寫入失敗: {}", e)
 
+
 # 自適應分句閾值
-_MIN_SENTENCE_CHARS = 4   # 太短不送（繼續累積）
+_MIN_SENTENCE_CHARS = 4  # 太短不送（繼續累積）
 _MAX_SENTENCE_CHARS = 40  # 超長強制切（不等標點）
 
 # tool call 中間狀態訊息
@@ -57,12 +58,14 @@ def _format_cart_items(cart: list) -> list:
             price = cart_manager.extract_total(pi, qty)
         else:
             price = 0
-        items.append({
-            "name": name,
-            "details": "",
-            "price": price,
-            "quantity": qty,
-        })
+        items.append(
+            {
+                "name": name,
+                "details": "",
+                "price": price,
+                "quantity": qty,
+            }
+        )
     return items
 
 
@@ -80,7 +83,7 @@ class StreamingOrchestrator:
         每個 yield 回傳 (sse_event, updated_first_audio, ttfa_or_None)"""
         cached = tts_cache.get(text)
         if cached:
-            b64 = base64.b64encode(cached).decode('utf-8')
+            b64 = base64.b64encode(cached).decode("utf-8")
             ttfa = None
             if first_audio:
                 ttfa = time.perf_counter() - request_start
@@ -94,7 +97,7 @@ class StreamingOrchestrator:
                     chunks.append(chunk)
                 if chunks:
                     audio = b"".join(chunks)
-                    b64 = base64.b64encode(audio).decode('utf-8')
+                    b64 = base64.b64encode(audio).decode("utf-8")
                     ttfa = None
                     if first_audio:
                         ttfa = time.perf_counter() - request_start
@@ -127,11 +130,13 @@ class StreamingOrchestrator:
                 status_msg = _TOOL_STATUS_MAP.get(tool_name, "處理中...")
                 yield {"event": "status", "data": {"message": status_msg}}
                 logger.info("[{}] tool_call status: {} → {}", log_prefix, tool_name, status_msg)
-                tool_calls_log.append({
-                    "name": tool_name,
-                    "args": tc.get("function", {}).get("arguments"),
-                    "result": event.get("tool_result"),
-                })
+                tool_calls_log.append(
+                    {
+                        "name": tool_name,
+                        "args": tc.get("function", {}).get("arguments"),
+                        "result": event.get("tool_result"),
+                    }
+                )
 
             elif evt_type == "early_tts":
                 early_text = event.get("content", "").strip()
@@ -140,6 +145,21 @@ class StreamingOrchestrator:
                         tts_start = time.perf_counter()
                     async for evt, updated_first, ttfa in self._send_tts(
                         early_text, request_start, first_audio, "early_tts"
+                    ):
+                        yield evt
+                        first_audio = updated_first
+                        if ttfa is not None:
+                            ttfa_elapsed = ttfa
+
+            elif evt_type == "fallback":
+                # LLM 超時或異常降級：送 TTS 友善回覆
+                fallback_text = event.get("content", "").strip()
+                if fallback_text:
+                    full_text = fallback_text
+                    if tts_start is None:
+                        tts_start = time.perf_counter()
+                    async for evt, updated_first, ttfa in self._send_tts(
+                        fallback_text, request_start, first_audio, "fallback"
                     ):
                         yield evt
                         first_audio = updated_first
@@ -160,8 +180,8 @@ class StreamingOrchestrator:
                                 cut_idx = i
                         if cut_idx == -1:
                             cut_idx = _MAX_SENTENCE_CHARS - 1
-                        sentence = buffer[:cut_idx + 1]
-                        buffer = buffer[cut_idx + 1:]
+                        sentence = buffer[: cut_idx + 1]
+                        buffer = buffer[cut_idx + 1 :]
                     else:
                         cut_idx = -1
                         for i, ch in enumerate(buffer):
@@ -170,18 +190,18 @@ class StreamingOrchestrator:
                                 break
                         if cut_idx == -1:
                             break
-                        sentence = buffer[:cut_idx + 1]
+                        sentence = buffer[: cut_idx + 1]
                         if len(sentence.strip()) < _MIN_SENTENCE_CHARS:
                             next_cut = -1
-                            for i, ch in enumerate(buffer[cut_idx + 1:]):
+                            for i, ch in enumerate(buffer[cut_idx + 1 :]):
                                 if ch in _SENTENCE_PUNCTS:
                                     next_cut = cut_idx + 1 + i
                                     break
                             if next_cut == -1:
                                 break
-                            sentence = buffer[:next_cut + 1]
+                            sentence = buffer[: next_cut + 1]
                             cut_idx = next_cut
-                        buffer = buffer[cut_idx + 1:]
+                        buffer = buffer[cut_idx + 1 :]
 
                     if not sentence.strip():
                         continue
@@ -231,10 +251,13 @@ class StreamingOrchestrator:
         # Checkout Preview（preview_checkout tool 結果）
         preview_result = context_snapshot.get("preview_result")
         if preview_result and preview_result.get("preview"):
-            yield {"event": "checkout_preview", "data": {
-                "dine_type": preview_result.get("dine_type"),
-                "payment_method": preview_result.get("payment_method"),
-            }}
+            yield {
+                "event": "checkout_preview",
+                "data": {
+                    "dine_type": preview_result.get("dine_type"),
+                    "payment_method": preview_result.get("payment_method"),
+                },
+            }
 
         tts_elapsed = (time.perf_counter() - tts_start) if tts_start else 0
         total_elapsed = time.perf_counter() - request_start
@@ -249,22 +272,27 @@ class StreamingOrchestrator:
             total_s=total_elapsed,
         )
 
-        _append_turn_log(self.session_id, {
-            "ts": datetime.now().isoformat(),
-            "asr_text": f"[{log_prefix}] {text}" if log_prefix != "SSE-v2" else text,
-            "tool_calls": tool_calls_log,
-            "response": full_text,
-            "cart_count": len(cart),
-            "perf": {
-                "asr_s": round(asr_elapsed, 3),
-                "dm_s": round(dm_elapsed, 3),
-                "ttfa_s": round(ttfa_elapsed, 3) if ttfa_elapsed else None,
-                "tts_s": round(tts_elapsed, 3),
-                "total_s": round(total_elapsed, 3),
+        _append_turn_log(
+            self.session_id,
+            {
+                "ts": datetime.now().isoformat(),
+                "asr_text": f"[{log_prefix}] {text}" if log_prefix != "SSE-v2" else text,
+                "tool_calls": tool_calls_log,
+                "response": full_text,
+                "cart_count": len(cart),
+                "perf": {
+                    "asr_s": round(asr_elapsed, 3),
+                    "dm_s": round(dm_elapsed, 3),
+                    "ttfa_s": round(ttfa_elapsed, 3) if ttfa_elapsed else None,
+                    "tts_s": round(tts_elapsed, 3),
+                    "total_s": round(total_elapsed, 3),
+                },
             },
-        })
+        )
 
-    async def process_audio_stream_v2(self, audio_bytes: bytes, session_id: str = None) -> AsyncIterator[Dict[str, Any]]:
+    async def process_audio_stream_v2(
+        self, audio_bytes: bytes, session_id: str = None
+    ) -> AsyncIterator[Dict[str, Any]]:
         """串流版流程：ASR → DM 串流 → 分段 TTS"""
         if session_id:
             self.session_id = session_id
@@ -294,13 +322,17 @@ class StreamingOrchestrator:
         async for evt in self._run_dm_pipeline(text, request_start, asr_elapsed, "SSE-v2"):
             yield evt
 
-    async def process_text_stream(self, text: str, session_id: str = None) -> AsyncIterator[Dict[str, Any]]:
+    async def process_text_stream(
+        self, text: str, session_id: str = None
+    ) -> AsyncIterator[Dict[str, Any]]:
         """純文字輸入版：跳過 ASR，直接進 DM → TTS pipeline"""
         if session_id:
             self.session_id = session_id
 
         request_start = time.perf_counter()
-        logger.info("[SSE-text] 開始純文字串流處理, session_id={}, text='{}'", self.session_id, text)
+        logger.info(
+            "[SSE-text] 開始純文字串流處理, session_id={}, text='{}'", self.session_id, text
+        )
 
         yield {"event": "thinking", "data": {}}
         yield {"event": "transcription", "data": {"text": text}}

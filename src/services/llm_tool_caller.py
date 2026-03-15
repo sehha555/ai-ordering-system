@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import json
 import re
 import time
@@ -13,27 +13,28 @@ from src.dm.tool_priming import get_priming_messages
 
 _PRIMING_MESSAGES = get_priming_messages()
 _NO_THINK_PREFIX = "/no_think\n"  # 關閉 Qwen3 thinking mode，降低延遲
+_PER_STEP_TIMEOUT = 15.0  # run_turn_stream 每步 LLM 呼叫上限（秒）
 
 from src.utils import SENTENCE_PUNCTS as _SENTENCE_PUNCTS
 
 # Qwen 模型有時把 tool call 輸出到 content 而非 tool_calls 欄位
 _TOOL_CALL_RE = re.compile(
-    r'[<\|im_start\|>]*\s*'           # 可選的 <|im_start|> 前綴
-    r'(?:<tool_call>\s*)?'             # 可選的 <tool_call> 標籤
-    r'(\{["\s]*"?name"?\s*:.*?\})'     # JSON body
-    r'\s*(?:</tool_call>)?',           # 可選的 </tool_call> 標籤
+    r"[<\|im_start\|>]*\s*"  # 可選的 <|im_start|> 前綴
+    r"(?:<tool_call>\s*)?"  # 可選的 <tool_call> 標籤
+    r'(\{["\s]*"?name"?\s*:.*?\})'  # JSON body
+    r"\s*(?:</tool_call>)?",  # 可選的 </tool_call> 標籤
     re.DOTALL,
 )
 
 # Qwen3.5-9B 常見的「系統有問題」幻覺清除
 _APOLOGY_SYSTEM_RE = re.compile(
-    r'[，。！]?\s*(?:不好意思|抱歉|對不起)[^。！]*(?:系統|有問題|出錯|故障|異常)[^。！]*[。！]?'
+    r"[，。！]?\s*(?:不好意思|抱歉|對不起)[^。！]*(?:系統|有問題|出錯|故障|異常)[^。！]*[。！]?"
 )
 
 
 def _strip_hallucinated_apology(text: str) -> str:
     """移除模型在 tool result 後幻想出的系統錯誤道歉"""
-    return _APOLOGY_SYSTEM_RE.sub('', text).strip()
+    return _APOLOGY_SYSTEM_RE.sub("", text).strip()
 
 
 def _is_followup_question(text: str) -> bool:
@@ -41,9 +42,9 @@ def _is_followup_question(text: str) -> bool:
     if "？" not in text:
         return False
     # 移除通用確認語（不算追問）
-    cleaned = re.sub(r'還要什麼[嗎？]*', '', text)
-    cleaned = re.sub(r'還需要什麼[嗎？]*', '', cleaned)
-    cleaned = re.sub(r'好[，,～~]?\s*', '', cleaned)
+    cleaned = re.sub(r"還要什麼[嗎？]*", "", text)
+    cleaned = re.sub(r"還需要什麼[嗎？]*", "", cleaned)
+    cleaned = re.sub(r"好[，,～~]?\s*", "", cleaned)
     # 清理後仍有「？」→ 是追問缺資訊
     return "？" in cleaned
 
@@ -102,8 +103,14 @@ class LLMToolCaller:
             try:
                 r = requests.post(self.base_url, json=payload, timeout=self.timeout)
                 if r.status_code >= 500 and attempt < self.max_retries:
-                    delay = self.retry_base_delay * (2 ** attempt)
-                    logger.warning("[LLM] 5xx 錯誤 ({}), {}s 後重試 ({}/{})", r.status_code, delay, attempt + 1, self.max_retries)
+                    delay = self.retry_base_delay * (2**attempt)
+                    logger.warning(
+                        "[LLM] 5xx 錯誤 ({}), {}s 後重試 ({}/{})",
+                        r.status_code,
+                        delay,
+                        attempt + 1,
+                        self.max_retries,
+                    )
                     time.sleep(delay)
                     continue
                 r.raise_for_status()
@@ -111,8 +118,14 @@ class LLMToolCaller:
             except (requests.ConnectionError, requests.Timeout) as e:
                 last_exc = e
                 if attempt < self.max_retries:
-                    delay = self.retry_base_delay * (2 ** attempt)
-                    logger.warning("[LLM] 連線失敗 ({}), {}s 後重試 ({}/{})", type(e).__name__, delay, attempt + 1, self.max_retries)
+                    delay = self.retry_base_delay * (2**attempt)
+                    logger.warning(
+                        "[LLM] 連線失敗 ({}), {}s 後重試 ({}/{})",
+                        type(e).__name__,
+                        delay,
+                        attempt + 1,
+                        self.max_retries,
+                    )
                     time.sleep(delay)
                     continue
                 raise
@@ -194,7 +207,7 @@ class LLMToolCaller:
             return None
 
         # 清理 content 中的 raw tool call 文字，避免外洩給使用者
-        cleaned = content[:match.start()].strip()
+        cleaned = content[: match.start()].strip()
         msg["content"] = cleaned
 
         logger.info("[LLM] fallback 解析到 tool_call: {}", name)
@@ -259,7 +272,9 @@ class LLMToolCaller:
         logger.info("[LLM] 開始 run_turn: '{}'", user_text)
 
         # /no_think 關閉 Qwen3 thinking mode，大幅降低延遲
-        messages: List[Dict[str, Any]] = [{"role": "system", "content": _NO_THINK_PREFIX + system_prompt}]
+        messages: List[Dict[str, Any]] = [
+            {"role": "system", "content": _NO_THINK_PREFIX + system_prompt}
+        ]
         messages.extend(_PRIMING_MESSAGES)  # few-shot priming 讓模型學會用 tool_calls
         messages.extend(history)
         if context:
@@ -278,7 +293,13 @@ class LLMToolCaller:
             choices = resp.get("choices") or []
             if not choices:
                 logger.error("[LLM] run_turn 回傳空 choices: {}", resp)
-                return {"ok": False, "error": "llm_empty_response", "assistant_text": "抱歉，請再說一次", "history": history, "tool_trace": last_tool_trace}
+                return {
+                    "ok": False,
+                    "error": "llm_empty_response",
+                    "assistant_text": "抱歉，請再說一次",
+                    "history": history,
+                    "tool_trace": last_tool_trace,
+                }
             msg = choices[0]["message"]
             tool_call = self.pick_first_tool_call(resp)
 
@@ -289,8 +310,10 @@ class LLMToolCaller:
                 # Response Template：ok:true 後用 code 構建回覆，取代模型生成
                 assistant_text = _apply_response_template(assistant_text, last_tool_trace)
 
-                new_history = history + [{"role": "user", "content": user_text},
-                                        {"role": "assistant", "content": assistant_text}]
+                new_history = history + [
+                    {"role": "user", "content": user_text},
+                    {"role": "assistant", "content": assistant_text},
+                ]
                 logger.info("[LLM] run_turn 完成, tool_calls={}", len(last_tool_trace))
                 return {
                     "ok": True,
@@ -300,11 +323,13 @@ class LLMToolCaller:
                 }
 
             # 1) 把模型的 tool_call 記到 messages（OpenAI 協議習慣是 assistant 帶 tool_calls）
-            messages.append({
-                "role": "assistant",
-                "content": msg.get("content"),
-                "tool_calls": msg.get("tool_calls", []),
-            })
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": msg.get("content"),
+                    "tool_calls": msg.get("tool_calls", []),
+                }
+            )
 
             # 2) 執行工具
             exec_result = self.execute_tool_call(
@@ -312,23 +337,34 @@ class LLMToolCaller:
                 tool_map=tool_map,
                 allowed_args=allowed_args,
             )
-            logger.info("[LLM] tool_call: {} → ok={}", tool_call.get("function", {}).get("name"), exec_result.get("ok"))
+            logger.info(
+                "[LLM] tool_call: {} → ok={}",
+                tool_call.get("function", {}).get("name"),
+                exec_result.get("ok"),
+            )
             last_tool_trace.append({"tool_call": tool_call, "exec": exec_result})
 
             # 3) 把工具輸出回灌給模型（role=tool）
             tool_call_id = tool_call.get("id", "toolcall_0")
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tool_call_id,
-                "content": json.dumps(exec_result, ensure_ascii=False),
-            })
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tool_call_id,
+                    "content": json.dumps(exec_result, ensure_ascii=False),
+                }
+            )
 
             # 4) ok:true 時 assistant prefill 引導正確回覆格式（避免「系統有問題」幻覺）
             if exec_result.get("ok"):
                 messages.append({"role": "assistant", "content": "好，", "prefix": True})
 
         logger.warning("[LLM] run_turn 超過最大步數 {}", self.max_steps)
-        return {"ok": False, "error": "max_steps_exceeded", "history": history, "tool_trace": last_tool_trace}
+        return {
+            "ok": False,
+            "error": "max_steps_exceeded",
+            "history": history,
+            "tool_trace": last_tool_trace,
+        }
 
     async def ping(
         self,
@@ -417,7 +453,9 @@ class LLMToolCaller:
         logger.info("[LLM] 開始 run_turn_stream: '{}'", user_text)
 
         # /no_think 關閉 Qwen3 thinking mode，大幅降低延遲
-        messages: List[Dict[str, Any]] = [{"role": "system", "content": _NO_THINK_PREFIX + system_prompt}]
+        messages: List[Dict[str, Any]] = [
+            {"role": "system", "content": _NO_THINK_PREFIX + system_prompt}
+        ]
         messages.extend(_PRIMING_MESSAGES)  # few-shot priming 讓模型學會用 tool_calls
         messages.extend(history)
         if context:
@@ -426,20 +464,46 @@ class LLMToolCaller:
 
         last_tool_trace: List[Dict[str, Any]] = []
 
-        for _ in range(self.max_steps):
-            with PerfTimer("llm_api_call"):
-                resp = await self.call_llm_async(
-                    messages=messages,
-                    tools_schema=tools_schema,
-                    tool_choice="auto",
-                )
+        for step in range(self.max_steps):
+            try:
+                with PerfTimer("llm_api_call"):
+                    resp = await asyncio.wait_for(
+                        self.call_llm_async(
+                            messages=messages,
+                            tools_schema=tools_schema,
+                            tool_choice="auto",
+                        ),
+                        timeout=_PER_STEP_TIMEOUT,
+                    )
+            except (asyncio.TimeoutError, Exception) as exc:
+                if isinstance(exc, asyncio.TimeoutError):
+                    logger.warning(
+                        "[LLM] run_turn_stream step {} timeout ({:.0f}s)", step, _PER_STEP_TIMEOUT
+                    )
+                    fallback = "不好意思，我需要多一點時間處理，請再說一次好嗎？"
+                else:
+                    logger.error("[LLM] run_turn_stream step {} 異常: {}", step, exc)
+                    fallback = "不好意思，系統暫時無法處理，請稍後再試"
+                yield {"type": "fallback", "content": fallback}
+                yield {
+                    "type": "done",
+                    "assistant_text": fallback,
+                    "history": history,
+                    "tool_trace": last_tool_trace,
+                }
+                return
 
             choices = resp.get("choices") or []
             if not choices:
                 logger.error("[LLM] run_turn_stream 回傳空 choices: {}", resp)
                 fallback = "抱歉，請再說一次"
                 yield {"type": "text_delta", "content": fallback}
-                yield {"type": "done", "assistant_text": fallback, "history": history, "tool_trace": last_tool_trace}
+                yield {
+                    "type": "done",
+                    "assistant_text": fallback,
+                    "history": history,
+                    "tool_trace": last_tool_trace,
+                }
                 return
             msg = choices[0]["message"]
             tool_call = self.pick_first_tool_call(resp)
@@ -476,34 +540,44 @@ class LLMToolCaller:
                 return
 
             # Tool calling 輪次
-            messages.append({
-                "role": "assistant",
-                "content": msg.get("content"),
-                "tool_calls": msg.get("tool_calls", []),
-            })
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": msg.get("content"),
+                    "tool_calls": msg.get("tool_calls", []),
+                }
+            )
 
             exec_result = self.execute_tool_call(
                 tool_call,
                 tool_map=tool_map,
                 allowed_args=allowed_args,
             )
-            logger.info("[LLM] tool_call: {} → ok={}", tool_call.get("function", {}).get("name"), exec_result.get("ok"))
+            logger.info(
+                "[LLM] tool_call: {} → ok={}",
+                tool_call.get("function", {}).get("name"),
+                exec_result.get("ok"),
+            )
             last_tool_trace.append({"tool_call": tool_call, "exec": exec_result})
 
             yield {"type": "tool_call", "tool_call": tool_call, "exec": exec_result}
 
             # 提前送出 Response Template 作為首段語音，大幅降低 TTFA
             tool_result_data = exec_result.get("result")
-            tool_msg = tool_result_data.get("message", "") if isinstance(tool_result_data, dict) else ""
+            tool_msg = (
+                tool_result_data.get("message", "") if isinstance(tool_result_data, dict) else ""
+            )
             if exec_result.get("ok") and tool_msg:
                 yield {"type": "early_tts", "content": f"好，{tool_msg}～還要什麼？"}
 
             tool_call_id = tool_call.get("id", "toolcall_0")
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tool_call_id,
-                "content": json.dumps(exec_result, ensure_ascii=False),
-            })
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tool_call_id,
+                    "content": json.dumps(exec_result, ensure_ascii=False),
+                }
+            )
 
             # ok:true 時 assistant prefill 引導正確回覆格式
             if exec_result.get("ok"):
@@ -512,5 +586,10 @@ class LLMToolCaller:
         logger.warning("[LLM] run_turn_stream 超過最大步數 {}", self.max_steps)
         fallback = "抱歉，處理您的請求時發生問題，請再說一次"
         yield {"type": "text_delta", "content": fallback}
-        yield {"type": "done", "assistant_text": fallback, "error": "max_steps_exceeded", "history": history, "tool_trace": last_tool_trace}
-
+        yield {
+            "type": "done",
+            "assistant_text": fallback,
+            "error": "max_steps_exceeded",
+            "history": history,
+            "tool_trace": last_tool_trace,
+        }
