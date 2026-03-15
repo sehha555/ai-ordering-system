@@ -1,4 +1,5 @@
 """工具註冊表 - 管理 LLM 可調用的工具"""
+
 from typing import Dict, Any, List, Callable, Optional, Set
 from src.dm.dialogue_manager import DialogueManager
 from src.dm.session_store import InMemorySessionStore
@@ -7,7 +8,11 @@ from src.tools.menu import menu_price_service, menu_state_service
 
 # 導入各工具的別名映射
 from src.tools.riceball_tool import FLAVOR_ALIASES as RICEBALL_ALIASES
-from src.tools.drink_tool import DRINK_ALIASES, SIZE_MAP as DRINK_SIZE_MAP, TEMP_MAP as DRINK_TEMP_MAP
+from src.tools.drink_tool import (
+    DRINK_ALIASES,
+    SIZE_MAP as DRINK_SIZE_MAP,
+    TEMP_MAP as DRINK_TEMP_MAP,
+)
 from src.tools.egg_pancake_tool import EggPancakeTool
 from src.tools.snack_tool import SNACK_ALIASES
 from src.dm.item_rules import check_combo_required
@@ -19,12 +24,18 @@ EGG_PANCAKE_ALIASES = EggPancakeTool.FLAVOR_ALIASES
 
 # 結帳正規化映射（finalize_order / preview_checkout 共用）
 _DINE_TYPE_MAP: Dict[str, str] = {
-    "內用": "dine-in", "外帶": "take-out",
-    "dine-in": "dine-in", "take-out": "take-out",
+    "內用": "dine-in",
+    "外帶": "take-out",
+    "dine-in": "dine-in",
+    "take-out": "take-out",
 }
 _PAYMENT_MAP: Dict[str, str] = {
-    "現金": "cash", "行動支付": "line_pay", "Line Pay": "line_pay",
-    "cash": "cash", "mobile": "line_pay", "line_pay": "line_pay",
+    "現金": "cash",
+    "行動支付": "line_pay",
+    "Line Pay": "line_pay",
+    "cash": "cash",
+    "mobile": "line_pay",
+    "line_pay": "line_pay",
 }
 
 
@@ -57,11 +68,15 @@ class ToolRegistry:
 
     # ============ 別名解析輔助方法 ============
 
-    def _resolve_alias(self, value: Optional[str], aliases: dict, sort_by_len: bool = True) -> Optional[str]:
+    def _resolve_alias(
+        self, value: Optional[str], aliases: dict, sort_by_len: bool = True
+    ) -> Optional[str]:
         """通用別名解析：在 aliases 中找匹配項，回傳標準名稱；無匹配則原樣回傳"""
         if value is None:
             return None
-        candidates = sorted(aliases.keys(), key=len, reverse=True) if sort_by_len else list(aliases.keys())
+        candidates = (
+            sorted(aliases.keys(), key=len, reverse=True) if sort_by_len else list(aliases.keys())
+        )
         for alias in candidates:
             if alias == value or alias in value:
                 return aliases[alias]
@@ -655,13 +670,15 @@ class ToolRegistry:
                 else:
                     price_str = ""
 
-                items.append({
-                    "item_id": item.get("item_id", ""),
-                    "index": i,
-                    "name": name,
-                    "quantity": qty,
-                    "price": price_str,
-                })
+                items.append(
+                    {
+                        "item_id": item.get("item_id", ""),
+                        "index": i,
+                        "name": name,
+                        "quantity": qty,
+                        "price": price_str,
+                    }
+                )
 
             # 格式化 draft 品項
             draft_items = []
@@ -676,11 +693,13 @@ class ToolRegistry:
                 else:
                     name = item.get("flavor") or item.get(item_type) or item_type
 
-                draft_items.append({
-                    "index": i,
-                    "name": name,
-                    "status": "待確認",
-                })
+                draft_items.append(
+                    {
+                        "index": i,
+                        "name": name,
+                        "status": "待確認",
+                    }
+                )
 
             if not cart and not draft:
                 return {
@@ -764,9 +783,13 @@ class ToolRegistry:
             if category == "飯糰":
                 import json as _json
                 import os as _os
+
                 recipes_path = _os.path.join(
                     _os.path.dirname(_os.path.abspath(__file__)),
-                    "..", "tools", "menu", "riceball_recipes.json",
+                    "..",
+                    "tools",
+                    "menu",
+                    "riceball_recipes.json",
                 )
                 try:
                     with open(recipes_path, encoding="utf-8") as _f:
@@ -807,7 +830,7 @@ class ToolRegistry:
             if unpriceable_items:
                 return {
                     "ok": False,
-                    "message": f"以下品項無法計算價格，請確認後重試：{'、'.join(unpriceable_items)}"
+                    "message": f"以下品項無法計算價格，請確認後重試：{'、'.join(unpriceable_items)}",
                 }
 
             # 正規化 dine_type / payment_method
@@ -819,10 +842,12 @@ class ToolRegistry:
 
             # 生成取餐號碼（複用 order_repo）
             from src.repository.order_repository import order_repo
+
             order_number = order_repo.get_next_order_number()
 
             # 建立訂單 payload
             from datetime import datetime
+
             order_id = f"order-{self._session_id}-{datetime.now().timestamp()}"
 
             # 構建品項清單（給前端用）
@@ -832,12 +857,14 @@ class ToolRegistry:
                 pi = cart_manager.get_price_info(item)
                 item_total = cart_manager.extract_total(pi, qty)
                 unit_price = item_total // qty if qty > 0 else 0
-                items_payload.append({
-                    "name": cart_manager.format_item(item),
-                    "quantity": qty,
-                    "unit_price": unit_price,
-                    "subtotal": item_total,
-                })
+                items_payload.append(
+                    {
+                        "name": cart_manager.format_item(item),
+                        "quantity": qty,
+                        "unit_price": unit_price,
+                        "subtotal": item_total,
+                    }
+                )
 
             order_payload = {
                 "order_id": order_id,
@@ -858,9 +885,7 @@ class ToolRegistry:
             # SSE 廣播到 admin 訂單頁面
             try:
                 loop = asyncio.get_running_loop()
-                loop.create_task(
-                    order_broadcaster.broadcast(format_order_for_admin(order_payload))
-                )
+                loop.create_task(order_broadcaster.broadcast(format_order_for_admin(order_payload)))
             except RuntimeError:
                 pass  # 沒有 running loop（CLI 模式）
 
@@ -1071,7 +1096,15 @@ class ToolRegistry:
                         "properties": {
                             "combo_name": {
                                 "type": "string",
-                                "enum": ["套餐一", "套餐二", "套餐三", "套餐四", "套餐A", "套餐B", "兒童餐"],
+                                "enum": [
+                                    "套餐一",
+                                    "套餐二",
+                                    "套餐三",
+                                    "套餐四",
+                                    "套餐A",
+                                    "套餐B",
+                                    "兒童餐",
+                                ],
                                 "description": "套餐名稱，必填",
                             },
                             "rice": {"type": "string", "enum": ["白米", "紫米", "混米"]},
@@ -1132,29 +1165,6 @@ class ToolRegistry:
                     },
                 },
             },
-            {
-                "type": "function",
-                "function": {
-                    "name": "finalize_order",
-                    "description": "完成結帳並送出訂單。當客人確認內用/外帶和付款方式後調用。條件：購物車有品項 + 已確認內用/外帶 + 已確認付款方式，三者都滿足才調用。",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "dine_type": {
-                                "type": "string",
-                                "enum": ["dine-in", "take-out", "內用", "外帶"],
-                                "description": "用餐方式：內用或外帶",
-                            },
-                            "payment_method": {
-                                "type": "string",
-                                "enum": ["cash", "line_pay", "現金", "Line Pay", "行動支付"],
-                                "description": "付款方式：現金或 Line Pay",
-                            },
-                        },
-                        "required": ["dine_type", "payment_method"],
-                    },
-                },
-            },
         ]
 
     def get_tool_map(self) -> Dict[str, Callable[..., Dict[str, Any]]]:
@@ -1193,7 +1203,15 @@ class ToolRegistry:
         """
         return {
             # 品項專屬工具（新）
-            "add_riceball": {"flavor", "rice", "large", "extra_egg", "spicy", "quantity", "customization"},
+            "add_riceball": {
+                "flavor",
+                "rice",
+                "large",
+                "extra_egg",
+                "spicy",
+                "quantity",
+                "customization",
+            },
             "add_drink": {"flavor", "size", "temp", "quantity", "customization"},
             "add_carrier": {"carrier", "flavor", "quantity", "customization"},
             "add_egg_pancake": {"flavor", "quantity", "customization"},
@@ -1209,7 +1227,17 @@ class ToolRegistry:
             "preview_checkout": {"dine_type", "payment_method"},
             # backward compat
             "add_to_cart": {
-                "item_type", "flavor", "rice", "size", "temp", "carrier",
-                "combo_name", "quantity", "large", "extra_egg", "spicy", "customization",
+                "item_type",
+                "flavor",
+                "rice",
+                "size",
+                "temp",
+                "carrier",
+                "combo_name",
+                "quantity",
+                "large",
+                "extra_egg",
+                "spicy",
+                "customization",
             },
         }

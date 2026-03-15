@@ -13,6 +13,12 @@ from src.services.streaming_orchestrator import StreamingOrchestrator
 from src.services.tts_implementations import create_tts_model
 from src.config.models import TTS_BACKEND
 from src.api.auth import api_key_header
+from src.dm.tool_priming import CHECKOUT_TAG
+
+# 結帳狀態機常數
+_CK_DINE = "CHECKOUT_DINE"
+_CK_PAY = "CHECKOUT_PAY"
+_CK_STATES = (_CK_DINE, _CK_PAY)
 
 router = APIRouter()
 
@@ -42,6 +48,91 @@ class StreamingDMAdapter:
     def __init__(self, session_id: str):
         self._session_id = session_id
 
+    # ── 結帳狀態機：keyword parsing ──
+
+    @staticmethod
+    def _parse_dine_type(text: str) -> str | None:
+        t = text.strip()
+        if any(kw in t for kw in ["內用", "這裡吃", "在這吃", "在這裡", "dine"]):
+            return "dine-in"
+        if any(kw in t for kw in ["外帶", "帶走", "打包", "take"]):
+            return "take-out"
+        return None
+
+    @staticmethod
+    def _parse_payment(text: str) -> str | None:
+        t = text.strip()
+        if any(kw in t for kw in ["現金", "cash"]):
+            return "cash"
+        if any(kw in t for kw in ["Line", "line", "行動", "支付", "pay", "Pay", "LINE"]):
+            return "line_pay"
+        return None
+
+    async def _checkout_step(self, text: str, session: dict):
+        """結帳狀態機：根據 checkout_status 處理 user input，不經 LLM"""
+        from src.services import container
+        from src.dm import cart_manager
+
+        _session_store = container.session_store
+        _tool_registry = container.tool_registry
+        _tool_registry.set_session_id(self._session_id)
+
+        status = session.get("checkout_status")
+
+        reply = None
+        finalize_result = None
+
+        if status == _CK_DINE:
+            dine = self._parse_dine_type(text)
+            if dine:
+                session["checkout_dine_type"] = dine
+                session["checkout_status"] = _CK_PAY
+                reply = "現金還是行動支付？"
+            else:
+                reply = "請問是內用還是外帶？"
+
+        elif status == _CK_PAY:
+            pay = self._parse_payment(text)
+            if pay:
+                dine = session.get("checkout_dine_type")
+                if dine is None:
+                    logger.warning("[CHECKOUT] checkout_dine_type missing in CHECKOUT_PAY state")
+                    dine = "dine-in"
+                result = _tool_registry.finalize_order(
+                    dine_type=dine,
+                    payment_method=pay,
+                )
+                # 清除結帳狀態
+                session.pop("checkout_status", None)
+                session.pop("checkout_dine_type", None)
+                if result.get("ok"):
+                    finalize_result = result
+                    order_number = result.get("order_number", "")
+                    reply = f"好，{order_number}號～"
+                else:
+                    reply = result.get("message", "結帳失敗，請再試一次")
+            else:
+                reply = "請問要現金還是行動支付？"
+
+        # 追加對話歷史
+        session["llm_history"].append({"role": "user", "content": text})
+        session["llm_history"].append({"role": "assistant", "content": reply})
+        _session_store.set(self._session_id, session)
+
+        # yield text_delta（給 orchestrator 做 TTS）
+        yield {"type": "text_delta", "text": reply}
+
+        # yield done（僅結帳完成時計算總價）
+        cart = session.get("cart", [])
+        total_price = cart_manager.calculate_cart_total(cart) if finalize_result else 0
+        yield {
+            "type": "done",
+            "cart": cart,
+            "order_payload": {"total_price": total_price},
+            "finalize_result": finalize_result,
+            "preview_result": None,
+        }
+
     async def process_input_stream(self, text: str):
         """串流版：逐 token yield LLM 回應，提供給 orchestrator 做分段 TTS"""
         from src.services import container
@@ -57,7 +148,15 @@ class StreamingDMAdapter:
         session = _session_store.get(self._session_id)
         session.setdefault("llm_history", [])
 
-        logger.info("[VOICE-STREAM] LLM 串流處理: '{}', 購物車: {} 項", text, len(session.get('cart', [])))
+        # ── 結帳狀態機攔截：不經 LLM ──
+        if session.get("checkout_status") in _CK_STATES:
+            async for evt in self._checkout_step(text, session):
+                yield evt
+            return
+
+        logger.info(
+            "[VOICE-STREAM] LLM 串流處理: '{}', 購物車: {} 項", text, len(session.get("cart", []))
+        )
 
         # 構建動態上下文（購物車/待補槽）
         ctx = build_context_message(SessionContext.from_session(session))
@@ -89,10 +188,25 @@ class StreamingDMAdapter:
             elif evt_type == "done":
                 full_text = event.get("assistant_text", "")
                 session["llm_history"] = event.get("history", [])
-                _session_store.set(self._session_id, session)  # Redis 回寫
 
                 if not full_text:
                     full_text = "好的，還需要什麼嗎？"
+
+                # ── [CHECKOUT] 攔截 ──
+                if CHECKOUT_TAG in full_text:
+                    cart = session.get("cart", [])
+                    if not cart:
+                        full_text = "購物車是空的，請先點餐喔～"
+                    else:
+                        session["checkout_status"] = _CK_DINE
+                        full_text = full_text.replace(CHECKOUT_TAG, "")
+                    # 覆寫 history 中最後一條 assistant 回覆
+                    for msg in reversed(session["llm_history"]):
+                        if msg.get("role") == "assistant":
+                            msg["content"] = full_text
+                            break
+
+                _session_store.set(self._session_id, session)
 
                 # 讀取購物車
                 cart = session.get("cart", [])
@@ -124,6 +238,7 @@ class StreamingDMAdapter:
 
 class TextChatRequest(BaseModel):
     """純文字輸入請求（用於自動追問等跳過 ASR 的場景）"""
+
     text: str = Field(..., max_length=500)
     session_id: str
 
@@ -136,10 +251,7 @@ _SSE_HEADERS = {
 
 
 @router.post("/text-chat")
-async def text_chat(
-    request: TextChatRequest,
-    api_key: str = Depends(get_api_key_optional)
-):
+async def text_chat(request: TextChatRequest, api_key: str = Depends(get_api_key_optional)):
     """
     純文字對話 SSE 端點（跳過 ASR）
 
@@ -147,12 +259,18 @@ async def text_chat(
     - 與 /voice-chat 事件格式完全相同
     - 用途：自動追問、文字輸入模式等不需要語音辨識的場景
     """
-    logger.info("[TEXT-CHAT] 收到文字請求: session_id={}, text='{}'", request.session_id, request.text)
+    logger.info(
+        "[TEXT-CHAT] 收到文字請求: session_id={}, text='{}'", request.session_id, request.text
+    )
 
     dm_adapter = StreamingDMAdapter(request.session_id)
-    orchestrator = StreamingOrchestrator(None, dm_adapter, _streaming_tts, session_id=request.session_id)
+    orchestrator = StreamingOrchestrator(
+        None, dm_adapter, _streaming_tts, session_id=request.session_id
+    )
     return StreamingResponse(
-        _sse_wrap(orchestrator.process_text_stream(request.text, session_id=request.session_id), "text"),
+        _sse_wrap(
+            orchestrator.process_text_stream(request.text, session_id=request.session_id), "text"
+        ),
         media_type="text/event-stream",
         headers=_SSE_HEADERS,
     )
@@ -162,7 +280,7 @@ async def text_chat(
 async def voice_chat(
     file: UploadFile = File(...),
     session_id: str = Form(...),
-    api_key: str = Depends(get_api_key_optional)
+    api_key: str = Depends(get_api_key_optional),
 ):
     """
     語音對話 SSE 端點
@@ -177,6 +295,7 @@ async def voice_chat(
     audio_bytes = await file.read()
 
     from src.config.settings import settings
+
     if len(audio_bytes) > settings.MAX_AUDIO_SIZE_BYTES:
         raise HTTPException(status_code=413, detail="音訊檔案超過 10MB 上限")
 
@@ -196,6 +315,7 @@ async def voice_chat(
 
     # 取得服務實例（從服務容器導入）
     from src.services import container
+
     _asr_service = container.asr_service
 
     # 使用啟動時已載入的 TTS 實例
@@ -209,10 +329,17 @@ async def voice_chat(
         async def transcribe(self, audio_bytes: bytes) -> str:
             # pipe 模式：webm bytes → ffmpeg stdin → wav bytes（省去 webm 磁碟 I/O）
             proc = await asyncio.create_subprocess_exec(
-                "ffmpeg", "-y",
-                "-i", "pipe:0",
-                "-ar", "16000", "-ac", "1",
-                "-f", "wav", "pipe:1",
+                "ffmpeg",
+                "-y",
+                "-i",
+                "pipe:0",
+                "-ar",
+                "16000",
+                "-ac",
+                "1",
+                "-f",
+                "wav",
+                "pipe:1",
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
@@ -243,9 +370,13 @@ async def voice_chat(
 
     asr_adapter = ASRAdapter(_asr_service)
     dm_adapter = StreamingDMAdapter(session_id)
-    orchestrator = StreamingOrchestrator(asr_adapter, dm_adapter, streaming_tts, session_id=session_id)
+    orchestrator = StreamingOrchestrator(
+        asr_adapter, dm_adapter, streaming_tts, session_id=session_id
+    )
     return StreamingResponse(
-        _sse_wrap(orchestrator.process_audio_stream_v2(audio_bytes, session_id=session_id), "voice"),
+        _sse_wrap(
+            orchestrator.process_audio_stream_v2(audio_bytes, session_id=session_id), "voice"
+        ),
         media_type="text/event-stream",
         headers=_SSE_HEADERS,
     )
