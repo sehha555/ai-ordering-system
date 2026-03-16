@@ -97,6 +97,7 @@ class StreamingOrchestrator:
                     chunks.append(chunk)
                 if chunks:
                     audio = b"".join(chunks)
+                    tts_cache.put(text, audio)  # runtime cache：後續相同句子直接命中
                     b64 = base64.b64encode(audio).decode("utf-8")
                     ttfa = None
                     if first_audio:

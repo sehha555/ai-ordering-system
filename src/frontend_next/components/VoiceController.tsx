@@ -17,6 +17,7 @@ const VAD_CALIBRATION_FRAMES = 60; // 約 1 秒的校準幀數
 const VAD_THRESHOLD_MULTIPLIER = 2; // 閾值 = 環境噪音平均值 × 倍數
 const VAD_MIN_THRESHOLD = 20; // 最低閾值（原 10 過低，環境雜訊易誤觸）
 const MAX_RECORDING_DURATION = 30000; // 最大錄音時長 30 秒
+const VOICE_FRAMES_REQUIRED = 3; // 連續 ~50ms 超閾值才觸發（防噪音尖峰）
 const SSE_TIMEOUT = 30000; // SSE 回應超時 30 秒（LLM 冷啟動 + tool call 可能很慢）
 
 // 依序嘗試支援的 mimeType，找不到就讓瀏覽器自選
@@ -73,6 +74,7 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
   const vadLoopRef = useRef<number>(0);
   const vadThresholdRef = useRef<number>(VAD_DEFAULT_THRESHOLD);
   const recordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const voiceFrameCountRef = useRef<number>(0); // 連續超閾值幀數（防噪音假觸發）
 
   const recordingStartTimeRef = useRef<number>(0);
 
@@ -156,16 +158,20 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
       if (++frameCount % 4 === 0) setVolume(avg / 255);
 
       if (avg > vadThresholdRef.current) {
+        voiceFrameCountRef.current++;
         silenceStartRef.current = null;
-        if (!isRecordingRef.current) {
+        if (!isRecordingRef.current && voiceFrameCountRef.current >= VOICE_FRAMES_REQUIRED) {
           startRecordingVAD();
         }
-      } else if (isRecordingRef.current) {
-        if (!silenceStartRef.current) {
-          silenceStartRef.current = Date.now();
-        } else if (Date.now() - silenceStartRef.current > SILENCE_DURATION) {
-          stopRecordingVAD();
-          silenceStartRef.current = null;
+      } else {
+        voiceFrameCountRef.current = 0;
+        if (isRecordingRef.current) {
+          if (!silenceStartRef.current) {
+            silenceStartRef.current = Date.now();
+          } else if (Date.now() - silenceStartRef.current > SILENCE_DURATION) {
+            stopRecordingVAD();
+            silenceStartRef.current = null;
+          }
         }
       }
 

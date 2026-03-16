@@ -96,6 +96,35 @@ class LLMToolCaller:
         self.max_retries = max_retries
         self.retry_base_delay = retry_base_delay
 
+    def _build_payload(
+        self,
+        messages: List[Dict[str, Any]],
+        *,
+        temperature: float = 0.3,
+        stream: bool = False,
+        tools_schema: Optional[List[Dict[str, Any]]] = None,
+        tool_choice: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """共用 payload 建構（sampling 參數統一管理）"""
+        payload: Dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "top_p": 0.8,
+            "top_k": 20,
+            "min_p": 0.01,
+        }
+        if stream:
+            payload["stream"] = True
+        if tools_schema is not None:
+            payload["tools"] = tools_schema
+        if tool_choice is not None:
+            payload["tool_choice"] = tool_choice
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
+        return payload
+
     def _post(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """POST 請求，帶指數退避重試（連線錯誤 / 5xx）。"""
         last_exc = None
@@ -144,19 +173,14 @@ class LLMToolCaller:
         temperature: float = 0.3,
     ) -> Dict[str, Any]:
         """call_llm 的非阻塞版，用於 async context（如 run_turn_stream）。"""
-        payload: Dict[str, Any] = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": temperature,
-            "top_p": 0.8,
-            "top_k": 20,
-            "min_p": 0.01,
-        }
-        if tools_schema is not None:
-            payload["tools"] = tools_schema
-        if tool_choice is not None:
-            payload["tool_choice"] = tool_choice
-        return await self._post_async(payload)
+        return await self._post_async(
+            self._build_payload(
+                messages,
+                temperature=temperature,
+                tools_schema=tools_schema,
+                tool_choice=tool_choice,
+            )
+        )
 
     def call_llm(
         self,
@@ -166,20 +190,14 @@ class LLMToolCaller:
         tool_choice: Optional[str] = None,  # "auto" | "required" | {"type":"function",...}
         temperature: float = 0.3,
     ) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": temperature,
-            "top_p": 0.8,
-            "top_k": 20,
-            "min_p": 0.01,
-        }
-        if tools_schema is not None:
-            payload["tools"] = tools_schema
-        if tool_choice is not None:
-            payload["tool_choice"] = tool_choice
-
-        return self._post(payload)
+        return self._post(
+            self._build_payload(
+                messages,
+                temperature=temperature,
+                tools_schema=tools_schema,
+                tool_choice=tool_choice,
+            )
+        )
 
     def pick_first_tool_call(self, resp: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """從 LLM 回應提取第一個 tool call，支援 OpenAI 標準格式和 content fallback。"""
@@ -377,14 +395,12 @@ class LLMToolCaller:
         """
         try:
             warmup_messages = messages or [{"role": "user", "content": "hi"}]
-            payload: Dict[str, Any] = {
-                "model": self.model,
-                "messages": warmup_messages,
-                "temperature": 0.0,
-                "max_tokens": 1,
-            }
-            if tools_schema is not None:
-                payload["tools"] = tools_schema
+            payload = self._build_payload(
+                warmup_messages,
+                temperature=0.0,
+                max_tokens=1,
+                tools_schema=tools_schema,
+            )
             await asyncio.to_thread(self._post, payload)
         except Exception:
             pass  # warmup 失敗不影響啟動
@@ -399,17 +415,9 @@ class LLMToolCaller:
         max_tokens: Optional[int] = None,
     ) -> AsyncIterator[str]:
         """串流呼叫 LLM，逐 token yield content delta。僅用於最終文字回覆（無 tools）。"""
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": temperature,
-            "top_p": 0.8,
-            "top_k": 20,
-            "min_p": 0.01,
-            "stream": True,
-        }
-        if max_tokens is not None:
-            payload["max_tokens"] = max_tokens
+        payload = self._build_payload(
+            messages, temperature=temperature, stream=True, max_tokens=max_tokens
+        )
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             async with client.stream("POST", self.base_url, json=payload) as resp:
                 resp.raise_for_status()
@@ -428,6 +436,91 @@ class LLMToolCaller:
                     except (json.JSONDecodeError, KeyError, IndexError):
                         continue
 
+    async def call_llm_stream_with_tools(
+        self,
+        *,
+        messages: List[Dict[str, Any]],
+        tools_schema: List[Dict[str, Any]],
+        tool_choice: str = "auto",
+        temperature: float = 0.3,
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """串流 LLM 呼叫，同時處理 tool_calls delta 和 content delta。
+
+        Yields:
+          {"type": "content_delta", "content": "..."}
+          {"type": "tool_call_complete", "tool_calls": [...], "raw_message": {...}}
+          {"type": "stream_done", "finish_reason": "...", "raw_message": {...}}
+        """
+        payload = self._build_payload(
+            messages,
+            temperature=temperature,
+            stream=True,
+            tools_schema=tools_schema,
+            tool_choice=tool_choice,
+        )
+        # 累積 tool_calls delta（index → {id, name, arguments}）
+        tool_calls_acc: Dict[int, Dict[str, str]] = {}
+        content_acc = ""
+        finish_reason = None
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with client.stream("POST", self.base_url, json=payload) as resp:
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    data_str = line[6:]
+                    if data_str.strip() == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data_str)
+                    except json.JSONDecodeError:
+                        continue
+                    choice = chunk.get("choices", [{}])[0]
+                    delta = choice.get("delta", {})
+                    finish_reason = choice.get("finish_reason") or finish_reason
+
+                    # Tool call delta 累積
+                    if delta.get("tool_calls"):
+                        for tc_delta in delta["tool_calls"]:
+                            idx = tc_delta.get("index", 0)
+                            if idx not in tool_calls_acc:
+                                tool_calls_acc[idx] = {
+                                    "id": tc_delta.get("id", f"toolcall_{idx}"),
+                                    "name": "",
+                                    "arguments": "",
+                                }
+                            acc = tool_calls_acc[idx]
+                            fn = tc_delta.get("function", {})
+                            if fn.get("name"):
+                                acc["name"] += fn["name"]
+                            if fn.get("arguments"):
+                                acc["arguments"] += fn["arguments"]
+
+                    # Content delta 即時 yield
+                    content = delta.get("content")
+                    if content:
+                        content_acc += content
+                        yield {"type": "content_delta", "content": content}
+
+        # 組裝 raw_message（模擬非串流回覆格式，供 pick_first_tool_call 使用）
+        raw_message: Dict[str, Any] = {"content": content_acc or None}
+        if tool_calls_acc:
+            raw_message["tool_calls"] = [
+                {
+                    "id": acc["id"],
+                    "type": "function",
+                    "function": {"name": acc["name"], "arguments": acc["arguments"]},
+                }
+                for acc in tool_calls_acc.values()
+            ]
+            yield {
+                "type": "tool_call_complete",
+                "tool_calls": raw_message["tool_calls"],
+                "raw_message": raw_message,
+            }
+        yield {"type": "stream_done", "finish_reason": finish_reason, "raw_message": raw_message}
+
     async def run_turn_stream(
         self,
         *,
@@ -440,13 +533,15 @@ class LLMToolCaller:
         context: Optional[str] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
-        串流版 run_turn：
-        - Phase 1: Tool calling 輪次（同步等完整回應，跟 run_turn 一樣）
-        - Phase 2: 最終文字回覆用串流，逐 token yield
+        串流版 run_turn — 逐 token 串流，邊收邊切句送 TTS：
+        - Tool call 路徑：累積 tool_calls delta 直到完整 → 執行工具 → early_tts
+        - 純文字路徑：逐 token 累積 → 遇句點即 yield text_delta → orchestrator 立即送 TTS
         每個 yield 是 dict：
           {"type": "tool_call", "tool_call": ..., "exec": ...}
+          {"type": "early_tts", "content": "..."}
           {"type": "text_delta", "content": "..."}
           {"type": "done", "history": [...], "tool_trace": [...]}
+          {"type": "fallback", "content": "..."}
 
         context: 動態上下文（如購物車狀態），插在 history 之後、user 之前。
         """
@@ -465,17 +560,51 @@ class LLMToolCaller:
         last_tool_trace: List[Dict[str, Any]] = []
 
         for step in range(self.max_steps):
+            content_buf = ""
+            sentence_buf = ""
+            tool_calls = None
+            raw_message = None
+
+            # early_tts 已送出時，靜默緩衝不 yield text_delta（避免 TTS 重複播放）
+            early_tts_sent = bool(last_tool_trace and last_tool_trace[-1].get("exec", {}).get("ok"))
+
             try:
                 with PerfTimer("llm_api_call"):
-                    resp = await asyncio.wait_for(
-                        self.call_llm_async(
+                    async with asyncio.timeout(_PER_STEP_TIMEOUT):
+                        async for evt in self.call_llm_stream_with_tools(
                             messages=messages,
                             tools_schema=tools_schema,
-                            tool_choice="auto",
-                        ),
-                        timeout=_PER_STEP_TIMEOUT,
-                    )
-            except (asyncio.TimeoutError, Exception) as exc:
+                        ):
+                            if evt["type"] == "content_delta":
+                                content_buf += evt["content"]
+                                sentence_buf += evt["content"]
+                                if not early_tts_sent:
+                                    # 遇到句點 → 立即 yield text_delta（orchestrator 送 TTS）
+                                    while sentence_buf:
+                                        idx = next(
+                                            (
+                                                i
+                                                for i, ch in enumerate(sentence_buf)
+                                                if ch in _SENTENCE_PUNCTS
+                                            ),
+                                            -1,
+                                        )
+                                        if idx == -1:
+                                            break
+                                        sentence = sentence_buf[: idx + 1]
+                                        sentence_buf = sentence_buf[idx + 1 :]
+                                        if sentence.strip():
+                                            yield {"type": "text_delta", "content": sentence}
+
+                            elif evt["type"] == "tool_call_complete":
+                                tool_calls = evt["tool_calls"]
+                                raw_message = evt["raw_message"]
+
+                            elif evt["type"] == "stream_done":
+                                if raw_message is None:
+                                    raw_message = evt["raw_message"]
+
+            except Exception as exc:
                 if isinstance(exc, asyncio.TimeoutError):
                     logger.warning(
                         "[LLM] run_turn_stream step {} timeout ({:.0f}s)", step, _PER_STEP_TIMEOUT
@@ -493,39 +622,28 @@ class LLMToolCaller:
                 }
                 return
 
-            choices = resp.get("choices") or []
-            if not choices:
-                logger.error("[LLM] run_turn_stream 回傳空 choices: {}", resp)
-                fallback = "抱歉，請再說一次"
-                yield {"type": "text_delta", "content": fallback}
-                yield {
-                    "type": "done",
-                    "assistant_text": fallback,
-                    "history": history,
-                    "tool_trace": last_tool_trace,
-                }
-                return
-            msg = choices[0]["message"]
-            tool_call = self.pick_first_tool_call(resp)
+            # 殘餘文字（未遇到句點的尾巴）
+            if sentence_buf.strip() and not early_tts_sent:
+                yield {"type": "text_delta", "content": sentence_buf}
 
-            if not tool_call:
-                # Phase 2：用 Phase 1 已取得的完整回覆，按標點切段 yield
-                full_text = _strip_hallucinated_apology(msg.get("content") or "")
-                # Response Template：ok:true 後用 code 構建回覆
+            if not tool_calls:
+                full_text = _strip_hallucinated_apology(content_buf)
                 full_text = _apply_response_template(full_text, last_tool_trace)
 
-                if len(full_text) <= 5:
-                    if full_text:
-                        yield {"type": "text_delta", "content": full_text}
-                else:
-                    buf = ""
-                    for ch in full_text:
-                        buf += ch
-                        if ch in _SENTENCE_PUNCTS:
+                # early_tts 已處理 TTS，只在模型追問缺資訊時才補 yield
+                if early_tts_sent and _is_followup_question(full_text):
+                    if len(full_text) <= 5:
+                        if full_text:
+                            yield {"type": "text_delta", "content": full_text}
+                    else:
+                        buf = ""
+                        for ch in full_text:
+                            buf += ch
+                            if ch in _SENTENCE_PUNCTS:
+                                yield {"type": "text_delta", "content": buf}
+                                buf = ""
+                        if buf:
                             yield {"type": "text_delta", "content": buf}
-                            buf = ""
-                    if buf:
-                        yield {"type": "text_delta", "content": buf}
 
                 new_history = history + [
                     {"role": "user", "content": user_text},
@@ -539,12 +657,23 @@ class LLMToolCaller:
                 }
                 return
 
-            # Tool calling 輪次
+            # Tool calling 路徑 — 驗證 tool_call 後才加入 messages（避免 history 不一致）
+            tool_call = tool_calls[0] if tool_calls else None
+
+            # Fallback：嘗試從 content 中解析 Qwen 格式 tool call
+            if tool_call and not tool_call.get("function", {}).get("name"):
+                fake_resp = {"choices": [{"message": raw_message}]}
+                tool_call = self.pick_first_tool_call(fake_resp)
+
+            if not tool_call:
+                # tool_calls delta 不完整，跳過此步（不汙染 messages）
+                continue
+
             messages.append(
                 {
                     "role": "assistant",
-                    "content": msg.get("content"),
-                    "tool_calls": msg.get("tool_calls", []),
+                    "content": raw_message.get("content") if raw_message else None,
+                    "tool_calls": tool_calls,
                 }
             )
 

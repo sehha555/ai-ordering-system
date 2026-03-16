@@ -1,17 +1,19 @@
 # src/services/tts_cache.py
 """TTS 預快取層 — 啟動時對高頻固定回覆預生成音檔，命中時 TTFA ≈ 0"""
+
 import re
 from typing import AsyncIterator, Dict, Optional
 
 from loguru import logger
 
 # 正規化：去除常見標點，統一 lookup key
-_PUNCT_RE = re.compile(r'[，。？！、；：\s]+')
+_PUNCT_RE = re.compile(r"[，。？！、；：\s]+")
 
 
 def _normalize(text: str) -> str:
     """去標點 + 空白，產生正規化 key"""
-    return _PUNCT_RE.sub('', text)
+    return _PUNCT_RE.sub("", text)
+
 
 # 高頻固定回覆清單（店員常說的短句）
 HIGH_FREQ_PHRASES = [
@@ -50,14 +52,18 @@ HIGH_FREQ_PHRASES = [
 ]
 
 
+_MAX_RUNTIME_ENTRIES = 512  # runtime cache 上限（不含 warmup 預熱條目）
+
+
 class TTSCache:
     """TTS 音訊預快取：啟動時預生成，查詢時直接返回 bytes"""
 
     def __init__(self):
         self._cache: Dict[str, bytes] = {}
+        self._warmup_count = 0  # warmup 條目數（不計入 runtime 上限）
 
     async def warmup(self, tts_service) -> None:
-        """啟動時預生成高頻回覆的 TTS 音檔（同時存原文 key 和正規化 key）"""
+        """啟動時預生成高頻回覆的 TTS 音檔"""
         logger.info("[TTS-Cache] 開始預熱 {} 條高頻回覆...", len(HIGH_FREQ_PHRASES))
         success = 0
         for phrase in HIGH_FREQ_PHRASES:
@@ -67,15 +73,17 @@ class TTSCache:
                     chunks.append(chunk)
                 if chunks:
                     audio = b"".join(chunks)
-                    self._cache[phrase] = audio
-                    # 同時用正規化 key 存一份，讓帶/不帶標點都能命中
-                    norm = _normalize(phrase)
-                    if norm != phrase and norm not in self._cache:
-                        self._cache[norm] = audio
+                    self.put(phrase, audio)
                     success += 1
             except Exception as e:
                 logger.warning("[TTS-Cache] 預熱失敗: '{}' → {}", phrase, e)
-        logger.info("[TTS-Cache] 預熱完成: {}/{} 成功, 快取條目 {}", success, len(HIGH_FREQ_PHRASES), len(self._cache))
+        self._warmup_count = len(self._cache)
+        logger.info(
+            "[TTS-Cache] 預熱完成: {}/{} 成功, 快取條目 {}",
+            success,
+            len(HIGH_FREQ_PHRASES),
+            len(self._cache),
+        )
 
     def get(self, text: str) -> Optional[bytes]:
         """查詢快取：先精確匹配，再試正規化 key"""
@@ -83,6 +91,22 @@ class TTSCache:
         if result is None:
             result = self._cache.get(_normalize(text))
         return result
+
+    def put(self, text: str, audio: bytes) -> None:
+        """Runtime cache：TTS miss 後存入，後續相同句子直接命中。超過上限時移除最舊的 runtime 條目。"""
+        self._cache[text] = audio
+        norm = _normalize(text)
+        if norm != text:
+            self._cache[norm] = audio
+        # LRU eviction：超過上限時移除最舊的 runtime 條目
+        runtime_count = len(self._cache) - self._warmup_count
+        if runtime_count > _MAX_RUNTIME_ENTRIES:
+            # dict 保持插入順序（Python 3.7+），跳過 warmup 條目刪最舊的
+            keys = list(self._cache.keys())
+            for key in keys[self._warmup_count :]:
+                if len(self._cache) - self._warmup_count <= _MAX_RUNTIME_ENTRIES:
+                    break
+                del self._cache[key]
 
     async def get_stream(self, text: str) -> Optional[AsyncIterator[bytes]]:
         """查詢快取並以串流方式返回（相容 run_stream 介面）"""
@@ -92,6 +116,7 @@ class TTSCache:
 
         async def _iter():
             yield audio
+
         return _iter()
 
     @property

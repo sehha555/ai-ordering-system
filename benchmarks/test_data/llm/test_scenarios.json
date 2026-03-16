@@ -39,7 +39,7 @@
     "expected_response_contains": [
       "玉米"
     ],
-    "expected_behavior": "口味齊全應直接 call add_to_cart(egg_pancake, 玉米, qty=2)"
+    "expected_behavior": "口味齊全應直接 call add_egg_pancake(玉米, qty=2)"
   },
   {
     "id": "egg_pancake_missing",
@@ -83,7 +83,7 @@
     "expected_response_contains": [
       "紅茶"
     ],
-    "expected_behavior": "規格齊全應直接 call add_to_cart(drink, 紅茶, 大, 冰)"
+    "expected_behavior": "規格齊全應直接 call add_drink(紅茶, 大, 冰)"
   },
   {
     "id": "drink_missing",
@@ -126,7 +126,7 @@
     "expected_response_contains": [
       "蘿蔔糕"
     ],
-    "expected_behavior": "點心照記不追問，直接 call add_to_cart"
+    "expected_behavior": "點心照記不追問，直接 call add_snack"
   },
   {
     "id": "snack_hashbrown",
@@ -152,7 +152,7 @@
     "expected_response_contains": [
       "薯餅"
     ],
-    "expected_behavior": "點心照記不追問，直接 call add_to_cart(snack, 薯餅, qty=2)"
+    "expected_behavior": "點心照記不追問，直接 call add_snack(薯餅, qty=2)"
   },
   {
     "id": "query_menu_drinks",
@@ -206,7 +206,7 @@
     "expected_response_contains": [
       "鮪魚"
     ],
-    "expected_behavior": "資訊齊全應直接 call add_to_cart(riceball, 鮪魚, 紫米, spicy=true)"
+    "expected_behavior": "資訊齊全應直接 call add_riceball(鮪魚, 紫米, spicy=true)"
   },
   {
     "id": "riceball_missing_rice",
@@ -249,7 +249,7 @@
     "expected_response_contains": [
       "傳統"
     ],
-    "expected_behavior": "米種補齊後，預設不加辣，應 call add_to_cart 或追問辣菜脯",
+    "expected_behavior": "米種補齊後，預設不加辣，應 call add_riceball 或追問辣菜脯",
     "expected_args": [
       {
         "name": "add_riceball",
@@ -302,7 +302,7 @@
     "expected_response_contains": [
       "傳統"
     ],
-    "expected_behavior": "全部資訊補齊後應 call add_to_cart(riceball, 源味傳統, 紫米, spicy=true)"
+    "expected_behavior": "全部資訊補齊後應 call add_riceball(源味傳統, 紫米, spicy=true)"
   },
   {
     "id": "carrier_missing",
@@ -354,7 +354,7 @@
     "expected_response_contains": [
       "吐司"
     ],
-    "expected_behavior": "載體補齊後應 call add_to_cart(carrier, 吐司, 起司蛋)"
+    "expected_behavior": "載體補齊後應 call add_carrier(吐司, 起司蛋)"
   },
   {
     "id": "carrier_explicit",
@@ -381,7 +381,7 @@
     "expected_response_contains": [
       "漢堡"
     ],
-    "expected_behavior": "載體明確應直接 call add_to_cart(carrier, 漢堡, 火腿蛋)"
+    "expected_behavior": "載體明確應直接 call add_carrier(漢堡, 火腿蛋)"
   },
   {
     "id": "intent_mushroom_noodle",
@@ -407,7 +407,7 @@
     "expected_response_contains": [
       "蘑菇"
     ],
-    "expected_behavior": "理解蘑菇麵=蘑菇鐵板麵，call add_to_cart(鐵板麵, 蘑菇, qty=2)"
+    "expected_behavior": "理解蘑菇麵=蘑菇鐵板麵，call add_snack(蘑菇, qty=2)"
   },
   {
     "id": "intent_grabcake",
@@ -433,7 +433,7 @@
     "expected_response_contains": [
       "餡餅"
     ],
-    "expected_behavior": "理解餡餅=韭菜餡餅，call add_to_cart(snack, 韭菜餡餅, qty=3)"
+    "expected_behavior": "理解餡餅=韭菜餡餅，call add_snack(韭菜餡餅, qty=3)"
   },
   {
     "id": "intent_traditional",
@@ -479,7 +479,7 @@
     "expected_response_contains": [
       "奶"
     ],
-    "expected_behavior": "理解大冰奶=大杯冰純鮮奶茶，call add_to_cart(drink, 純鮮奶茶, 大, 冰)"
+    "expected_behavior": "理解大冰奶=大杯冰純鮮奶茶，call add_drink(純鮮奶茶, 大, 冰)"
   },
   {
     "id": "intent_shorthand_drink",
@@ -507,7 +507,7 @@
     "expected_response_contains": [
       "豆漿"
     ],
-    "expected_behavior": "理解中溫豆漿=中杯溫有糖豆漿，call add_to_cart(drink, 有糖豆漿, 中, 溫)"
+    "expected_behavior": "理解中溫豆漿=中杯溫有糖豆漿，call add_drink(有糖豆漿, 中, 溫)"
   },
   {
     "id": "mantou_missing",
@@ -557,7 +557,7 @@
     "expected_response_contains": [
       "饅頭"
     ],
-    "expected_behavior": "理解黑糖=黑饅頭口味，call add_to_cart(carrier, 饅頭, 黑糖夾蛋)"
+    "expected_behavior": "理解黑糖=黑饅頭口味，call add_carrier(饅頭, 黑糖夾蛋)"
   },
   {
     "id": "drink_batch_ask",
@@ -692,7 +692,7 @@
       "冰",
       "溫"
     ],
-    "expected_behavior": "模型 call add_to_cart，系統回 ok:false 追問飲料溫度",
+    "expected_behavior": "模型 call add_combo，系統回 ok:false 追問飲料溫度",
     "expected_args": [
       {
         "name": "add_combo",
@@ -704,7 +704,7 @@
   },
   {
     "id": "combo_alias",
-    "description": "G2: 套餐別名 — 四號餐=套餐四，add_to_cart 回 ok:false 追問",
+    "description": "G2: 套餐別名 — 四號餐=套餐四，add_combo 回 ok:false 追問",
     "category": "combo",
     "messages": [
       {
@@ -727,7 +727,7 @@
       "冰",
       "溫"
     ],
-    "expected_behavior": "理解四號餐=套餐四，call add_to_cart 後系統回 ok:false 追問溫度"
+    "expected_behavior": "理解四號餐=套餐四，call add_combo 後系統回 ok:false 追問溫度"
   },
   {
     "id": "combo_b_toast",
@@ -761,7 +761,7 @@
     "expected_response_contains": [
       "花生"
     ],
-    "expected_behavior": "厚片口味+飲料溫度補齊後 call add_to_cart(combo, 套餐B, 花生, 冰)"
+    "expected_behavior": "厚片口味+飲料溫度補齊後 call add_combo(套餐B, 花生, 冰)"
   },
   {
     "id": "combo_two_rice",
@@ -795,7 +795,7 @@
     "expected_response_contains": [
       "套餐"
     ],
-    "expected_behavior": "米種+飲料溫度補齊後 call add_to_cart(combo, 套餐二, 紫米, 溫)"
+    "expected_behavior": "米種+飲料溫度補齊後 call add_combo(套餐二, 紫米, 溫)"
   },
   {
     "id": "combo_drink_swap",
@@ -852,23 +852,24 @@
     "expected_behavior": "結帳時回覆帶 [CHECKOUT] tag 並問內用外帶，不 call 任何工具"
   },
   {
-    "id": "checkout_multi_round",
-    "description": "H2: 結帳觸發 — 回覆帶 [CHECKOUT] tag 並問內用外帶",
+    "id": "checkout_colloquial",
+    "description": "H2: 結帳口語觸發 — 「買單」也應觸發 [CHECKOUT]",
     "category": "checkout",
     "session_context": {
       "cart_items": [
-        "起司蛋餅 x1"
+        "鮪魚飯糰(紫米) x1",
+        "大冰紅茶 x1"
       ],
-      "cart_count": 1
+      "cart_count": 2
     },
     "messages": [
       {
         "role": "assistant",
-        "content": "好 已加了一個起司蛋餅 還要嗎"
+        "content": "好 還要嗎"
       },
       {
         "role": "user",
-        "content": "不用了 結帳"
+        "content": "就這些 買單"
       }
     ],
     "expected_tools": [],
@@ -877,7 +878,7 @@
       "內用",
       "外帶"
     ],
-    "expected_behavior": "結帳觸發時回覆帶 [CHECKOUT] tag 並問內用外帶，不 call 任何工具"
+    "expected_behavior": "「買單」等口語也應觸發 [CHECKOUT] tag，不 call 任何工具"
   },
   {
     "id": "checkout_empty_cart",
@@ -937,6 +938,34 @@
       "蛋餅"
     ],
     "expected_behavior": "購物車裡沒有蛋餅，應告知客人"
+  },
+  {
+    "id": "remove_existing",
+    "description": "I2b: 取消存在的品項 — 回覆帶 [REMOVE] tag",
+    "category": "edge_case",
+    "session_context": {
+      "cart_items": [
+        "大冰紅茶 x1",
+        "玉米蛋餅 x2"
+      ],
+      "cart_count": 3
+    },
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "好 還要嗎"
+      },
+      {
+        "role": "user",
+        "content": "紅茶不要了"
+      }
+    ],
+    "expected_tools": [],
+    "expected_response_contains": [
+      "[REMOVE",
+      "紅茶"
+    ],
+    "expected_behavior": "購物車有紅茶，回覆帶 [REMOVE:紅茶] tag，系統攔截處理移除"
   },
   {
     "id": "modify_empty_cart",
