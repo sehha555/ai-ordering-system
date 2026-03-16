@@ -35,9 +35,7 @@ backups/
 .agent/
 .agents/
 .cursor/
-.claude/settings.local.json
-.claude/skills/
-claude.md
+.claude/
 nul
 
 
