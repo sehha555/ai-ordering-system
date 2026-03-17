@@ -49,20 +49,17 @@ def _tool_resp(call_id: str, result: dict) -> dict:
 def get_priming_messages() -> list[dict]:
     """精選 priming 示範，搭配 system prompt CoT 引導模型行為。
 
-    11 個高質量 demo，品項全部與 test_scenarios.json 不重疊（防記憶化）：
+    9 個高質量 demo，品項全部與 test_scenarios.json 不重疊（防記憶化）：
     1. 飯糰完整 call — boolean spicy + flavor 不帶後綴（修 Pattern C 參數格式）
     2. 載體缺 → 追問 → 補齊後 call（培根蛋，避開 test 火腿蛋/起司蛋）
     3. 套餐帶溫度直接 call → ok:true（示範 add_combo 最簡呼叫）
     4. 俗稱大冰奶→直接 call（大杯冰純鮮奶茶，size=「大杯」）
     5. 多品項部分缺 — add_carrier + add_drink 齊全先 call，奶茶缺規格追問
     6. 結帳完整流程 → [CHECKOUT] tag
-    7. 空購物車結帳 → 提示購物車是空的（checkout_empty_cart）[cluster 結帳 demos]
-    8. 空購物車修改 → 提示沒有品項（modify_empty_cart）
-    9. 菜單查詢 → call query_menu(category="飲品") → 列舉回覆
-    10. 套餐數字別名 → call → ok:false → 追問（combo_missing_temp / combo_alias）
-    11. 取消不存在品項 → [REMOVE] tag（cancel_nonexistent）
-    注意：Priming 結尾保持 Demo9（tool call）→ Demo10（tool call+ok:false）→ Demo11（no-call）
-    與 86% 穩定 run 相同 ending，防止連續 no-call demos 導致 few-shot collapse
+    7. 菜單查詢 → call query_menu(category="飲品") → 列舉回覆
+    8. 套餐數字別名 → call → ok:false → 追問（combo_missing_temp / combo_alias）
+    9. 取消不存在品項 → [REMOVE] tag（cancel_nonexistent）
+    注意：超過 9 demo 可能觸發 few-shot collapse（實測 11 demo 導致 riceball/carrier/combo 退化）
     """
     msgs: list[dict] = []
 
@@ -230,19 +227,7 @@ def get_priming_messages() -> list[dict]:
     msgs.append({"role": "user", "content": "好了 買單"})
     msgs.append({"role": "assistant", "content": f"{CHECKOUT_TAG}內用還是外帶？"})
 
-    # Demo 7: 空購物車結帳 → 提示購物車是空的（不 call tool，不走 [CHECKOUT]）
-    # 情境：user message 含「# 當前狀態\n購物車：空」前綴（對齊 _inject_session_context 格式）
-    # 放在 Demo 6 後面，讓結帳相關 demo 叢集（空車→不 checkout，有車→[CHECKOUT]）
-    msgs.append({"role": "user", "content": "# 當前狀態\n購物車：空\n\n結帳"})
-    msgs.append({"role": "assistant", "content": "購物車是空的喔，要先點餐才能結帳！"})
-
-    # Demo 8: 空購物車修改 → 提示沒有該品項（不 call tool）
-    # 情境：購物車空 + 換品項請求 → 告知沒有（品項用豆漿，避免與 test 飯糰 exact match）
-    msgs.append({"role": "user", "content": "# 當前狀態\n購物車：空\n\n把豆漿換成奶茶"})
-    msgs.append({"role": "assistant", "content": "購物車裡沒有豆漿喔，要先點餐再換！"})
-
-    # Demo 9: 客人詢問菜單品項 → call query_menu 取得分類清單後列舉
-    # 情境：問飲料有什麼，示範 query_menu(category="飲品") 呼叫
+    # Demo 7: 客人詢問菜單品項 → call query_menu(category="飲品") → 列舉回覆
     msgs.append({"role": "user", "content": "你們有什麼飲料"})
     msgs.append(
         {
@@ -272,7 +257,7 @@ def get_priming_messages() -> list[dict]:
         }
     )
 
-    # Demo 10: 套餐數字別名 → call → ok:false → 追問（示範別名解析 + ok:false 反饋循環）
+    # Demo 8: 套餐數字別名 → call → ok:false → 追問（示範別名解析 + ok:false 反饋循環）
     # 品項：三號餐（test cases 用套餐一/四），覆蓋 combo_missing_temp / combo_alias
     msgs.append({"role": "user", "content": "一個三號餐"})
     msgs.append(
@@ -291,7 +276,7 @@ def get_priming_messages() -> list[dict]:
     msgs.append(_tool_resp("c8", {"ok": False, "message": "缺飲料溫度，冰的還是溫的？"}))
     msgs.append({"role": "assistant", "content": "飲料要冰的還是溫的？"})
 
-    # Demo 11: 取消品項用 [REMOVE] tag（不 call tool，系統攔截處理）
+    # Demo 9: 取消品項用 [REMOVE] tag（不 call tool，系統攔截處理）
     # 購物車沒有奶茶的情境，覆蓋 cancel_nonexistent
     msgs.append({"role": "user", "content": "幫我把奶茶取消"})
     msgs.append(
