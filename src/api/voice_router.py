@@ -56,6 +56,17 @@ _ORDER_INTENT_KEYWORDS = [
 # [REMOVE] tag 正則
 _REMOVE_RE = re.compile(r"\[REMOVE:(.+?)\]")
 
+# 規則層攔截常數
+_EMPTY_CART_MOD_KEYWORDS = ["刪掉", "移除", "撤銷", "取消上一", "刪掉剛剛"]
+_DRINK_INQUIRY_PATTERNS = [
+    "有什麼飲料",
+    "飲料有什麼",
+    "有哪些飲料",
+    "喝的有什麼",
+    "飲品有什麼",
+    "有什麼喝的",
+]
+
 router = APIRouter()
 
 # 啟動時初始化 TTS（避免每次 request 重新載入模型）
@@ -122,6 +133,24 @@ class StreamingDMAdapter:
         session.pop("checkout_status", None)
         session.pop("checkout_dine_type", None)
         _session_store.set(self._session_id, session)
+
+    async def _shortcircuit_reply(
+        self, text: str, reply: str, session: dict, _session_store, cart: list
+    ):
+        """規則層攔截共用：寫入 history、回寫 session、yield text_delta + done。"""
+        from src.dm import cart_manager
+
+        session["llm_history"].append({"role": "user", "content": text})
+        session["llm_history"].append({"role": "assistant", "content": reply})
+        _session_store.set(self._session_id, session)
+        yield {"type": "text_delta", "content": reply}
+        yield {
+            "type": "done",
+            "cart": cart,
+            "order_payload": {"total_price": cart_manager.calculate_cart_total(cart)},
+            "finalize_result": None,
+            "preview_result": None,
+        }
 
     async def _checkout_step(self, text: str, session: dict):
         """結帳狀態機：根據 checkout_status 處理 user input，不經 LLM。
@@ -221,6 +250,39 @@ class StreamingDMAdapter:
             if yielded:
                 return
             # 反悔出口：_checkout_step 已 in-place 清除狀態並回寫，直接 fallthrough
+
+        # ── 規則層攔截（pre-LLM）──
+        cart = session.get("cart", [])
+
+        # 1. 空購物車 + 修改意圖
+        if not cart and any(kw in text for kw in _EMPTY_CART_MOD_KEYWORDS):
+            async for evt in self._shortcircuit_reply(
+                text, "購物車是空的，請先點餐喔！", session, _session_store, cart
+            ):
+                yield evt
+            return
+
+        # 2. 俗稱正規化（大冰奶 → 大杯冰純鮮奶茶，交由 order_router.NORMALIZE_MAP 維護）
+        from src.tools.order_router import normalize_text
+
+        text = normalize_text(text)
+
+        # 3. 飲料查詢強制攔截
+        if any(pat in text for pat in _DRINK_INQUIRY_PATTERNS):
+            menu_result = _tool_registry.query_menu(category="飲品")
+            if menu_result.get("ok"):
+                items = menu_result.get("items", [])
+                available = [i["name"] for i in items if i.get("available")]
+                sold_out = [i["name"] for i in items if not i.get("available")]
+                reply = f"我們的飲品有：{'、'.join(available)}"
+                if sold_out:
+                    reply += f"（目前售完：{'、'.join(sold_out)}）"
+                reply += "，請問要點什麼呢？"
+            else:
+                reply = "抱歉，無法查詢飲品菜單，請再試一次。"
+            async for evt in self._shortcircuit_reply(text, reply, session, _session_store, cart):
+                yield evt
+            return
 
         logger.info(
             "[VOICE-STREAM] LLM 串流處理: '{}', 購物車: {} 項", text, len(session.get("cart", []))
