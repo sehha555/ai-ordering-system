@@ -49,14 +49,16 @@ def _tool_resp(call_id: str, result: dict) -> dict:
 def get_priming_messages() -> list[dict]:
     """精選 priming 示範，搭配 system prompt CoT 引導模型行為。
 
-    7 個高質量 demo，品項全部與 test_scenarios.json 不重疊（防記憶化）：
+    9 個高質量 demo，品項全部與 test_scenarios.json 不重疊（防記憶化）：
     1. 飯糰完整 call — boolean spicy + flavor 不帶後綴（修 Pattern C 參數格式）
     2. 載體缺 → 追問 → 補齊後 call（培根蛋，避開 test 火腿蛋/起司蛋）
     3. 套餐帶 customization → 直接 call → ok:true（示範 add_combo customization 欄位）
     4. 俗稱→直接 call（小冰奶→中杯冰純鮮奶茶，修 intent_big_iced_milk）
     5. 多品項部分缺 — add_carrier + add_drink 齊全先 call，奶茶缺規格追問
-    6. 結帳完整流程 → finalize_order（Line Pay，與 test case 現金不重疊）
+    6. 結帳完整流程 → [CHECKOUT] tag
     7. 菜單查詢 → call query_menu(category="飲品") → 列舉回覆
+    8. 套餐數字別名 → call → ok:false → 追問（combo_missing_temp / combo_alias）
+    9. 取消不存在品項 → [REMOVE] tag（cancel_nonexistent）
     """
     msgs: list[dict] = []
 
@@ -254,6 +256,32 @@ def get_priming_messages() -> list[dict]:
             "role": "assistant",
             "content": "我們有：有糖豆漿、精選紅茶、純鮮奶茶、十穀漿、黑糖純鮮奶茶，要點哪個？",
         }
+    )
+
+    # Demo 8: 套餐數字別名 → call → ok:false → 追問（示範別名解析 + ok:false 反饋循環）
+    # 品項：三號餐（test cases 用套餐一/四），覆蓋 combo_missing_temp / combo_alias
+    msgs.append({"role": "user", "content": "一個三號餐"})
+    msgs.append(
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": _tc(
+                "c8",
+                "add_combo",
+                {
+                    "combo_name": "套餐三",
+                },
+            ),
+        }
+    )
+    msgs.append(_tool_resp("c8", {"ok": False, "message": "缺飲料溫度，冰的還是溫的？"}))
+    msgs.append({"role": "assistant", "content": "飲料要冰的還是溫的？"})
+
+    # Demo 9: 取消品項用 [REMOVE] tag（不 call tool，系統攔截處理）
+    # 購物車沒有奶茶的情境，覆蓋 cancel_nonexistent
+    msgs.append({"role": "user", "content": "幫我把奶茶取消"})
+    msgs.append(
+        {"role": "assistant", "content": "[REMOVE:奶茶]購物車裡沒有奶茶喔，不用取消～還需要什麼？"}
     )
 
     return msgs
