@@ -49,16 +49,18 @@ def _tool_resp(call_id: str, result: dict) -> dict:
 def get_priming_messages() -> list[dict]:
     """精選 priming 示範，搭配 system prompt CoT 引導模型行為。
 
-    9 個高質量 demo，品項全部與 test_scenarios.json 不重疊（防記憶化）：
+    11 個高質量 demo，品項全部與 test_scenarios.json 不重疊（防記憶化）：
     1. 飯糰完整 call — boolean spicy + flavor 不帶後綴（修 Pattern C 參數格式）
     2. 載體缺 → 追問 → 補齊後 call（培根蛋，避開 test 火腿蛋/起司蛋）
-    3. 套餐帶溫度直接 call → ok:true（示範 add_combo 最簡呼叫，套餐一 冰的）
-    4. 俗稱大冰奶→直接 call（大杯冰純鮮奶茶，size=「大杯」修 intent_big_iced_milk）
+    3. 套餐帶溫度直接 call → ok:true（套餐五，防套餐一記憶化）
+    4. 俗稱大溫奶→直接 call（大杯溫純鮮奶茶，size=「大杯」；用溫版防大冰奶記憶化）
     5. 多品項部分缺 — add_carrier + add_drink 齊全先 call，奶茶缺規格追問
     6. 結帳完整流程 → [CHECKOUT] tag
-    7. 菜單查詢 → call query_menu(category="飲品") → 列舉回覆
+    7. 菜單查詢 → call query_menu(category="小吃") → 列舉（用小吃防飲品記憶化）
     8. 套餐數字別名 → call → ok:false → 追問（combo_missing_temp / combo_alias）
     9. 取消不存在品項 → [REMOVE] tag（cancel_nonexistent）
+    10. 空購物車結帳 → 提示購物車是空的（checkout_empty_cart）
+    11. 空購物車修改 → 提示沒有品項（modify_empty_cart）
     """
     msgs: list[dict] = []
 
@@ -115,8 +117,8 @@ def get_priming_messages() -> list[dict]:
     msgs.append({"role": "assistant", "content": "好～還要什麼？"})
 
     # Demo 3: 套餐帶溫度直接 call → ok:true（示範 add_combo 最簡呼叫）
-    # 品項：套餐一 冰的（test cases 用套餐一缺溫度），示範「明確給溫度→直接 call」
-    msgs.append({"role": "user", "content": "套餐一 冰的"})
+    # 品項：套餐五（test cases 不含此品項，防止套餐一/四 被記憶化）
+    msgs.append({"role": "user", "content": "套餐五 冰的"})
     msgs.append(
         {
             "role": "assistant",
@@ -125,7 +127,7 @@ def get_priming_messages() -> list[dict]:
                 "c3",
                 "add_combo",
                 {
-                    "combo_name": "套餐一",
+                    "combo_name": "套餐五",
                     "temp": "冰",
                 },
             ),
@@ -137,16 +139,16 @@ def get_priming_messages() -> list[dict]:
             {
                 "ok": True,
                 "item_id": "cb_1",
-                "message": "已加入 1份 套餐一",
+                "message": "已加入 1份 套餐五",
                 "cart_count": 3,
             },
         )
     )
     msgs.append({"role": "assistant", "content": "好～還要什麼？"})
 
-    # Demo 4: 俗稱大冰奶→直接 call（修 intent_big_iced_milk）
-    # 品項：大冰奶 = 大杯冰純鮮奶茶，size 必須用「大杯」，示範俗稱→完整規格直接 call
-    msgs.append({"role": "user", "content": "大冰奶"})
+    # Demo 4: 俗稱大溫奶→直接 call（示範 size=大杯 不追問，防 intent_big_iced_milk 記憶化）
+    # 品項：大溫奶 = 大杯溫純鮮奶茶（test case 用大冰奶，刻意用溫版避免 exact match）
+    msgs.append({"role": "user", "content": "大溫奶"})
     msgs.append(
         {
             "role": "assistant",
@@ -157,7 +159,7 @@ def get_priming_messages() -> list[dict]:
                 {
                     "flavor": "純鮮奶茶",
                     "size": "大杯",
-                    "temp": "冰",
+                    "temp": "溫",
                 },
             ),
         }
@@ -168,7 +170,7 @@ def get_priming_messages() -> list[dict]:
             {
                 "ok": True,
                 "item_id": "dk_0",
-                "message": "已加入 1份 大杯冰純鮮奶茶",
+                "message": "已加入 1份 大杯溫純鮮奶茶",
                 "cart_count": 3,
             },
         )
@@ -227,8 +229,8 @@ def get_priming_messages() -> list[dict]:
     msgs.append({"role": "assistant", "content": f"{CHECKOUT_TAG}內用還是外帶？"})
 
     # Demo 7: 客人詢問菜單品項 → call query_menu 取得分類清單後列舉
-    # 情境：問飲料有什麼，示範 query_menu(category="飲品") 呼叫
-    msgs.append({"role": "user", "content": "你們有什麼飲料"})
+    # 情境：問小吃有什麼（test case 問飲料，刻意用不同分類防記憶化），示範 query_menu 呼叫
+    msgs.append({"role": "user", "content": "你們有什麼小吃"})
     msgs.append(
         {
             "role": "assistant",
@@ -236,7 +238,7 @@ def get_priming_messages() -> list[dict]:
             "tool_calls": _tc(
                 "c7",
                 "query_menu",
-                {"category": "飲品"},
+                {"category": "小吃"},
             ),
         }
     )
@@ -245,15 +247,15 @@ def get_priming_messages() -> list[dict]:
             "c7",
             {
                 "ok": True,
-                "category": "飲品",
-                "items": ["有糖豆漿", "精選紅茶", "純鮮奶茶", "十穀漿", "黑糖純鮮奶茶"],
+                "category": "小吃",
+                "items": ["薯餅", "蘿蔔糕", "哈希布朗"],
             },
         )
     )
     msgs.append(
         {
             "role": "assistant",
-            "content": "我們有：有糖豆漿、精選紅茶、純鮮奶茶、十穀漿、黑糖純鮮奶茶，要點哪個？",
+            "content": "我們有：薯餅、蘿蔔糕、哈希布朗，要哪個？",
         }
     )
 
@@ -282,5 +284,17 @@ def get_priming_messages() -> list[dict]:
     msgs.append(
         {"role": "assistant", "content": "[REMOVE:奶茶]購物車裡沒有奶茶喔，不用取消～還需要什麼？"}
     )
+
+    # Demo 10: 空購物車結帳 → 提示購物車是空的（不 call tool，不走 [CHECKOUT]）
+    # 情境：看到 session_context 購物車：空 + 結帳 → 先提示空車
+    msgs.append({"role": "system", "content": "# 當前狀態\n購物車：空"})
+    msgs.append({"role": "user", "content": "結帳"})
+    msgs.append({"role": "assistant", "content": "購物車是空的喔，要先點餐才能結帳！"})
+
+    # Demo 11: 空購物車修改 → 提示沒有該品項（不 call tool）
+    # 情境：看到 session_context 購物車：空 + 修改請求 → 提示沒有
+    msgs.append({"role": "system", "content": "# 當前狀態\n購物車：空"})
+    msgs.append({"role": "user", "content": "把豆漿換成奶茶"})
+    msgs.append({"role": "assistant", "content": "購物車裡沒有豆漿喔，要先點餐再換！"})
 
     return msgs
