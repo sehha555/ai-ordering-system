@@ -2,6 +2,7 @@
 LLM 模型 Adapters
 新增 LLM 模型：1) 建立子類別 2) 在 REGISTRY 註冊
 """
+
 import json
 import logging
 import re
@@ -13,7 +14,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 # Qwen 模型有時把 tool call 輸出到 content 而非 tool_calls 欄位
-_TOOL_CALL_PREFIX_RE = re.compile(r'[<\|im_start\|>]*\s*(?:<tool_call>\s*)?(\{)', re.DOTALL)
+_TOOL_CALL_PREFIX_RE = re.compile(r"[<\|im_start\|>]*\s*(?:<tool_call>\s*)?(\{)", re.DOTALL)
 
 
 def _extract_json_objects(text: str) -> list[dict]:
@@ -24,9 +25,9 @@ def _extract_json_objects(text: str) -> list[dict]:
         depth = 0
         end = start
         for i in range(start, len(text)):
-            if text[i] == '{':
+            if text[i] == "{":
                 depth += 1
-            elif text[i] == '}':
+            elif text[i] == "}":
                 depth -= 1
                 if depth == 0:
                     end = i + 1
@@ -75,9 +76,11 @@ def _create_fresh_tool_context(session_context: dict | None = None):
     若 session_context 含 cart_items，會預填購物車讓 checkout 場景能正常運作。
     """
     from src.dm.session_store import InMemorySessionStore
+
     store = InMemorySessionStore()
     from src.dm.dialogue_manager import DialogueManager
     from src.dm.tool_registry import ToolRegistry
+
     dm = DialogueManager(llm=None, store=store)
     registry = ToolRegistry(dm, store)
     registry.set_session_id("benchmark_test")
@@ -88,12 +91,14 @@ def _create_fresh_tool_context(session_context: dict | None = None):
         for i, item_text in enumerate(session_context["cart_items"]):
             # 解析 "起司蛋餅 x1" 格式
             name = item_text.split(" x")[0] if " x" in item_text else item_text
-            cart.append({
-                "item_id": f"pre_{i+1}",
-                "itemtype": "preloaded",
-                "flavor": name,
-                "quantity": 1,
-            })
+            cart.append(
+                {
+                    "item_id": f"pre_{i + 1}",
+                    "itemtype": "preloaded",
+                    "flavor": name,
+                    "quantity": 1,
+                }
+            )
         store.set("benchmark_test", {"cart": cart})
 
     return registry.get_tool_map(), registry.get_allowed_args()
@@ -102,24 +107,31 @@ def _create_fresh_tool_context(session_context: dict | None = None):
 def _load_priming_messages():
     """載入 few-shot priming messages"""
     from src.dm.tool_priming import get_priming_messages
+
     return get_priming_messages()
 
 
 def _clean_content(content: str, parsed_objs: list[dict] | None = None) -> str:
     """清理 content 中的 raw tool call 文字 + 模型幻覺（兩個 adapter 共用）"""
     text = content or ""
-    text = re.sub(r'<\|im_start\|>', '', text)
-    text = re.sub(r'</?tool_call>', '', text)
-    text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+    text = re.sub(r"<\|im_start\|>", "", text)
+    text = re.sub(r"</?tool_call>", "", text)
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
     if parsed_objs:
         for obj in parsed_objs:
             try:
-                text = text.replace(json.dumps(obj, ensure_ascii=False), '')
+                text = text.replace(json.dumps(obj, ensure_ascii=False), "")
             except Exception:
                 pass
     # 清除 Qwen3.5-9B 常見的「系統有問題」幻覺
-    text = re.sub(r'[，。！]?\s*不好意思[^。！]*(?:系統|有問題|出錯|故障|異常)[^。！]*[。！]?', '', text)
-    text = re.sub(r'[，。！]?\s*(?:抱歉|對不起)[^。！]*(?:系統|有問題|出錯|故障|異常)[^。！]*[。！]?', '', text)
+    text = re.sub(
+        r"[，。！]?\s*不好意思[^。！]*(?:系統|有問題|出錯|故障|異常)[^。！]*[。！]?", "", text
+    )
+    text = re.sub(
+        r"[，。！]?\s*(?:抱歉|對不起)[^。！]*(?:系統|有問題|出錯|故障|異常)[^。！]*[。！]?",
+        "",
+        text,
+    )
     return text.strip()
 
 
@@ -152,9 +164,9 @@ def _is_followup_question(text: str) -> bool:
     """判斷是否為追問缺資訊的問句（vs 通用「還要什麼」確認）"""
     if "？" not in text:
         return False
-    cleaned = re.sub(r'還要什麼[嗎？]*', '', text)
-    cleaned = re.sub(r'還需要什麼[嗎？]*', '', cleaned)
-    cleaned = re.sub(r'好[，,～~]?\s*', '', cleaned)
+    cleaned = re.sub(r"還要什麼[嗎？]*", "", text)
+    cleaned = re.sub(r"還需要什麼[嗎？]*", "", cleaned)
+    cleaned = re.sub(r"好[，,～~]?\s*", "", cleaned)
     return "？" in cleaned
 
 
@@ -207,7 +219,8 @@ def _inject_session_context(test_messages: list[dict], session_ctx: dict | None)
         if result[i]["role"] == "user":
             last_user_idx = i
             break
-    result.insert(last_user_idx, {"role": "system", "content": ctx_text})
+    result[last_user_idx] = dict(result[last_user_idx])
+    result[last_user_idx]["content"] = ctx_text + "\n\n" + result[last_user_idx]["content"]
     return result
 
 
@@ -240,19 +253,23 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
                     args = json.loads(tc["function"]["arguments"])
                 except (json.JSONDecodeError, KeyError):
                     args = {}
-                tool_calls.append({
-                    "name": tc["function"]["name"],
-                    "arguments": args,
-                    "_raw": tc,  # 保留原始格式供回灌用
-                })
+                tool_calls.append(
+                    {
+                        "name": tc["function"]["name"],
+                        "arguments": args,
+                        "_raw": tc,  # 保留原始格式供回灌用
+                    }
+                )
         else:
             content = message.get("content") or ""
             raw_json_objs = _extract_json_objects(content)
             for obj in raw_json_objs:
-                tool_calls.append({
-                    "name": obj["name"],
-                    "arguments": obj.get("arguments", {}),
-                })
+                tool_calls.append(
+                    {
+                        "name": obj["name"],
+                        "arguments": obj.get("arguments", {}),
+                    }
+                )
         return tool_calls, raw_json_objs
 
     def _get_client(self, timeout: float) -> httpx.Client:
@@ -272,7 +289,11 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
         base_url = self.params["base_url"]
         model = self.params["model"]
         temperature = self.params.get("temperature", 0.0)
-        url = f"{base_url}/chat/completions" if not base_url.endswith("/chat/completions") else base_url
+        url = (
+            f"{base_url}/chat/completions"
+            if not base_url.endswith("/chat/completions")
+            else base_url
+        )
 
         sampling_overrides = {}
         for key in ("repeat_penalty", "min_p", "top_p", "top_k"):
@@ -281,7 +302,9 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
 
         messages = [{"role": "system", "content": self._system_prompt}]
         messages.extend(self._priming)
-        messages.extend(_inject_session_context(test_case["messages"], test_case.get("session_context")))
+        messages.extend(
+            _inject_session_context(test_case["messages"], test_case.get("session_context"))
+        )
 
         all_tool_calls = []
         all_exec_results = []  # Response Template 用
@@ -301,7 +324,9 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
                 send_messages.append({"role": "assistant", "content": "<think>\n", "prefix": True})
             elif self.params.get("force_no_think", False):
                 # Qwen3.5 預設 think，需主動注入空 think block 跳過
-                send_messages.append({"role": "assistant", "content": "<think>\n</think>\n", "prefix": True})
+                send_messages.append(
+                    {"role": "assistant", "content": "<think>\n</think>\n", "prefix": True}
+                )
 
             payload = {
                 "model": model,
@@ -311,8 +336,9 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
                 **sampling_overrides,
             }
 
-            logger.debug("LLM request step=%d | model=%s | messages=%d",
-                         _step, model, len(messages))
+            logger.debug(
+                "LLM request step=%d | model=%s | messages=%d", _step, model, len(messages)
+            )
 
             resp = client.post(url, json=payload)
             if resp.status_code != 200:
@@ -329,11 +355,13 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
 
             message = data["choices"][0]["message"]
             step_tool_calls, raw_objs = self._parse_tool_calls(message)
-            raw_responses.append({
-                "step": _step,
-                "content": message.get("content"),
-                "tool_calls": [tc["function"]["name"] for tc in message.get("tool_calls", [])],
-            })
+            raw_responses.append(
+                {
+                    "step": _step,
+                    "content": message.get("content"),
+                    "tool_calls": [tc["function"]["name"] for tc in message.get("tool_calls", [])],
+                }
+            )
 
             if not step_tool_calls:
                 raw_content = message.get("content") or ""
@@ -342,7 +370,9 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
                     raw_content = "好，" + raw_content
                 response_text = _clean_content(raw_content, [])
                 # Response Template：ok:true 後用 code 構建回覆
-                response_text = _apply_response_template(response_text, all_tool_calls, all_exec_results)
+                response_text = _apply_response_template(
+                    response_text, all_tool_calls, all_exec_results
+                )
                 break
 
             all_tool_calls.extend(
@@ -364,18 +394,22 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
                     all_ok = False
                 # 對齊 production（llm_tool_caller.py）：用 role=tool + tool_call_id
                 tool_call_id = tc.get("_raw", {}).get("id", f"toolcall_{_step}")
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call_id,
-                    "content": json.dumps(exec_result, ensure_ascii=False),
-                })
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "content": json.dumps(exec_result, ensure_ascii=False),
+                    }
+                )
 
             # ok:true 時 assistant prefill 引導正確回覆格式
             if all_ok:
                 messages.append({"role": "assistant", "content": "好，", "prefix": True})
 
         if actual_model and actual_model != model:
-            logger.warning("模型不符！請求 %s → 實際 %s（LM Studio 可能 fallback）", model, actual_model)
+            logger.warning(
+                "模型不符！請求 %s → 實際 %s（LM Studio 可能 fallback）", model, actual_model
+            )
 
         return {
             "response": response_text,
@@ -410,6 +444,7 @@ class RawCompletionAdapter(BaseLLMAdapter):
             self._system_prompt, self._tools_schema = _load_static_context()
             self._priming = _load_priming_messages()
             from benchmarks.adapters.template_renderer import Qwen3TemplateRenderer
+
             self._renderer = Qwen3TemplateRenderer()
 
     def _get_client(self, timeout: float) -> httpx.Client:
@@ -434,7 +469,9 @@ class RawCompletionAdapter(BaseLLMAdapter):
 
         messages = [{"role": "system", "content": self._system_prompt}]
         messages.extend(self._priming)
-        messages.extend(_inject_session_context(test_case["messages"], test_case.get("session_context")))
+        messages.extend(
+            _inject_session_context(test_case["messages"], test_case.get("session_context"))
+        )
 
         all_tool_calls = []
         total_tokens = 0
@@ -447,7 +484,9 @@ class RawCompletionAdapter(BaseLLMAdapter):
         client = self._get_client(timeout)
         for _step in range(self.MAX_TOOL_STEPS):
             prompt = self._renderer.render_prompt(
-                messages, self._tools_schema, enable_thinking=False,
+                messages,
+                self._tools_schema,
+                enable_thinking=False,
             )
 
             payload = {
@@ -475,8 +514,7 @@ class RawCompletionAdapter(BaseLLMAdapter):
 
             raw_objs = _extract_json_objects(content)
             step_tool_calls = [
-                {"name": obj["name"], "arguments": obj.get("arguments", {})}
-                for obj in raw_objs
+                {"name": obj["name"], "arguments": obj.get("arguments", {})} for obj in raw_objs
             ]
 
             if not step_tool_calls:

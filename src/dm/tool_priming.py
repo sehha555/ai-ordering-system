@@ -286,15 +286,13 @@ def get_priming_messages() -> list[dict]:
     )
 
     # Demo 10: 空購物車結帳 → 提示購物車是空的（不 call tool，不走 [CHECKOUT]）
-    # 情境：看到 session_context 購物車：空 + 結帳 → 先提示空車
-    msgs.append({"role": "system", "content": "# 當前狀態\n購物車：空"})
-    msgs.append({"role": "user", "content": "結帳"})
+    # 情境：user message 含「# 當前狀態\n購物車：空」前綴（對齊 _inject_session_context 格式）
+    msgs.append({"role": "user", "content": "# 當前狀態\n購物車：空\n\n結帳"})
     msgs.append({"role": "assistant", "content": "購物車是空的喔，要先點餐才能結帳！"})
 
     # Demo 11: 空購物車修改 → 提示沒有該品項（不 call tool）
-    # 情境：看到 session_context 購物車：空 + 修改請求 → 提示沒有
-    msgs.append({"role": "system", "content": "# 當前狀態\n購物車：空"})
-    msgs.append({"role": "user", "content": "把豆漿換成奶茶"})
+    # 情境：購物車空 + 換品項請求 → 告知沒有（品項用豆漿，避免與 test 飯糰 exact match）
+    msgs.append({"role": "user", "content": "# 當前狀態\n購物車：空\n\n把豆漿換成奶茶"})
     msgs.append({"role": "assistant", "content": "購物車裡沒有豆漿喔，要先點餐再換！"})
 
     return msgs
