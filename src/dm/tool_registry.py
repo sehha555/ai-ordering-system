@@ -1039,7 +1039,7 @@ class ToolRegistry:
                             },
                             "flavor": {
                                 "type": "string",
-                                "description": "餡料口味，如：豬肉蛋、火腿蛋、起司蛋等",
+                                "description": "餡料口味，如：豬肉蛋、火腿蛋、起司蛋等。若 carrier 為饅頭，flavor 指饅頭種類（黑糖饅頭/白饅頭/黑糖花捲/白花捲/芋頭饅頭），非餡料；未指定饅頭種類時須追問。",
                             },
                             "quantity": {"type": "integer", "default": 1},
                             "customization": {"type": "string"},

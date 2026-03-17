@@ -52,11 +52,11 @@ def get_priming_messages() -> list[dict]:
     7 個高質量 demo，品項全部與 test_scenarios.json 不重疊（防記憶化）：
     1. 飯糰完整 call — boolean spicy + flavor 不帶後綴（修 Pattern C 參數格式）
     2. 載體缺 → 追問 → 補齊後 call（培根蛋，避開 test 火腿蛋/起司蛋）
-    3. 套餐數字別名 → call → ok:false → 追問（修 combo_alias + combo_missing_temp）
+    3. 套餐帶 customization → 直接 call → ok:true（示範 add_combo customization 欄位）
     4. 俗稱→直接 call（小冰奶→中杯冰純鮮奶茶，修 intent_big_iced_milk）
     5. 多品項部分缺 — add_carrier + add_drink 齊全先 call，奶茶缺規格追問
     6. 結帳完整流程 → finalize_order（Line Pay，與 test case 現金不重疊）
-    7. 邊界 — 品項不在購物車 → 不 call tool（近因效應，修 cancel_nonexistent）
+    7. 菜單查詢 → call query_menu(category="飲品") → 列舉回覆
     """
     msgs: list[dict] = []
 
@@ -112,9 +112,9 @@ def get_priming_messages() -> list[dict]:
     )
     msgs.append({"role": "assistant", "content": "好～還要什麼？"})
 
-    # Demo 3: 套餐數字別名 → call → ok:false → 追問
-    # 品項：三號餐（test cases 用套餐一/四），同時示範別名解析 + ok:false 反饋循環
-    msgs.append({"role": "user", "content": "一個三號餐"})
+    # Demo 3: 套餐帶 customization → 直接 call → ok:true
+    # 情境：客人明確指定客製化需求，示範 add_combo 攜帶 customization 欄位
+    msgs.append({"role": "user", "content": "套餐一 飲料換大溫豆漿"})
     msgs.append(
         {
             "role": "assistant",
@@ -123,13 +123,25 @@ def get_priming_messages() -> list[dict]:
                 "c3",
                 "add_combo",
                 {
-                    "combo_name": "套餐三",
+                    "combo_name": "套餐一",
+                    "temp": "溫",
+                    "customization": "飲料換大溫豆漿",
                 },
             ),
         }
     )
-    msgs.append(_tool_resp("c3", {"ok": False, "message": "缺飲料溫度，冰的還是溫的？"}))
-    msgs.append({"role": "assistant", "content": "飲料要冰的還是溫的？"})
+    msgs.append(
+        _tool_resp(
+            "c3",
+            {
+                "ok": True,
+                "item_id": "cb_1",
+                "message": "已加入 1份 套餐一（飲料換大溫豆漿）",
+                "cart_count": 3,
+            },
+        )
+    )
+    msgs.append({"role": "assistant", "content": "好～套餐一飲料換大溫豆漿，還要什麼？"})
 
     # Demo 4: 俗稱→直接 call（修 intent_big_iced_milk）
     # 品項：小冰奶（test case 用大冰奶），示範俗稱＝完整規格直接 call，不追問
@@ -213,11 +225,35 @@ def get_priming_messages() -> list[dict]:
     msgs.append({"role": "user", "content": "好了 買單"})
     msgs.append({"role": "assistant", "content": f"{CHECKOUT_TAG}內用還是外帶？"})
 
-    # Demo 7: 取消品項用 [REMOVE] tag（不 call tool，系統攔截處理）
-    # 購物車沒有奶茶的情境，系統攔截後會回報找不到
-    msgs.append({"role": "user", "content": "幫我把奶茶取消"})
+    # Demo 7: 客人詢問菜單品項 → call query_menu 取得分類清單後列舉
+    # 情境：問飲料有什麼，示範 query_menu(category="飲品") 呼叫
+    msgs.append({"role": "user", "content": "你們有什麼飲料"})
     msgs.append(
-        {"role": "assistant", "content": "[REMOVE:奶茶]購物車裡沒有奶茶喔，不用取消～還需要什麼？"}
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": _tc(
+                "c7",
+                "query_menu",
+                {"category": "飲品"},
+            ),
+        }
+    )
+    msgs.append(
+        _tool_resp(
+            "c7",
+            {
+                "ok": True,
+                "category": "飲品",
+                "items": ["有糖豆漿", "精選紅茶", "純鮮奶茶", "十穀漿", "黑糖純鮮奶茶"],
+            },
+        )
+    )
+    msgs.append(
+        {
+            "role": "assistant",
+            "content": "我們有：有糖豆漿、精選紅茶、純鮮奶茶、十穀漿、黑糖純鮮奶茶，要點哪個？",
+        }
     )
 
     return msgs
