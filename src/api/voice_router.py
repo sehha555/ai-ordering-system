@@ -232,104 +232,120 @@ class StreamingDMAdapter:
         full_text = ""
         tool_trace = []
 
-        async for event in _llm_caller.run_turn_stream(
-            system_prompt=SystemPromptBuilder().build(),
-            user_text=text,
-            history=session["llm_history"],
-            tools_schema=_tool_registry.get_tools_schema(),
-            tool_map=_tool_registry.get_tool_map(),
-            allowed_args=_tool_registry.get_allowed_args(),
-            context=ctx,
-        ):
-            evt_type = event.get("type")
+        try:
+            async for event in _llm_caller.run_turn_stream(
+                system_prompt=SystemPromptBuilder().build(),
+                user_text=text,
+                history=session["llm_history"],
+                tools_schema=_tool_registry.get_tools_schema(),
+                tool_map=_tool_registry.get_tool_map(),
+                allowed_args=_tool_registry.get_allowed_args(),
+                context=ctx,
+            ):
+                evt_type = event.get("type")
 
-            if evt_type == "text_delta":
-                yield event
+                if evt_type == "text_delta":
+                    yield event
 
-            elif evt_type == "early_tts":
-                yield event  # pass through 給 orchestrator 立即送 TTS
+                elif evt_type == "early_tts":
+                    yield event  # pass through 給 orchestrator 立即送 TTS
 
-            elif evt_type == "tool_call":
-                tool_trace.append({"tool_call": event.get("tool_call"), "exec": event.get("exec")})
-                yield event
+                elif evt_type == "tool_call":
+                    tool_trace.append(
+                        {"tool_call": event.get("tool_call"), "exec": event.get("exec")}
+                    )
+                    yield event
 
-            elif evt_type == "done":
-                full_text = event.get("assistant_text", "")
-                session["llm_history"] = event.get("history", [])
+                elif evt_type == "done":
+                    full_text = event.get("assistant_text", "")
+                    session["llm_history"] = event.get("history", [])
 
-                if not full_text:
-                    full_text = "好的，還需要什麼嗎？"
+                    if not full_text:
+                        full_text = "好的，還需要什麼嗎？"
 
-                # ── [CHECKOUT] 攔截 ──
-                if CHECKOUT_TAG in full_text:
-                    cart = session.get("cart", [])
-                    if not cart:
-                        full_text = "購物車是空的，請先點餐喔～"
-                    else:
-                        session["checkout_status"] = _CK_DINE
-                        full_text = full_text.replace(CHECKOUT_TAG, "")
-                    self._patch_last_assistant(session["llm_history"], full_text)
-
-                # ── [REMOVE:...] 攔截 ──
-                if "[REMOVE:" in full_text:
-                    remove_match = _REMOVE_RE.search(full_text)
-                    if remove_match:
-                        remove_target = remove_match.group(1).strip()
+                    # ── [CHECKOUT] 攔截 ──
+                    if CHECKOUT_TAG in full_text:
                         cart = session.get("cart", [])
-                        remove_result: dict = {"ok": False, "message": "移除失敗"}
-
-                        if remove_target == "all":
-                            remove_result = _tool_registry.remove_from_cart(all=True)
-                        elif remove_target == "last":
-                            remove_result = _tool_registry.remove_from_cart(last=True)
+                        if not cart:
+                            full_text = "購物車是空的，請先點餐喔～"
                         else:
-                            matched_id = None
-                            for item in cart:
-                                if remove_target in cart_manager.format_item(item):
-                                    matched_id = item.get("item_id")
-                                    break
-                            if matched_id:
-                                remove_result = _tool_registry.remove_from_cart(item_id=matched_id)
-                            else:
-                                remove_result = {
-                                    "ok": False,
-                                    "message": f"購物車裡沒有{remove_target}",
-                                }
-
-                        full_text = _REMOVE_RE.sub("", full_text).strip()
-                        if not full_text:
-                            msg_text = remove_result.get("message", "已移除")
-                            full_text = f"{msg_text}～還需要什麼？"
+                            session["checkout_status"] = _CK_DINE
+                            full_text = full_text.replace(CHECKOUT_TAG, "")
                         self._patch_last_assistant(session["llm_history"], full_text)
 
-                _session_store.set(self._session_id, session)
+                    # ── [REMOVE:...] 攔截 ──
+                    if "[REMOVE:" in full_text:
+                        remove_match = _REMOVE_RE.search(full_text)
+                        if remove_match:
+                            remove_target = remove_match.group(1).strip()
+                            cart = session.get("cart", [])
+                            remove_result: dict = {"ok": False, "message": "移除失敗"}
 
-                # 讀取購物車
-                cart = session.get("cart", [])
-                total_price = cart_manager.calculate_cart_total(cart)
+                            if remove_target == "all":
+                                remove_result = _tool_registry.remove_from_cart(all=True)
+                            elif remove_target == "last":
+                                remove_result = _tool_registry.remove_from_cart(last=True)
+                            else:
+                                matched_id = None
+                                for item in cart:
+                                    if remove_target in cart_manager.format_item(item):
+                                        matched_id = item.get("item_id")
+                                        break
+                                if matched_id:
+                                    remove_result = _tool_registry.remove_from_cart(
+                                        item_id=matched_id
+                                    )
+                                else:
+                                    remove_result = {
+                                        "ok": False,
+                                        "message": f"購物車裡沒有{remove_target}",
+                                    }
 
-                # 檢查 finalize_order
-                finalize_result = None
-                preview_result = None
-                for trace in event.get("tool_trace", []):
-                    tc = trace.get("tool_call", {})
-                    tool_name = tc.get("function", {}).get("name")
-                    if tool_name == "finalize_order":
-                        exec_r = trace.get("exec", {})
-                        if exec_r.get("ok"):
-                            finalize_result = exec_r
-                    elif tool_name == "preview_checkout":
-                        exec_r = trace.get("exec", {})
-                        if exec_r.get("ok") and exec_r.get("preview"):
-                            preview_result = exec_r
+                            full_text = _REMOVE_RE.sub("", full_text).strip()
+                            if not full_text:
+                                msg_text = remove_result.get("message", "已移除")
+                                full_text = f"{msg_text}～還需要什麼？"
+                            self._patch_last_assistant(session["llm_history"], full_text)
 
-                yield {
-                    "type": "done",
-                    "cart": cart,
-                    "order_payload": {"total_price": total_price},
-                    "finalize_result": finalize_result,
-                    "preview_result": preview_result,
-                }
+                    _session_store.set(self._session_id, session)
+
+                    # 讀取購物車
+                    cart = session.get("cart", [])
+                    total_price = cart_manager.calculate_cart_total(cart)
+
+                    # 檢查 finalize_order
+                    finalize_result = None
+                    preview_result = None
+                    for trace in event.get("tool_trace", []):
+                        tc = trace.get("tool_call", {})
+                        tool_name = tc.get("function", {}).get("name")
+                        if tool_name == "finalize_order":
+                            exec_r = trace.get("exec", {})
+                            if exec_r.get("ok"):
+                                finalize_result = exec_r
+                        elif tool_name == "preview_checkout":
+                            exec_r = trace.get("exec", {})
+                            if exec_r.get("ok") and exec_r.get("preview"):
+                                preview_result = exec_r
+
+                    yield {
+                        "type": "done",
+                        "cart": cart,
+                        "order_payload": {"total_price": total_price},
+                        "finalize_result": finalize_result,
+                        "preview_result": preview_result,
+                    }
+
+        except Exception as e:
+            logger.error("[VOICE-STREAM] LLM 不可用，觸發降級: {}", e)
+            yield {"type": "fallback", "content": "不好意思，系統暫時無法回應，請再說一次"}
+            yield {
+                "type": "done",
+                "cart": session.get("cart", []),
+                "order_payload": {"total_price": 0},
+                "finalize_result": None,
+                "preview_result": None,
+            }
 
 
 class TextChatRequest(BaseModel):
