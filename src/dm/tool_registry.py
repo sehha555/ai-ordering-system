@@ -382,10 +382,13 @@ class ToolRegistry:
 
             session["cart"].append(item)
 
+            msg = f"已加入 {quantity}份 {combo_name}"
+            if customization:
+                msg += f"（{customization}）"
             return {
                 "ok": True,
                 "item_id": item_id,
-                "message": f"已加入 {quantity}份 {combo_name}",
+                "message": msg,
                 "cart_count": len(session["cart"]),
             }
         except Exception as e:

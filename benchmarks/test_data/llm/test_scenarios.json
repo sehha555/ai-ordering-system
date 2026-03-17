@@ -884,6 +884,10 @@
     "id": "checkout_empty_cart",
     "description": "H3: 購物車空結帳",
     "category": "edge_case",
+    "session_context": {
+      "cart_items": [],
+      "cart_count": 0
+    },
     "messages": [
       {
         "role": "user",
@@ -971,6 +975,10 @@
     "id": "modify_empty_cart",
     "description": "I3: 修改但購物車空",
     "category": "edge_case",
+    "session_context": {
+      "cart_items": [],
+      "cart_count": 0
+    },
     "messages": [
       {
         "role": "user",

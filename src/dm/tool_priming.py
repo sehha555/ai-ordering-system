@@ -284,4 +284,54 @@ def get_priming_messages() -> list[dict]:
         {"role": "assistant", "content": "[REMOVE:奶茶]購物車裡沒有奶茶喔，不用取消～還需要什麼？"}
     )
 
+    # Demo 10: 俗稱大冰奶 → 直接 call add_drink（size 用完整「大杯」，修 intent_big_iced_milk）
+    # 品項：大冰奶 = 大杯冰純鮮奶茶，size 必須用「大杯」不能用「大」
+    msgs.append({"role": "user", "content": "大冰奶"})
+    msgs.append(
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": _tc(
+                "c10",
+                "add_drink",
+                {
+                    "flavor": "純鮮奶茶",
+                    "size": "大杯",
+                    "temp": "冰",
+                },
+            ),
+        }
+    )
+    msgs.append(
+        _tool_resp(
+            "c10",
+            {
+                "ok": True,
+                "item_id": "dk_2",
+                "message": "已加入 1份 大杯冰純鮮奶茶",
+                "cart_count": 5,
+            },
+        )
+    )
+    msgs.append({"role": "assistant", "content": "好～還要什麼？"})
+
+    # Demo 11: 套餐直接名稱缺溫度 → call → ok:false → 追問（修 combo_missing_temp）
+    # 品項：套餐A（test cases 用套餐一/四），覆蓋「直接名稱無溫度→先 call→ok:false→問」
+    msgs.append({"role": "user", "content": "一個套餐A"})
+    msgs.append(
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": _tc(
+                "c11",
+                "add_combo",
+                {
+                    "combo_name": "套餐A",
+                },
+            ),
+        }
+    )
+    msgs.append(_tool_resp("c11", {"ok": False, "message": "飲料冰的還是溫的"}))
+    msgs.append({"role": "assistant", "content": "飲料要冰的還是溫的？"})
+
     return msgs
