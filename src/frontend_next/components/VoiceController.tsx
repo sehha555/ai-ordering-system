@@ -60,7 +60,7 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const { audioQueueRef, isPlayingRef, playNextAudio, onPlaybackCompleteRef, streamDoneRef, cleanup: cleanupPlayback } = useAudioPlayback(audioContextRef);
+  const { audioQueueRef, isPlayingRef, playNextAudio, onPlaybackCompleteRef, streamDoneRef, cleanup: cleanupPlayback } = useAudioPlayback(audioContextRef, setVolume);
 
   // 自動追問計時器 ref
   const autoPromptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

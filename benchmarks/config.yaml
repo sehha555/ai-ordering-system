@@ -51,29 +51,8 @@ llm:
         top_k: 20
         min_p: 0.01
         repeat_penalty: 1.0   # 避免 llama.cpp 預設 1.1 懲罰 priming 重複 token
-    - id: qwen3.5-9b-reasoning-distilled
-      name: "Qwen3.5-9B Opus Reasoning Distilled (no_think)"
-      adapter: openai_compatible
-      params:
-        base_url: "http://127.0.0.1:1234/v1"
-        model: "qwen3.5-9b-claude-4.6-opus-reasoning-distilled"
-        temperature: 0.3
-        top_p: 0.8
-        top_k: 20
-        min_p: 0.01
-        repeat_penalty: 1.0
-    - id: qwen3.5-9b-reasoning-distilled-think
-      name: "Qwen3.5-9B Opus Reasoning Distilled (think)"
-      adapter: openai_compatible
-      params:
-        base_url: "http://127.0.0.1:1234/v1"
-        model: "qwen3.5-9b-claude-4.6-opus-reasoning-distilled"
-        temperature: 0.3
-        top_p: 0.8
-        top_k: 20
-        min_p: 0.01
-        repeat_penalty: 1.0
-        enable_thinking: true
+    # reasoning distilled 已驗證：延遲增加 + tool calling 準確度下降，移除
+    # - id: qwen3.5-9b-reasoning-distilled（停用）
   metrics: [tool_call_accuracy, response_latency, scenario_pass_rate]
 
 e2e:
