@@ -60,10 +60,6 @@ export function useSSE({
 
   // 送純文字到後端（/api/text-chat），用於自動追問場景
   const sendTextToServer = useCallback(async (text: string) => {
-    if (vadEnabled) {
-      // 暫停 VAD，避免在處理時誤觸發（需要 vadLoopRef，但由 VAD hook 管理 — 透過 startVADLoop 狀態判斷）
-    }
-
     const abortController = new AbortController();
     const timeoutId = setTimeout(() => abortController.abort(), SSE_TIMEOUT);
 
@@ -190,7 +186,7 @@ export function useSSE({
         startVADLoop();
       }
     }
-  }, [setStatus, playNextAudio, vadEnabled, startVADLoop, sessionId, streamDoneRef, audioQueueRef, isPlayingRef, isListeningRef]);
+  }, [setStatus, vadEnabled, startVADLoop, sessionId, streamDoneRef, audioQueueRef, isPlayingRef, isListeningRef]);
 
   const handleSSEEvent = useCallback((event: string, dataStr: string) => {
     try {

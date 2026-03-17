@@ -37,6 +37,7 @@ export function useVAD({
 
   const startVADLoop = useCallback(() => {
     if (!analyserRef.current) return;
+    cancelAnimationFrame(vadLoopRef.current);
 
     const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
     let frameCount = 0;
