@@ -21,6 +21,7 @@ router = APIRouter(tags=["checkout"])
 
 class CheckoutRequest(BaseModel):
     """結帳請求"""
+
     session_id: str
     dine_type: str  # "dine-in" | "take-out"
     payment_method: str  # "cash" | "mobile"
@@ -28,11 +29,7 @@ class CheckoutRequest(BaseModel):
 
 @router.get("/cart/summary")
 @limiter.limit(settings.RATE_LIMIT_QUERY)
-async def get_cart_summary(
-    request: Request,
-    session_id: str,
-    api_key: str = Depends(get_api_key)
-):
+async def get_cart_summary(request: Request, session_id: str, api_key: str = Depends(get_api_key)):
     """取得購物車摘要"""
     try:
         session = container.session_store.get(session_id)
@@ -65,12 +62,14 @@ async def get_cart_summary(
             else:
                 price_str = ""
 
-            items.append({
-                "index": i,
-                "name": name,
-                "quantity": qty,
-                "price": price_str,
-            })
+            items.append(
+                {
+                    "index": i,
+                    "name": name,
+                    "quantity": qty,
+                    "price": price_str,
+                }
+            )
 
         return {
             "ok": True,
@@ -100,7 +99,12 @@ async def checkout(request: Request, body: CheckoutRequest):
         dine_type = body.dine_type
         payment_method = body.payment_method
 
-        logger.info("[CHECKOUT] 開始結帳: session_id={}, dine_type={}, payment={}", session_id, dine_type, payment_method)
+        logger.info(
+            "[CHECKOUT] 開始結帳: session_id={}, dine_type={}, payment={}",
+            session_id,
+            dine_type,
+            payment_method,
+        )
 
         # 1. 從 session_store 讀取購物車
         session = container.session_store.get(session_id)
@@ -116,33 +120,29 @@ async def checkout(request: Request, body: CheckoutRequest):
 
         logger.info("[CHECKOUT] 總計: ${}", total_price)
 
-        # 3. 生成取餐號碼
-        order_number = order_repo.get_next_order_number()
-        logger.info("[CHECKOUT] 取餐號碼: {}", order_number)
-
-        # 4. 建立訂單
+        # 3. 建立訂單（order_number 由 save_order_with_number 原子性取號）
         # order_id 必須只包含大寫字母、數字和連字符
         order_id = f"ORD-{datetime.now().strftime('%m%d')}-{str(uuid.uuid4())[:8].upper()}"
 
         order_payload = {
             "order_id": order_id,
             "session_id": session_id,
-            "order_number": order_number,
             "dine_type": dine_type,
             "payment_method": payment_method,
             "items": cart,
             "total_price": total_price,
-            "status": "submitted",
-            "created_at": datetime.now().isoformat()
+            "status": "SUBMITTED",
+            "created_at": datetime.now().isoformat(),
         }
 
-        # 5. 寫入訂單
-        order_repo.save_order(order_payload, session_id)
-        logger.info("[CHECKOUT] 訂單已保存: {}", order_id)
+        # 4. 原子性取號 + 寫入訂單
+        order_number = order_repo.save_order_with_number(order_payload, session_id)
+        logger.info("[CHECKOUT] 訂單已保存: {} 取餐號碼: {}", order_id, order_number)
 
-        # 6. 儲存對話紀錄
-        order_repo.save_conversation_log(session_id, order_number, llm_history)
-        order_repo.save_conversation_log_json(session_id, order_number, cart, total_price, dine_type, llm_history)
+        # 5. 儲存對話紀錄（JSON 檔）
+        order_repo.save_conversation_log_json(
+            session_id, order_number, cart, total_price, dine_type, llm_history
+        )
         logger.info("[CHECKOUT] 對話紀錄已保存")
 
         # 7. 清空 session（llm_history 和購物車）
@@ -157,7 +157,7 @@ async def checkout(request: Request, body: CheckoutRequest):
             "order_id": order_id,
             "total": total_price,
             "dine_type": dine_type,
-            "payment_method": payment_method
+            "payment_method": payment_method,
         }
 
     except Exception as e:

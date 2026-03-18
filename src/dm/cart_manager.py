@@ -26,14 +26,23 @@ def format_item(frame: Dict[str, Any]) -> str:
     if rtype == "carrier":
         return f"{frame.get('flavor', '')}{frame.get('carrier', '餐點')}"
     if rtype == "egg_pancake":
-        return frame.get('flavor', '蛋餅')
+        return frame.get("flavor", "蛋餅")
     if rtype == "snack":
-        base = frame.get('snack', '點心')
-        details = [v for v in [frame.get("egg_cook"), "不要胡椒" if frame.get("no_pepper") else None] if v]
+        base = frame.get("snack", "點心")
+        details = [
+            v for v in [frame.get("egg_cook"), "不要胡椒" if frame.get("no_pepper") else None] if v
+        ]
         return f"{base}({','.join(details)})" if details else base
     if rtype == "jam_toast":
-        base = frame.get('jam_toast', '果醬吐司')
-        details = [v for v in ["不烤" if frame.get("no_toast") else None, "切邊" if frame.get("cut_edge") else None] if v]
+        base = frame.get("jam_toast", "果醬吐司")
+        details = [
+            v
+            for v in [
+                "不烤" if frame.get("no_toast") else None,
+                "切邊" if frame.get("cut_edge") else None,
+            ]
+            if v
+        ]
         return f"{base}({','.join(details)})" if details else base
     if rtype == "combo":
         return frame.get("combo_name", "套餐")
@@ -53,8 +62,11 @@ def get_price_info(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     pi = None
     if rtype == "riceball":
         pi = menu_tool.quote_riceball_price(
-            flavor=item.get("flavor"), large=item.get("large", False),
-            heavy=item.get("heavy", False), extra_egg=item.get("extra_egg", False))
+            flavor=item.get("flavor"),
+            large=item.get("large", False),
+            heavy=item.get("heavy", False),
+            extra_egg=item.get("extra_egg", False),
+        )
     elif rtype == "egg_pancake":
         pi = egg_pancake_tool.quote_egg_pancake_price(item)
     elif rtype == "carrier":
@@ -162,27 +174,29 @@ def submit_order(session: Dict[str, Any]) -> str:
         item_total = extract_total(pi, qty)
         unit_price = item_total // qty if qty > 0 else 0
 
-        items_payload.append({
-            "name": format_item(item),
-            "quantity": qty,
-            "unit_price": unit_price,
-            "subtotal": item_total
-        })
+        items_payload.append(
+            {
+                "name": format_item(item),
+                "quantity": qty,
+                "unit_price": unit_price,
+                "subtotal": item_total,
+            }
+        )
 
     order_payload = {
         "order_id": order_id,
-        "status": "SUCCESS",
+        "status": "SUBMITTED",
         "created_at": datetime.now().isoformat(),
         "items": items_payload,
         "total_price": total_price,
-        "raw_history": session.get("history", [])
+        "raw_history": session.get("history", []),
     }
 
     session["order_payload"] = order_payload
     session["status"] = "SUBMITTED"
 
-    # 落庫儲存
-    order_repo.save_order(order_payload, session.get("session_id", "unknown"))
+    # 落庫儲存（原子性取號 + 寫入）
+    order_repo.save_order_with_number(order_payload, session.get("session_id", "unknown"))
 
     return f"好的，訂單已送出！您的訂單編號是 {order_id}，請至櫃檯結帳領取。"
 
@@ -219,8 +233,7 @@ def cancel_generic(session: Dict[str, Any]) -> str:
         if removed.get("_is_combo_sub_item"):
             session.pop("current_combo_frame", None)
             session["pending_frames"] = [
-                f for f in session["pending_frames"]
-                if not f.get("_is_combo_sub_item")
+                f for f in session["pending_frames"] if not f.get("_is_combo_sub_item")
             ]
         return "好的，已取消剛剛的變更或品項。還需要什麼嗎？"
     if session.get("pending_clear_confirm"):
@@ -233,7 +246,7 @@ def parse_index(text: str) -> Optional[int]:
     """從文字中解析序號"""
     patterns = [
         r"第\s*(\d+|[一二三四五六七八九十]+)\s*(?:項|個|份)?",
-        r"(\d+|[一二三四五六七八九十]+)\s*(?:項|個|份)"
+        r"(\d+|[一二三四五六七八九十]+)\s*(?:項|個|份)",
     ]
     for p in patterns:
         m = re.search(p, text)

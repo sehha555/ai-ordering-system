@@ -17,7 +17,9 @@ from src.tools.egg_pancake_tool import EggPancakeTool
 from src.tools.snack_tool import SNACK_ALIASES
 from src.dm.item_rules import check_combo_required
 import asyncio
+from datetime import datetime
 from src.api.order_broadcaster import order_broadcaster, format_order_for_admin
+from src.repository.order_repository import order_repo
 
 # 蛋餅別名
 EGG_PANCAKE_ALIASES = EggPancakeTool.FLAVOR_ALIASES
@@ -843,14 +845,7 @@ class ToolRegistry:
             # 計算總價（複用現有 _calculate_cart_total）
             total_price = cart_manager.calculate_cart_total(session["cart"])
 
-            # 生成取餐號碼（複用 order_repo）
-            from src.repository.order_repository import order_repo
-
-            order_number = order_repo.get_next_order_number()
-
-            # 建立訂單 payload
-            from datetime import datetime
-
+            # 建立訂單 payload（order_number 由 save_order_with_number 原子性取號）
             order_id = f"order-{self._session_id}-{datetime.now().timestamp()}"
 
             # 構建品項清單（給前端用）
@@ -872,7 +867,6 @@ class ToolRegistry:
             order_payload = {
                 "order_id": order_id,
                 "session_id": self._session_id,
-                "order_number": order_number,
                 "dine_type": resolved_dine,
                 "payment_method": resolved_payment,
                 "items": cart,
@@ -882,8 +876,8 @@ class ToolRegistry:
                 "created_at": datetime.now().isoformat(),
             }
 
-            # 寫入 DB
-            order_repo.save_order(order_payload, self._session_id)
+            # 原子性取號 + 寫入 DB
+            order_number = order_repo.save_order_with_number(order_payload, self._session_id)
 
             # SSE 廣播到 admin 訂單頁面
             try:
@@ -892,9 +886,8 @@ class ToolRegistry:
             except RuntimeError:
                 pass  # 沒有 running loop（CLI 模式）
 
-            # 儲存對話紀錄
+            # 儲存對話紀錄（JSON 檔）
             llm_history = session.get("llm_history", [])
-            order_repo.save_conversation_log(self._session_id, order_number, llm_history)
             order_repo.save_conversation_log_json(
                 self._session_id, order_number, cart, total_price, resolved_dine, llm_history
             )
