@@ -79,7 +79,11 @@ class InMemorySessionStore:
 
 
 class RedisSessionStore:
-    """Redis-backed Session Store — set() 帶 TTL，get() 刷新 TTL"""
+    """Redis-backed Session Store — set() 帶 TTL，get() 刷新 TTL
+
+    注意：on_expire callback 透過 Redis keyspace notification 觸發。
+    data 參數為空 dict（{}），因 Redis 過期時資料已刪除。
+    """
 
     def __init__(self, redis_url: str, ttl_minutes: int = 30, on_expire: Optional[Callable] = None):
         import redis as redis_lib
@@ -88,6 +92,48 @@ class RedisSessionStore:
         self._ttl_seconds = ttl_minutes * 60
         self._on_expire = on_expire
         self._prefix = "session:"
+        self._listener_thread = None
+        if self._on_expire:
+            try:
+                self._redis.config_set("notify-keyspace-events", "KEg")
+            except Exception as e:
+                logger.warning("Redis keyspace notification 設定失敗，on_expire 將不觸發: {}", e)
+            self._start_keyspace_listener()
+
+    def _start_keyspace_listener(self) -> None:
+        """啟動背景 thread，訂閱 Redis keyspace expired 事件"""
+        import threading
+
+        def _listen() -> None:
+            # 取得 Redis DB index（預設 0）
+            db_index = self._redis.connection_pool.connection_kwargs.get("db", 0)
+            channel = f"__keyevent@{db_index}__:expired"
+            pubsub = self._redis.pubsub()
+            pubsub.subscribe(channel)
+            logger.info("Redis keyspace listener 啟動，訂閱: {}", channel)
+            try:
+                for message in pubsub.listen():
+                    if message["type"] != "message":
+                        continue
+                    key = message["data"]
+                    if not key.startswith(self._prefix):
+                        continue
+                    session_id = key[len(self._prefix):]
+                    try:
+                        # 資料在 Redis 過期時已刪除，callback 收到空 dict
+                        self._on_expire(session_id, {})
+                    except Exception as e:
+                        logger.error("Session 過期回調失敗 ({}): {}", session_id, e)
+            except Exception as e:
+                logger.error("Redis keyspace listener 異常退出: {}", e)
+
+        t = threading.Thread(
+            target=_listen,
+            daemon=True,
+            name="redis-session-expire-listener",
+        )
+        t.start()
+        self._listener_thread = t
 
     def _key(self, session_id: str) -> str:
         return f"{self._prefix}{session_id}"
