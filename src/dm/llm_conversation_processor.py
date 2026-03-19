@@ -1,7 +1,7 @@
 """LLM 對話處理器 - 主要的 LLM 對話入口"""
 import json
 from typing import Dict, Any
-from requests.exceptions import Timeout, RequestException
+import httpx
 
 from src.services.llm_tool_caller import LLMToolCaller
 from src.dm.tool_registry import ToolRegistry
@@ -40,7 +40,7 @@ class LLMConversationProcessor:
         self.fallback_enabled = fallback_enabled
         self.system_prompt_builder = SystemPromptBuilder()
 
-    def handle(self, session_id: str, user_text: str) -> str:
+    async def handle(self, session_id: str, user_text: str) -> str:
         """
         處理用戶輸入並返回助手回覆
 
@@ -73,7 +73,7 @@ class LLMConversationProcessor:
             allowed_args = self.tool_registry.get_allowed_args()
 
             # 6. 調用 LLM 執行對話回合
-            result = self.llm.run_turn(
+            result = await self.llm.run_turn(
                 system_prompt=system_prompt,
                 user_text=user_text,
                 history=history,
@@ -98,7 +98,7 @@ class LLMConversationProcessor:
                 error_msg = result.get("error", "LLM 處理失敗")
                 return self._handle_llm_failure(session_id, user_text, error_msg)
 
-        except (Timeout, RequestException) as e:
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
             # 網路錯誤或超時
             return self._handle_timeout_or_network_error(session_id, user_text, e)
 

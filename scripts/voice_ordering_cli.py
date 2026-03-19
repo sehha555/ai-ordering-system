@@ -2,6 +2,7 @@
 實時語音點餐 CLI - 支持麥克風直接輸入
 """
 
+import asyncio
 import sys
 from pathlib import Path
 import numpy as np
@@ -182,7 +183,7 @@ class VoiceOrderingCLI:
                     print("店員思考中...")
                     try:
                         if self.use_llm:
-                            response = self.processor.handle(self.session_id, user_text)
+                            response = asyncio.run(self.processor.handle(self.session_id, user_text))
                         else:
                             response = self.dialogue_manager.handle(self.session_id, user_text)
                         print(f"店員: {response}")
@@ -209,7 +210,7 @@ class VoiceOrderingCLI:
                 # 對話管理器處理
                 print("店員思考中...")
                 if self.use_llm:
-                    response = self.processor.handle(self.session_id, user_input)
+                    response = asyncio.run(self.processor.handle(self.session_id, user_input))
                 else:
                     response = self.dialogue_manager.handle(self.session_id, user_input)
                 print(f"店員: {response}\n")
@@ -258,7 +259,7 @@ class VoiceOrderingCLI:
 
             # 對話管理器處理
             if self.use_llm:
-                response = self.processor.handle(self.session_id, user_input)
+                response = asyncio.run(self.processor.handle(self.session_id, user_input))
             else:
                 response = self.dialogue_manager.handle(self.session_id, user_input)
             print(f"店員: {response}\n")

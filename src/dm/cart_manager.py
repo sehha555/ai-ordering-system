@@ -92,6 +92,47 @@ def extract_total(pi: Dict[str, Any], qty: int) -> int:
     return 0
 
 
+def build_cart_summary(
+    cart: List[Dict[str, Any]], price_format: str = "dollar"
+) -> Dict[str, Any]:
+    """將購物車 list 轉換為摘要結構。
+
+    Args:
+        cart: 購物車品項列表
+        price_format: 價格字串格式，"dollar" → "$xxx"，"chinese" → "xxx元"
+
+    Returns:
+        {"items": [...], "total_price": int}
+        每個 item：{"index": int, "name": str, "price_str": str, "quantity": int, "total": int}
+    """
+    items = []
+    total_price = 0
+
+    for i, item in enumerate(cart, 1):
+        qty = int(item.get("quantity", 1) or 1)
+        name = format_item(item)
+        pi = get_price_info(item)
+        if pi and pi.get("status") == "success":
+            item_total = extract_total(pi, qty)
+            total_price += item_total
+            price_str = f"${item_total}" if price_format == "dollar" else f"{item_total}元"
+        else:
+            item_total = 0
+            price_str = ""
+
+        items.append(
+            {
+                "index": i,
+                "name": name,
+                "quantity": qty,
+                "price_str": price_str,
+                "total": item_total,
+            }
+        )
+
+    return {"items": items, "total_price": total_price}
+
+
 def calculate_cart_total(cart: List[Dict[str, Any]]) -> int:
     """計算購物車總價"""
     total = 0

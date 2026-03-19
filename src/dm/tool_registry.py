@@ -649,63 +649,6 @@ class ToolRegistry:
             cart = session.get("cart", [])
             draft = session.get("draft", [])
 
-            items = []
-            total_price = 0
-
-            for i, item in enumerate(cart, 1):
-                item_type = item.get("itemtype", "unknown")
-                qty = item.get("quantity", 1)
-
-                # 格式化品項名稱
-                if item_type == "riceball":
-                    name = f"{item.get('rice', '')}·{item.get('flavor', '飯糰')}"
-                elif item_type == "drink":
-                    name = f"{item.get('drink', '飲料')}({item.get('size', '')} {item.get('temp', '')})"
-                elif item_type == "carrier":
-                    name = f"{item.get('carrier', '載體')}·{item.get('flavor', '')}"
-                else:
-                    name = item.get("flavor") or item.get(item_type) or item_type
-
-                # 計算價格
-                price_info = cart_manager.get_price_info(item)
-                if price_info and price_info.get("status") == "success":
-                    item_total = cart_manager.extract_total(price_info, qty)
-                    total_price += item_total
-                    price_str = f"{item_total}元"
-                else:
-                    price_str = ""
-
-                items.append(
-                    {
-                        "item_id": item.get("item_id", ""),
-                        "index": i,
-                        "name": name,
-                        "quantity": qty,
-                        "price": price_str,
-                    }
-                )
-
-            # 格式化 draft 品項
-            draft_items = []
-            for i, item in enumerate(draft, 1):
-                item_type = item.get("itemtype", "unknown")
-                if item_type == "riceball":
-                    name = f"{item.get('rice', '')}·{item.get('flavor', '飯糰')}"
-                elif item_type == "drink":
-                    name = f"{item.get('drink', '飲料')}({item.get('size', '')} {item.get('temp', '')})"
-                elif item_type == "carrier":
-                    name = f"{item.get('carrier', '載體')}·{item.get('flavor', '')}"
-                else:
-                    name = item.get("flavor") or item.get(item_type) or item_type
-
-                draft_items.append(
-                    {
-                        "index": i,
-                        "name": name,
-                        "status": "待確認",
-                    }
-                )
-
             if not cart and not draft:
                 return {
                     "ok": True,
@@ -715,6 +658,30 @@ class ToolRegistry:
                     "total_price": 0,
                     "message": "購物車為空",
                 }
+
+            # 使用共用 build_cart_summary 計算 cart items
+            summary = cart_manager.build_cart_summary(cart, price_format="chinese")
+            items = [
+                {
+                    "item_id": cart[entry["index"] - 1].get("item_id", ""),
+                    "index": entry["index"],
+                    "name": entry["name"],
+                    "quantity": entry["quantity"],
+                    "price": entry["price_str"],
+                }
+                for entry in summary["items"]
+            ]
+            total_price = summary["total_price"]
+
+            # 格式化 draft 品項
+            draft_items = [
+                {
+                    "index": i,
+                    "name": cart_manager.format_item(item),
+                    "status": "待確認",
+                }
+                for i, item in enumerate(draft, 1)
+            ]
 
             return {
                 "ok": True,

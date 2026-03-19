@@ -44,32 +44,17 @@ async def get_cart_summary(request: Request, session_id: str, api_key: str = Dep
                 "message": "購物車為空",
             }
 
-        items = []
-        total_price = 0
-
-        for i, item in enumerate(cart, 1):
-            qty = int(item.get("quantity", 1) or 1)
-
-            # 格式化品項名稱
-            name = cart_manager.format_item(item)
-
-            # 計算價格
-            price_info = cart_manager.get_price_info(item)
-            if price_info and price_info.get("status") == "success":
-                item_total = cart_manager.extract_total(price_info, qty)
-                total_price += item_total
-                price_str = f"${item_total}"
-            else:
-                price_str = ""
-
-            items.append(
-                {
-                    "index": i,
-                    "name": name,
-                    "quantity": qty,
-                    "price": price_str,
-                }
-            )
+        summary = cart_manager.build_cart_summary(cart, price_format="dollar")
+        items = [
+            {
+                "index": entry["index"],
+                "name": entry["name"],
+                "quantity": entry["quantity"],
+                "price": entry["price_str"],
+            }
+            for entry in summary["items"]
+        ]
+        total_price = summary["total_price"]
 
         return {
             "ok": True,
