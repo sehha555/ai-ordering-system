@@ -1,7 +1,5 @@
 import re
-import uuid
 from collections import OrderedDict
-from datetime import datetime
 from typing import Dict, Any, List, Optional
 
 from src.tools.riceball_tool import menu_tool, _chinese_number_to_int
@@ -11,7 +9,6 @@ from src.tools.snack_tool import snack_tool
 from src.tools.jam_toast_tool import jam_toast_tool
 from src.tools.egg_pancake_tool import egg_pancake_tool
 from src.tools.combo_tool import combo_tool
-from src.repository.order_repository import order_repo
 
 
 def format_item(frame: Dict[str, Any]) -> str:
@@ -160,45 +157,6 @@ def get_short_summary(cart: List[Dict[str, Any]]) -> str:
         name = format_item(g["item"])
         parts.append(f"{name} x{g['count']}" if g["count"] > 1 else name)
     return "、".join(parts)
-
-
-def submit_order(session: Dict[str, Any]) -> str:
-    """生成 Payload 並送出訂單"""
-    order_id = f"SN-{datetime.now().strftime('%m%d')}-{str(uuid.uuid4())[:4].upper()}"
-    total_price = calculate_cart_total(session["cart"])
-
-    items_payload = []
-    for item in session["cart"]:
-        qty = int(item.get("quantity", 1) or 1)
-        pi = get_price_info(item)
-        item_total = extract_total(pi, qty)
-        unit_price = item_total // qty if qty > 0 else 0
-
-        items_payload.append(
-            {
-                "name": format_item(item),
-                "quantity": qty,
-                "unit_price": unit_price,
-                "subtotal": item_total,
-            }
-        )
-
-    order_payload = {
-        "order_id": order_id,
-        "status": "SUBMITTED",
-        "created_at": datetime.now().isoformat(),
-        "items": items_payload,
-        "total_price": total_price,
-        "raw_history": session.get("history", []),
-    }
-
-    session["order_payload"] = order_payload
-    session["status"] = "SUBMITTED"
-
-    # 落庫儲存（原子性取號 + 寫入）
-    order_repo.save_order_with_number(order_payload, session.get("session_id", "unknown"))
-
-    return f"好的，訂單已送出！您的訂單編號是 {order_id}，請至櫃檯結帳領取。"
 
 
 def cancel_last(session: Dict[str, Any]) -> str:

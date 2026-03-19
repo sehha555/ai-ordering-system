@@ -3,14 +3,12 @@ import uuid
 import os
 import time
 from fastapi.testclient import TestClient
-from src.dm.dialogue_manager import DialogueManager
 from src.repository.order_repository import OrderRepository
 
 # 持有 order_repo 單例引用的模組
 import src.repository.order_repository as repo_mod
 import src.api.app as api_mod
 import src.api.checkout_router as checkout_mod
-import src.dm.cart_manager as dm_mod
 
 
 def get_unique_test_db():
@@ -28,14 +26,12 @@ def test_env():
         "repo": repo_mod.order_repo,
         "api": api_mod.order_repo,
         "checkout": checkout_mod.order_repo,
-        "dm": dm_mod.order_repo
     }
 
     # 全面注入測試用 repo
     repo_mod.order_repo = test_repo
     api_mod.order_repo = test_repo
     checkout_mod.order_repo = test_repo
-    dm_mod.order_repo = test_repo
 
     yield test_repo
 
@@ -43,7 +39,6 @@ def test_env():
     repo_mod.order_repo = old_repos["repo"]
     api_mod.order_repo = old_repos["api"]
     checkout_mod.order_repo = old_repos["checkout"]
-    dm_mod.order_repo = old_repos["dm"]
 
     # 清理檔案 (retry Windows 鎖定)
     for _ in range(10):
@@ -59,6 +54,7 @@ def test_env():
 def client(test_env):
     """API 客戶端 fixture"""
     from src.api.app import app
+
     return TestClient(app)
 
 
@@ -128,6 +124,7 @@ def test_tts_status(client):
 def test_cart_summary(client, test_env):
     """7. GET /cart/summary - 取得購物車摘要"""
     from src.api.app import _session_store
+
     sid = str(uuid.uuid4())
     session = _session_store.get(sid)
     # 直接放商品到 cart - 使用正確的 itemtype 格式和完整品項名稱
@@ -142,15 +139,14 @@ def test_cart_summary(client, test_env):
 def test_checkout(client, test_env):
     """8. POST /api/checkout - 完整結帳流程"""
     from src.api.app import _session_store
+
     sid = str(uuid.uuid4())
     session = _session_store.get(sid)
     # 使用正確的 itemtype 格式和完整品項名稱
     session["cart"] = [{"itemtype": "snack", "snack": "薯餅(1片)", "quantity": 1}]
-    r = client.post("/api/checkout", json={
-        "session_id": sid,
-        "dine_type": "dine-in",
-        "payment_method": "cash"
-    })
+    r = client.post(
+        "/api/checkout", json={"session_id": sid, "dine_type": "dine-in", "payment_method": "cash"}
+    )
     assert r.status_code == 200
     data = r.json()
     assert data["status"] == "ok"
@@ -162,16 +158,15 @@ def test_checkout(client, test_env):
 def test_get_order(client, test_env):
     """9. GET /orders/{id} - 查詢單筆訂單"""
     from src.api.app import _session_store
+
     sid = str(uuid.uuid4())
     session = _session_store.get(sid)
     # 使用正確的 itemtype 格式和完整品項名稱
     session["cart"] = [{"itemtype": "snack", "snack": "薯餅(1片)", "quantity": 1}]
     # 先結帳
-    r = client.post("/api/checkout", json={
-        "session_id": sid,
-        "dine_type": "take-out",
-        "payment_method": "cash"
-    })
+    r = client.post(
+        "/api/checkout", json={"session_id": sid, "dine_type": "take-out", "payment_method": "cash"}
+    )
     order_id = r.json()["order_id"]
     # 查詢
     r = client.get(f"/orders/{order_id}", headers=API_KEY_HEADER)
@@ -182,17 +177,17 @@ def test_get_order(client, test_env):
 def test_list_orders(client, test_env):
     """10. GET /orders - 列表查詢訂單"""
     from src.api.app import _session_store
+
     # 建立 2 筆訂單
     for _ in range(2):
         sid = str(uuid.uuid4())
         session = _session_store.get(sid)
         # 使用正確的 itemtype 格式和完整品項名稱
         session["cart"] = [{"itemtype": "snack", "snack": "薯餅(1片)", "quantity": 1}]
-        client.post("/api/checkout", json={
-            "session_id": sid,
-            "dine_type": "dine-in",
-            "payment_method": "cash"
-        })
+        client.post(
+            "/api/checkout",
+            json={"session_id": sid, "dine_type": "dine-in", "payment_method": "cash"},
+        )
     r = client.get("/orders", headers=API_KEY_HEADER)
     assert r.status_code == 200
     assert len(r.json()["items"]) >= 2

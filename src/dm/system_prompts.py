@@ -1,4 +1,5 @@
 """System Prompt 管理模組 - 動態生成和管理 LLM 系統提示"""
+
 from typing import Optional, Dict
 import json
 import os
@@ -9,12 +10,18 @@ from src.dm.session_context import SessionContext
 from src.config.settings import settings
 
 
+# 模組層級靜態快取（跨 instance 共用，不跟 request 走）
+_BASE_PROMPT_CACHE: Optional[str] = None
+_MENU_SUMMARY_CACHE: Optional[str] = None
+
+
 def _get_drink_default_ask() -> str:
     """根據月份決定飲料追問的預設順序（冬天溫在前，夏天冰在前）"""
     month = datetime.now().month
     if month in (11, 12, 1, 2, 3):
         return "預設問「中溫還是中冰」（冬天）"
     return "預設問「中冰還是中溫」（夏天）"
+
 
 # 分類 key → 中文名稱對應表（用於售完資訊注入，僅列具代表性的分類）
 _CATEGORY_KEY_TO_LABEL: Dict[str, str] = {
@@ -82,7 +89,9 @@ def _format_rice_restriction(rice_status: dict) -> str:
     # 只有紫米或白米缺時，混米也受影響（混米需要兩種米）
     if not mixed_ok:
         available_str = "、".join(available)
-        return f"飯糰米種：{unavailable_str}不可選，混米也不可選（因原料不足），僅{available_str}可用"
+        return (
+            f"飯糰米種：{unavailable_str}不可選，混米也不可選（因原料不足），僅{available_str}可用"
+        )
     return f"飯糰米種：{unavailable_str}不可選，僅{'、'.join(available)}可用"
 
 
@@ -94,11 +103,7 @@ def _get_available_mantou(sold_cats: Dict[str, bool]) -> Optional[list]:
       None  — 全部 5 種都可選（不需要注入選項限制）
       list  — 部分售完，回傳仍可選的名稱清單
     """
-    available = [
-        name
-        for key, name in _MANTOU_KEY_TO_NAME.items()
-        if not sold_cats.get(key, False)
-    ]
+    available = [name for key, name in _MANTOU_KEY_TO_NAME.items() if not sold_cats.get(key, False)]
     # 全部可選時回傳 None，表示不需要限制說明
     if len(available) == len(_MANTOU_KEY_TO_NAME):
         return None
@@ -109,14 +114,18 @@ class SystemPromptBuilder:
     """構建和管理動態系統提示的類"""
 
     def __init__(self):
-        """初始化 SystemPromptBuilder"""
+        # 允許測試透過 instance attribute 覆寫（e.g., b._base_prompt = "mock"）
         self._base_prompt: Optional[str] = None
         self._menu_summary: Optional[str] = None
 
     def _load_base_prompt(self) -> str:
-        """從 prompts/system_prompt.md 讀取基礎提示"""
+        """從 prompts/system_prompt.md 讀取基礎提示（模組層級快取，instance 覆寫優先）"""
+        # instance override（測試用）
         if self._base_prompt is not None:
             return self._base_prompt
+        global _BASE_PROMPT_CACHE
+        if _BASE_PROMPT_CACHE is not None:
+            return _BASE_PROMPT_CACHE
 
         # 構建提示文件的路徑
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -124,30 +133,30 @@ class SystemPromptBuilder:
         prompt_path = os.path.join(project_root, "prompts", "system_prompt.md")
 
         try:
-            with open(prompt_path, 'r', encoding='utf-8') as f:
+            with open(prompt_path, "r", encoding="utf-8") as f:
                 content = f.read()
         except FileNotFoundError:
             raise RuntimeError(f"Base prompt file not found at {prompt_path}")
 
         # 移除 "LLM 增強功能" 區塊（舊架構用的）
-        content = re.sub(
-            r'# LLM 增強功能.*?(?=# Core Rules)',
-            '',
-            content,
-            flags=re.DOTALL
-        )
+        content = re.sub(r"# LLM 增強功能.*?(?=# Core Rules)", "", content, flags=re.DOTALL)
 
         from src.dm.item_rules import generate_item_logic  # noqa: PLC0415
+
         content = content.replace("{store_name}", settings.STORE_NAME)
         content = content.replace("{item_logic}", generate_item_logic())
         content = content.replace("{drink_default_ask}", _get_drink_default_ask())
-        self._base_prompt = content.strip()
-        return self._base_prompt
+        _BASE_PROMPT_CACHE = content.strip()
+        return _BASE_PROMPT_CACHE
 
     def _generate_menu_domain_guide(self) -> str:
         """生成菜單領域指南（Triad Engine Format B），結果快取避免重複讀檔"""
+        # instance override（測試用）
         if self._menu_summary is not None:
             return self._menu_summary
+        global _MENU_SUMMARY_CACHE
+        if _MENU_SUMMARY_CACHE is not None:
+            return _MENU_SUMMARY_CACHE
 
         menu_path = Path(__file__).parent.parent / "tools" / "menu" / "menu_all.json"
         recipe_path = Path(__file__).parent.parent / "tools" / "menu" / "riceball_recipes.json"
@@ -177,10 +186,7 @@ class SystemPromptBuilder:
         # 飯糰：opts + 品項附成分
         menu["飯糰"] = {
             "opts": {"米種": ["白米", "紫米", "混米"]},
-            "items": {
-                name: get_riceball_ingredients(name)
-                for name in by_category.get("飯糰", [])
-            },
+            "items": {name: get_riceball_ingredients(name) for name in by_category.get("飯糰", [])},
         }
 
         # 純陣列分類
@@ -221,8 +227,12 @@ class SystemPromptBuilder:
             },
         }
 
-        self._menu_summary = "# 菜單指南\n```json\n" + json.dumps(guide, ensure_ascii=False, separators=(",", ":")) + "\n```"
-        return self._menu_summary
+        _MENU_SUMMARY_CACHE = (
+            "# 菜單指南\n```json\n"
+            + json.dumps(guide, ensure_ascii=False, separators=(",", ":"))
+            + "\n```"
+        )
+        return _MENU_SUMMARY_CACHE
 
     def _format_session_context(self, session_context: Optional[SessionContext]) -> str:
         """格式化會話上下文信息"""
@@ -281,15 +291,12 @@ class SystemPromptBuilder:
 
         # 判斷哪些分類已售完（有對應中文標籤的才顯示為「售完分類」）
         sold_category_labels = [
-            label
-            for key, label in _CATEGORY_KEY_TO_LABEL.items()
-            if sold_cats.get(key, False)
+            label for key, label in _CATEGORY_KEY_TO_LABEL.items() if sold_cats.get(key, False)
         ]
 
         # 判斷不可用套餐
         unavailable_combos = [
-            name for name, status in combo_status.items()
-            if not status["available"]
+            name for name, status in combo_status.items() if not status["available"]
         ]
 
         # 判斷饅頭選項限制（部分饅頭種類售完，尚有剩餘可選者）
@@ -316,10 +323,14 @@ class SystemPromptBuilder:
         rice_restriction = _format_rice_restriction(rice_status)
 
         # 收集所有選項限制行
-        option_restrictions = [r for r in [mantou_restriction, noodle_restriction, rice_restriction] if r]
+        option_restrictions = [
+            r for r in [mantou_restriction, noodle_restriction, rice_restriction] if r
+        ]
 
         # 完全沒有任何售完資訊 → 回傳空字串（零售完不佔 token）
-        if not (effective_items or sold_category_labels or unavailable_combos or option_restrictions):
+        if not (
+            effective_items or sold_category_labels or unavailable_combos or option_restrictions
+        ):
             return ""
 
         lines = ["【售完資訊】"]

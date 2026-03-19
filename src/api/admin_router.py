@@ -32,39 +32,54 @@ router = APIRouter(
 # ── 菜單資料路徑（讀取所有品項名稱供驗證用）────────────────────────────
 _MENU_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
-    "..", "tools", "menu", "menu_all.json",
+    "..",
+    "tools",
+    "menu",
+    "menu_all.json",
 )
+
+
+_ITEM_NAMES_CACHE: set[str] | None = None
 
 
 def _load_all_item_names() -> set[str]:
     """讀取 menu_all.json，回傳所有品項名稱集合（用於驗證品項是否存在）。"""
+    global _ITEM_NAMES_CACHE
+    if _ITEM_NAMES_CACHE is not None:
+        return _ITEM_NAMES_CACHE
     with open(_MENU_PATH, "r", encoding="utf-8-sig") as f:
         items = json.load(f)
-    return {item["name"] for item in items}
+    _ITEM_NAMES_CACHE = {item["name"] for item in items}
+    return _ITEM_NAMES_CACHE
 
 
 # ── Request Body 型別 ────────────────────────────────────────────────────
 
+
 class ItemSoldOutRequest(BaseModel):
     """品項售完更新請求"""
+
     name: str
     sold_out: bool
 
 
 class CategorySoldOutRequest(BaseModel):
     """分類售完更新請求"""
+
     key: str
     sold_out: bool
 
 
 class BusinessHoursRequest(BaseModel):
     """營業時間更新請求（格式 HH:MM）"""
+
     open: str
     close: str
 
 
 class OpenOverrideRequest(BaseModel):
     """強制開/關/自動請求。override=True 強制開、False 強制關、None 回自動。"""
+
     override: Optional[bool]
 
 
@@ -155,6 +170,7 @@ async def update_business_hours(body: BusinessHoursRequest):
     """
     # 簡單格式驗證：HH:MM
     import re
+
     pattern = re.compile(r"^\d{2}:\d{2}$")
     if not pattern.match(body.open) or not pattern.match(body.close):
         raise HTTPException(
@@ -184,11 +200,13 @@ async def update_open_override(body: OpenOverrideRequest):
 
 class StatusUpdateRequest(BaseModel):
     """訂單狀態更新請求"""
+
     status: Literal["SUBMITTED", "IN_PROGRESS", "COMPLETED"]
 
 
 class PaymentUpdateRequest(BaseModel):
     """付款狀態更新請求"""
+
     payment_status: Literal["UNPAID", "PAID"]
 
 
