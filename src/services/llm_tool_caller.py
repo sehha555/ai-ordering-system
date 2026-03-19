@@ -1,10 +1,8 @@
 import asyncio
 import json
 import re
-import time
 from typing import Any, AsyncIterator, Dict, List, Callable, Optional
 
-import requests
 import httpx
 
 from loguru import logger
@@ -125,12 +123,13 @@ class LLMToolCaller:
             payload["max_tokens"] = max_tokens
         return payload
 
-    def _post(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """POST 請求，帶指數退避重試（連線錯誤 / 5xx）。"""
-        last_exc = None
+    async def _post(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """非阻塞 POST 請求，帶指數退避重試（連線錯誤 / 5xx）。"""
+        last_exc: Exception = RuntimeError("no attempts made")
         for attempt in range(self.max_retries + 1):
             try:
-                r = requests.post(self.base_url, json=payload, timeout=self.timeout)
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    r = await client.post(self.base_url, json=payload)
                 if r.status_code >= 500 and attempt < self.max_retries:
                     delay = self.retry_base_delay * (2**attempt)
                     logger.warning(
@@ -140,11 +139,11 @@ class LLMToolCaller:
                         attempt + 1,
                         self.max_retries,
                     )
-                    time.sleep(delay)
+                    await asyncio.sleep(delay)
                     continue
                 r.raise_for_status()
                 return r.json()
-            except (requests.ConnectionError, requests.Timeout) as e:
+            except (httpx.ConnectError, httpx.TimeoutException) as e:
                 last_exc = e
                 if attempt < self.max_retries:
                     delay = self.retry_base_delay * (2**attempt)
@@ -155,14 +154,10 @@ class LLMToolCaller:
                         attempt + 1,
                         self.max_retries,
                     )
-                    time.sleep(delay)
+                    await asyncio.sleep(delay)
                     continue
                 raise
-        raise last_exc  # type: ignore[misc]
-
-    async def _post_async(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """非阻塞版 POST：把同步 _post 包進 asyncio.to_thread，不阻塞 event loop。"""
-        return await asyncio.to_thread(self._post, payload)
+        raise last_exc
 
     async def call_llm_async(
         self,
@@ -172,8 +167,8 @@ class LLMToolCaller:
         tool_choice: Optional[str] = None,
         temperature: float = 0.3,
     ) -> Dict[str, Any]:
-        """call_llm 的非阻塞版，用於 async context（如 run_turn_stream）。"""
-        return await self._post_async(
+        """非阻塞 LLM 呼叫，用於 async context。"""
+        return await self._post(
             self._build_payload(
                 messages,
                 temperature=temperature,
@@ -182,7 +177,7 @@ class LLMToolCaller:
             )
         )
 
-    def call_llm(
+    async def call_llm(
         self,
         *,
         messages: List[Dict[str, Any]],
@@ -190,7 +185,7 @@ class LLMToolCaller:
         tool_choice: Optional[str] = None,  # "auto" | "required" | {"type":"function",...}
         temperature: float = 0.3,
     ) -> Dict[str, Any]:
-        return self._post(
+        return await self._post(
             self._build_payload(
                 messages,
                 temperature=temperature,
@@ -269,7 +264,7 @@ class LLMToolCaller:
 
         return {"ok": True, "error": None, "result": result}
 
-    def run_turn(
+    async def run_turn(
         self,
         *,
         system_prompt: str,
@@ -303,7 +298,7 @@ class LLMToolCaller:
 
         for _ in range(self.max_steps):
             with PerfTimer("llm_api_call"):
-                resp = self.call_llm(
+                resp = await self.call_llm(
                     messages=messages,
                     tools_schema=tools_schema,
                     tool_choice="auto",
@@ -401,7 +396,7 @@ class LLMToolCaller:
                 max_tokens=1,
                 tools_schema=tools_schema,
             )
-            await asyncio.to_thread(self._post, payload)
+            await self._post(payload)
         except Exception:
             pass  # warmup 失敗不影響啟動
 
