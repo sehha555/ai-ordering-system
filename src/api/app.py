@@ -44,8 +44,6 @@ def load_store_config():
     with open(config_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
-# 載入設定
-STORE_CONFIG = load_store_config()
 from src.api.voice_router import router as voice_router  # noqa: E402
 from src.api.health import router as health_router  # noqa: E402
 from src.api.admin_router import router as admin_router  # noqa: E402
@@ -82,6 +80,9 @@ def _validate_startup():
 
 @asynccontextmanager
 async def lifespan(app):
+    # startup: 載入店家設定（移出模組層級，避免 import 時 JSON 不存在 crash）
+    app.state.store_config = load_store_config()
+
     # startup: 啟動驗證
     _validate_startup()
 
@@ -235,9 +236,10 @@ async def get_perf_stats():
 @limiter.limit(settings.RATE_LIMIT_QUERY)
 async def get_store_config(request: Request):
     """取得店家設定（前端用）"""
+    store_config = request.app.state.store_config
     return {
-        "store": STORE_CONFIG["store"],
-        "ui": STORE_CONFIG["ui"]
+        "store": store_config["store"],
+        "ui": store_config["ui"]
     }
 
 
