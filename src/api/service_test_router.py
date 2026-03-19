@@ -2,6 +2,7 @@
 """服務狀態測試 + TTS 直接操作 Router"""
 
 import os
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
@@ -21,7 +22,9 @@ async def test_llm(request: Request, api_key: str = Depends(get_api_key)):
     """測試 LLM 服務狀態"""
     try:
         import requests
-        resp = requests.get("http://127.0.0.1:1234/v1/models", timeout=5)
+        _parsed = urlparse(settings.LLM_BASE_URL)
+        models_url = f"{_parsed.scheme}://{_parsed.netloc}/v1/models"
+        resp = requests.get(models_url, timeout=5)
         models = resp.json().get("data", [])
         return {
             "service": "LLM (LM Studio)",
