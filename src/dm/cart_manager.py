@@ -92,9 +92,7 @@ def extract_total(pi: Dict[str, Any], qty: int) -> int:
     return 0
 
 
-def build_cart_summary(
-    cart: List[Dict[str, Any]], price_format: str = "dollar"
-) -> Dict[str, Any]:
+def build_cart_summary(cart: List[Dict[str, Any]], price_format: str = "dollar") -> Dict[str, Any]:
     """將購物車 list 轉換為摘要結構。
 
     Args:
@@ -109,7 +107,9 @@ def build_cart_summary(
     total_price = 0
 
     for i, item in enumerate(cart, 1):
-        qty = int(item.get("quantity", 1) or 1)
+        raw_qty = item.get("quantity", 1)
+        qty = int(raw_qty) if raw_qty is not None and str(raw_qty) != "" else 1
+        qty = max(1, qty)
         name = format_item(item)
         pi = get_price_info(item)
         if pi and pi.get("status") == "success":
@@ -123,6 +123,7 @@ def build_cart_summary(
         items.append(
             {
                 "index": i,
+                "item_id": item.get("item_id", ""),
                 "name": name,
                 "quantity": qty,
                 "price_str": price_str,
@@ -137,7 +138,9 @@ def calculate_cart_total(cart: List[Dict[str, Any]]) -> int:
     """計算購物車總價"""
     total = 0
     for item in cart:
-        qty = int(item.get("quantity", 1) or 1)
+        raw_qty = item.get("quantity", 1)
+        qty = int(raw_qty) if raw_qty is not None and str(raw_qty) != "" else 1
+        qty = max(1, qty)
         pi = get_price_info(item)
         if pi and pi.get("status") == "success":
             total += extract_total(pi, qty)

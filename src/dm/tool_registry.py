@@ -663,7 +663,7 @@ class ToolRegistry:
             summary = cart_manager.build_cart_summary(cart, price_format="chinese")
             items = [
                 {
-                    "item_id": cart[entry["index"] - 1].get("item_id", ""),
+                    "item_id": entry["item_id"],
                     "index": entry["index"],
                     "name": entry["name"],
                     "quantity": entry["quantity"],

@@ -39,10 +39,12 @@ backup_database()
 # 載入店家設定
 # ============================================================================
 
+
 def load_store_config():
     config_path = os.path.join(os.path.dirname(__file__), "..", "config", "store_config.json")
     with open(config_path, "r", encoding="utf-8") as f:
         return json.load(f)
+
 
 from src.api.voice_router import router as voice_router  # noqa: E402
 from src.api.health import router as health_router  # noqa: E402
@@ -81,7 +83,16 @@ def _validate_startup():
 @asynccontextmanager
 async def lifespan(app):
     # startup: 載入店家設定（移出模組層級，避免 import 時 JSON 不存在 crash）
-    app.state.store_config = load_store_config()
+    try:
+        app.state.store_config = load_store_config()
+    except FileNotFoundError as e:
+        logger.error(
+            "[STARTUP] 找不到 store_config.json，請確認 src/config/store_config.json 存在: {}", e
+        )
+        raise
+    except Exception as e:
+        logger.error("[STARTUP] 載入 store_config.json 失敗: {}", e)
+        raise
 
     # startup: 啟動驗證
     _validate_startup()
@@ -90,6 +101,7 @@ async def lifespan(app):
     from src.services.tts_cache import tts_cache
     from src.services.tts_implementations import create_tts_model as _create_tts
     from src.config.models import TTS_BACKEND as _tts_backend
+
     _warmup_tts = _create_tts(_tts_backend)
     asyncio.create_task(tts_cache.warmup(_warmup_tts))
 
@@ -98,6 +110,7 @@ async def lifespan(app):
         try:
             logger.info("[STARTUP] LLM KV cache 預熱開始...")
             from src.dm.tool_priming import get_priming_messages
+
             system_prompt = SystemPromptBuilder().build()
             priming = get_priming_messages()
             tools_schema = _tool_registry.get_tools_schema()
@@ -110,6 +123,7 @@ async def lifespan(app):
             logger.info("[STARTUP] LLM KV cache 預熱完成")
         except Exception as e:
             logger.warning("[STARTUP] LLM warmup 失敗（不影響啟動）: {}", e)
+
     asyncio.create_task(_warmup_llm())
 
     # startup: Session 背景清理任務（每 5 分鐘）
@@ -184,6 +198,7 @@ async def _session_cleanup_loop():
         except Exception as e:
             logger.error("Session 清理失敗: {}", e)
 
+
 _llm_caller = LLMToolCaller(
     base_url=settings.LLM_BASE_URL,
     model=settings.LLM_MODEL,
@@ -196,6 +211,7 @@ _tts_service = TTSService(voice="female", rate="+0%")
 
 # 同步到服務容器，供其他模組使用（消除循環依賴）
 from src.services import container as _container  # noqa: E402
+
 _container.session_store = _session_store
 _container.llm_caller = _llm_caller
 _container.tool_registry = _tool_registry
@@ -208,6 +224,7 @@ from src.api.auth import get_api_key  # noqa: E402
 def validate_order_id(order_id: str):
     if not re.match(r"^[A-Z0-9-]+$", order_id) or len(order_id) > 20:
         raise HTTPException(status_code=400, detail="Invalid Order ID format")
+
 
 @app.get("/")
 async def serve_frontend():
@@ -232,20 +249,19 @@ async def get_perf_stats():
 # 店家設定 API
 # ============================================================================
 
+
 @app.get("/api/store-config")
 @limiter.limit(settings.RATE_LIMIT_QUERY)
 async def get_store_config(request: Request):
     """取得店家設定（前端用）"""
     store_config = request.app.state.store_config
-    return {
-        "store": store_config["store"],
-        "ui": store_config["ui"]
-    }
+    return {"store": store_config["store"], "ui": store_config["ui"]}
 
 
 # ============================================================================
 # 菜單 API
 # ============================================================================
+
 
 @app.get("/api/menu")
 @limiter.limit(settings.RATE_LIMIT_QUERY)
@@ -256,6 +272,7 @@ async def get_menu(request: Request):
     """
     return {"categories": build_menu_categories()}
 
+
 @app.get("/orders/{order_id}")
 @limiter.limit(settings.RATE_LIMIT_QUERY)
 async def get_order(request: Request, order_id: str, api_key: str = Depends(get_api_key)):
@@ -265,6 +282,7 @@ async def get_order(request: Request, order_id: str, api_key: str = Depends(get_
         raise HTTPException(status_code=404, detail="Order not found")
     return order
 
+
 @app.get("/orders")
 @limiter.limit(settings.RATE_LIMIT_QUERY)
 async def list_orders(
@@ -273,7 +291,7 @@ async def list_orders(
     status: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
-    api_key: str = Depends(get_api_key)
+    api_key: str = Depends(get_api_key),
 ):
     orders = order_repo.list_orders(date=date, status=status, limit=limit, offset=offset)
     return {"items": orders, "count": len(orders)}

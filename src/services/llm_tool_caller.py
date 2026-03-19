@@ -126,37 +126,37 @@ class LLMToolCaller:
     async def _post(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """非阻塞 POST 請求，帶指數退避重試（連線錯誤 / 5xx）。"""
         last_exc: Exception = RuntimeError("no attempts made")
-        for attempt in range(self.max_retries + 1):
-            try:
-                async with httpx.AsyncClient(timeout=self.timeout) as client:
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            for attempt in range(self.max_retries + 1):
+                try:
                     r = await client.post(self.base_url, json=payload)
-                if r.status_code >= 500 and attempt < self.max_retries:
-                    delay = self.retry_base_delay * (2**attempt)
-                    logger.warning(
-                        "[LLM] 5xx 錯誤 ({}), {}s 後重試 ({}/{})",
-                        r.status_code,
-                        delay,
-                        attempt + 1,
-                        self.max_retries,
-                    )
-                    await asyncio.sleep(delay)
-                    continue
-                r.raise_for_status()
-                return r.json()
-            except (httpx.ConnectError, httpx.TimeoutException) as e:
-                last_exc = e
-                if attempt < self.max_retries:
-                    delay = self.retry_base_delay * (2**attempt)
-                    logger.warning(
-                        "[LLM] 連線失敗 ({}), {}s 後重試 ({}/{})",
-                        type(e).__name__,
-                        delay,
-                        attempt + 1,
-                        self.max_retries,
-                    )
-                    await asyncio.sleep(delay)
-                    continue
-                raise
+                    if r.status_code >= 500 and attempt < self.max_retries:
+                        delay = self.retry_base_delay * (2**attempt)
+                        logger.warning(
+                            "[LLM] 5xx 錯誤 ({}), {}s 後重試 ({}/{})",
+                            r.status_code,
+                            delay,
+                            attempt + 1,
+                            self.max_retries,
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                    r.raise_for_status()
+                    return r.json()
+                except (httpx.ConnectError, httpx.TimeoutException) as e:
+                    last_exc = e
+                    if attempt < self.max_retries:
+                        delay = self.retry_base_delay * (2**attempt)
+                        logger.warning(
+                            "[LLM] 連線失敗 ({}), {}s 後重試 ({}/{})",
+                            type(e).__name__,
+                            delay,
+                            attempt + 1,
+                            self.max_retries,
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                    raise
         raise last_exc
 
     async def call_llm_async(

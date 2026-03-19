@@ -21,16 +21,24 @@ router = APIRouter(tags=["service-test"])
 async def test_llm(request: Request, api_key: str = Depends(get_api_key)):
     """測試 LLM 服務狀態"""
     try:
-        import requests
+        import httpx
+
         _parsed = urlparse(settings.LLM_BASE_URL)
         models_url = f"{_parsed.scheme}://{_parsed.netloc}/v1/models"
-        resp = requests.get(models_url, timeout=5)
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(models_url)
         models = resp.json().get("data", [])
         return {
             "service": "LLM (LM Studio)",
             "status": "ready",
             "model": container.llm_caller.model,
             "available_models": [m.get("id") for m in models],
+        }
+    except httpx.HTTPError as e:
+        return {
+            "service": "LLM (LM Studio)",
+            "status": "error",
+            "error": str(e),
         }
     except Exception as e:
         return {
@@ -48,7 +56,7 @@ async def test_asr(request: Request, api_key: str = Depends(get_api_key)):
         "service": f"ASR ({container.asr_service.__class__.__name__})",
         "status": "ready" if container.asr_service.model else "not_loaded",
         "model": getattr(container.asr_service, "model_name", "unknown"),
-        "language": "zh"
+        "language": "zh",
     }
 
 
@@ -59,17 +67,13 @@ async def test_tts(request: Request, api_key: str = Depends(get_api_key)):
     return {
         "service": "TTS (Edge TTS)",
         "status": "ready" if container.tts_service.engine else "not_loaded",
-        "properties": container.tts_service.get_properties()
+        "properties": container.tts_service.get_properties(),
     }
 
 
 @router.post("/tts/speak")
 @limiter.limit(settings.RATE_LIMIT_TEST)
-async def tts_speak(
-    request: Request,
-    text: str,
-    api_key: str = Depends(get_api_key)
-):
+async def tts_speak(request: Request, text: str, api_key: str = Depends(get_api_key)):
     """直接調用 TTS 將文字轉為語音"""
     result = container.tts_service.speak(text)
     return result
@@ -77,13 +81,10 @@ async def tts_speak(
 
 @router.get("/tts/play")
 @limiter.limit(settings.RATE_LIMIT_TEST)
-async def tts_play(
-    request: Request,
-    path: str,
-    api_key: str = Depends(get_api_key)
-):
+async def tts_play(request: Request, path: str, api_key: str = Depends(get_api_key)):
     """播放 TTS 生成的音訊檔案"""
     import tempfile
+
     # 安全檢查：只允許播放 TTS 輸出目錄的檔案
     tts_dir = os.path.realpath(os.path.join(tempfile.gettempdir(), "tts_output"))
 
@@ -96,8 +97,4 @@ async def tts_play(
     if not os.path.exists(real_path):
         raise HTTPException(status_code=404, detail="Audio file not found")
 
-    return FileResponse(
-        real_path,
-        media_type="audio/mpeg",
-        filename="response.mp3"
-    )
+    return FileResponse(real_path, media_type="audio/mpeg", filename="response.mp3")
