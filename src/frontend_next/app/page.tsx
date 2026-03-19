@@ -4,6 +4,7 @@ import { useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../store/useStore';
 import { AppStatus } from '../types';
+import type { CartItem } from '../types';
 import VoiceController from '../components/VoiceController';
 import AudioVisualizer from '../components/AudioVisualizer';
 import CheckoutFlow from '../components/CheckoutFlow';
@@ -190,13 +191,7 @@ function VoiceHint({ status, hasItems, vadEnabled }: { status: string; hasItems:
 }
 
 /* ─── 點餐單（後台風格）─── */
-interface CartItem {
-  name: string;
-  details: string;
-  price: number;
-  quantity: number;
-}
-
+// CartItem 型別定義於 types/index.ts
 function OrderTicket({
   items,
   total,

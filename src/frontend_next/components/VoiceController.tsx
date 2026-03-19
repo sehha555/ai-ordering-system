@@ -171,20 +171,7 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
         </AnimatePresence>
       </div>
 
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          setVadEnabled(!vadEnabled);
-        }}
-        className="mt-3 px-4 py-1.5 rounded-full text-xs font-medium transition-colors"
-        style={{
-          backgroundColor: vadEnabled ? '#729DAD' : '#e8eef0',
-          color: vadEnabled ? 'white' : '#5a6b70',
-          border: `1px solid ${vadEnabled ? '#5a8494' : '#d0dce0'}`,
-        }}
-      >
-        {vadEnabled ? '自動偵測模式' : '按鍵說話模式'}
-      </button>
+      {/* VAD 切換按鈕位於 page.tsx，此處不重複渲染 */}
     </div>
   );
 }
