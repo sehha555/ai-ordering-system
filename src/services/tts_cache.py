@@ -114,16 +114,24 @@ class TTSCache:
 
     def get(self, text: str) -> Optional[bytes]:
         """查詢快取：warmup 優先，再查 runtime（命中時移至末尾維持 LRU 順序）"""
-        result = self._warmup_cache.get(text) or self._warmup_cache.get(_normalize(text))
+        norm = _normalize(text)
+        # warmup（永不淘汰，不更新 LRU 順序）
+        result = self._warmup_cache.get(text)
         if result is not None:
             return result
-        norm = _normalize(text)
-        result = self._runtime_cache.get(text) or self._runtime_cache.get(norm)
+        result = self._warmup_cache.get(norm)
         if result is not None:
-            # 移至末尾（最近使用）
-            key = text if text in self._runtime_cache else norm
-            self._runtime_cache.move_to_end(key)
-        return result
+            return result
+        # runtime（命中時移至末尾）
+        result = self._runtime_cache.get(text)
+        if result is not None:
+            self._runtime_cache.move_to_end(text)
+            return result
+        result = self._runtime_cache.get(norm)
+        if result is not None:
+            self._runtime_cache.move_to_end(norm)
+            return result
+        return None
 
     def put(self, text: str, audio: bytes) -> None:
         """Runtime cache：TTS miss 後存入，真 LRU eviction（移除最久未用條目）"""
