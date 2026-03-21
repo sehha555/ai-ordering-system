@@ -6,10 +6,16 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: 'html',
+  reporter: [
+    ['html', { outputFolder: 'playwright-report', open: 'never' }],
+    ['json', { outputFile: 'test-results/e2e-report/results.json' }],
+    ['list'],
+  ],
   use: {
     baseURL: 'http://localhost:3000',
     trace: 'on-first-retry',
+    // Full stack 測試允許較長 timeout（LLM 推理 + TTS）
+    actionTimeout: 0,
   },
   projects: [
     {
