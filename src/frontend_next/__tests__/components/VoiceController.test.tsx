@@ -99,24 +99,7 @@ describe('VoiceController', () => {
   });
 
   describe('VAD 模式切換', () => {
-    it('應顯示模式切換按鈕', () => {
-      render(<VoiceController />);
-      expect(screen.getByRole('button', { name: /模式/ })).toBeInTheDocument();
-    });
-
-    it('點擊按鈕應切換 VAD 模式', async () => {
-      useStore.setState({ vadEnabled: false });
-      render(<VoiceController />);
-
-      // 初始狀態：按鍵說話模式
-      expect(screen.getByText('按鍵說話模式')).toBeInTheDocument();
-
-      // 點擊切換
-      await userEvent.click(screen.getByText('按鍵說話模式'));
-
-      // 切換後：自動偵測模式
-      expect(screen.getByText('自動偵測模式')).toBeInTheDocument();
-    });
+    // VAD 切換按鈕位於 page.tsx，VoiceController 不渲染此按鈕
 
     it('VAD 模式下點擊主區域不應觸發錄音', async () => {
       useStore.setState({ vadEnabled: true, status: 'idle' });
