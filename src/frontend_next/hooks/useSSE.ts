@@ -132,7 +132,7 @@ export function useSSE({
       streamDoneRef.current = false;
 
       const formData = new FormData();
-      formData.append('audio', audioBlob, 'recording.webm');
+      formData.append('file', audioBlob, 'recording.webm');
       formData.append('session_id', sessionId);
 
       const response = await fetch('/api/voice-chat', {
