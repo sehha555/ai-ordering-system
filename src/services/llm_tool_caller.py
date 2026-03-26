@@ -136,7 +136,7 @@ class LLMToolCaller:
         ]
         messages.extend(_PRIMING_MESSAGES)
         messages.extend(history)
-        if context:
+        if context is not None:
             messages.append({"role": "system", "content": context})
         messages.append({"role": "user", "content": user_text})
         return messages
