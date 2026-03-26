@@ -72,7 +72,13 @@ _streaming_tts = create_tts_model(TTS_BACKEND)
 
 
 async def get_api_key_optional(api_key: str = Depends(api_key_header)):
-    """可選的 API Key 驗證（用於開發測試）"""
+    """API Key 驗證：有設定 API_KEY 時嚴格驗證，未設定時跳過（開發模式）"""
+    from src.config.settings import settings
+
+    if not settings.API_KEY:
+        return "dev"
+    if not api_key or api_key != settings.API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API Key")
     return api_key
 
 
@@ -211,7 +217,7 @@ class StreamingDMAdapter:
         _session_store.set(self._session_id, session)
 
         # yield text_delta（給 orchestrator 做 TTS）
-        yield {"type": "text_delta", "text": reply}
+        yield {"type": "text_delta", "content": reply}
 
         # yield done（僅結帳完成時計算總價）
         cart = session.get("cart", [])

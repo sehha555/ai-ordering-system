@@ -409,8 +409,12 @@ class ToolRegistry:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    _MODIFIABLE_FIELDS = {"flavor", "size", "temp", "quantity", "rice", "note"}
+
     def modify_cart_item(self, item_id: str, field: str, new_value: Any) -> Dict[str, Any]:
         """直接修改購物車中某品項的欄位值。需要 item_id（從 get_cart_summary 取得）。"""
+        if field not in self._MODIFIABLE_FIELDS:
+            return {"ok": False, "message": f"不允許修改欄位: {field}"}
         try:
             session = self.get_current_session()
             cart = session.get("cart", [])

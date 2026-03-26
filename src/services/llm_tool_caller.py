@@ -11,7 +11,7 @@ from src.dm.tool_priming import get_priming_messages
 
 _PRIMING_MESSAGES = get_priming_messages()
 _NO_THINK_PREFIX = "/no_think\n"  # 關閉 Qwen3 thinking mode，降低延遲
-_PER_STEP_TIMEOUT = 15.0  # run_turn_stream 每步 LLM 呼叫上限（秒）
+_PER_STEP_TIMEOUT = 25.0  # run_turn_stream 每步 LLM 呼叫上限（秒），需容納 LM Studio 冷啟動 TTFT
 
 from src.utils import SENTENCE_PUNCTS as _SENTENCE_PUNCTS
 

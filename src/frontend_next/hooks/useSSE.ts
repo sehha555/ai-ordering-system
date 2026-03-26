@@ -235,6 +235,12 @@ export function useSSE({
           }
           break;
         }
+        case 'error': {
+          const errData = JSON.parse(dataStr);
+          useStore.getState().setConnectionError(errData.message || '處理失敗，請再試一次');
+          setAiReply('');
+          break;
+        }
       }
     } catch (error) {
       console.error('Error parsing SSE event:', event, error);

@@ -70,7 +70,7 @@ async def get_cart_summary(request: Request, session_id: str, api_key: str = Dep
 
 @router.post("/api/checkout")
 @limiter.limit(settings.RATE_LIMIT_CHECKOUT)
-async def checkout(request: Request, body: CheckoutRequest):
+async def checkout(request: Request, body: CheckoutRequest, api_key: str = Depends(get_api_key)):
     """
     處理結帳請求
     - 從 session_store 讀取購物車
