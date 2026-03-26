@@ -10,7 +10,7 @@ from src.services.asr_postprocess import postprocess
 from src.services.streaming_orchestrator import StreamingOrchestrator
 from src.services.tts_implementations import create_tts_model
 from src.config.models import TTS_BACKEND
-from src.api.auth import api_key_header
+from src.api.auth import get_api_key
 from src.dm.tool_priming import CHECKOUT_TAG
 
 import re
@@ -69,17 +69,6 @@ router = APIRouter()
 
 # 啟動時初始化 TTS（避免每次 request 重新載入模型）
 _streaming_tts = create_tts_model(TTS_BACKEND)
-
-
-async def get_api_key_optional(api_key: str = Depends(api_key_header)):
-    """API Key 驗證：有設定 API_KEY 時嚴格驗證，未設定時跳過（開發模式）"""
-    from src.config.settings import settings
-
-    if not settings.API_KEY:
-        return "dev"
-    if not api_key or api_key != settings.API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid API Key")
-    return api_key
 
 
 async def _sse_wrap(stream, label: str):
@@ -429,7 +418,7 @@ _SSE_HEADERS = {
 
 
 @router.post("/text-chat")
-async def text_chat(request: TextChatRequest, api_key: str = Depends(get_api_key_optional)):
+async def text_chat(request: TextChatRequest, api_key: str = Depends(get_api_key)):
     """
     純文字對話 SSE 端點（跳過 ASR）
 
@@ -458,7 +447,7 @@ async def text_chat(request: TextChatRequest, api_key: str = Depends(get_api_key
 async def voice_chat(
     file: UploadFile = File(...),
     session_id: str = Form(...),
-    api_key: str = Depends(get_api_key_optional),
+    api_key: str = Depends(get_api_key),
 ):
     """
     語音對話 SSE 端點

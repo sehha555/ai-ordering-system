@@ -236,8 +236,14 @@ export function useSSE({
           break;
         }
         case 'error': {
-          const errData = JSON.parse(dataStr);
-          useStore.getState().setConnectionError(errData.message || '處理失敗，請再試一次');
+          let msg = '處理失敗，請再試一次';
+          try {
+            const errData = JSON.parse(dataStr);
+            msg = errData.message || msg;
+          } catch {
+            msg = dataStr || msg;
+          }
+          useStore.getState().setConnectionError(msg);
           setAiReply('');
           break;
         }
