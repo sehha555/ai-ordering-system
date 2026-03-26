@@ -4,8 +4,6 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 import asyncio
 import json
-import os
-import tempfile
 from loguru import logger
 
 from src.services.asr_postprocess import postprocess
@@ -524,23 +522,12 @@ async def voice_chat(
                 logger.warning("[ASR] ffmpeg 轉換失敗（returncode={}）", proc.returncode)
                 return ""
 
-            # ASR service 只接受 file path，寫入 wav tempfile
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_wav:
-                tmp_wav.write(wav_bytes)
-                wav_path = tmp_wav.name
-
-            try:
-                loop = asyncio.get_running_loop()
-                result = await loop.run_in_executor(None, self._asr.transcribe, wav_path)
-                asr_error = result.get("error")
-                if asr_error:
-                    logger.warning("[ASR] 辨識錯誤: {}", asr_error)
-                return postprocess(result.get("text", ""))
-            finally:
-                try:
-                    os.unlink(wav_path)
-                except FileNotFoundError:
-                    pass
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(None, self._asr.transcribe_bytes, wav_bytes)
+            asr_error = result.get("error")
+            if asr_error:
+                logger.warning("[ASR] 辨識錯誤: {}", asr_error)
+            return postprocess(result.get("text", ""))
 
     asr_adapter = ASRAdapter(_asr_service)
     dm_adapter = StreamingDMAdapter(session_id)

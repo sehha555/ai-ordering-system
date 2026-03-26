@@ -245,6 +245,16 @@ async def get_perf_stats():
     return perf_collector.get_stats()
 
 
+@app.get("/api/perf-history")
+async def get_perf_history(hours: float = 24, limit: int = 500):
+    """
+    從 SQLite 查詢歷史效能紀錄
+    - hours：往前查幾小時（預設 24）
+    - limit：最多回傳幾筆（預設 500）
+    """
+    return {"entries": perf_collector.query_history(hours=hours, limit=limit)}
+
+
 # ============================================================================
 # 店家設定 API
 # ============================================================================

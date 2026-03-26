@@ -1,8 +1,12 @@
 """ASR/TTS 集成測試"""
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-from src.services.asr_service import ASRService
+import io
+from unittest.mock import MagicMock
+
+import numpy as np
+import soundfile as sf
+
+from src.services.asr_service import ASRService, SenseVoiceService
 from src.services.tts_service import TTSService
 
 
@@ -160,12 +164,7 @@ class TestASRTTSIntegration:
         # 2. 對話管理器處理
         # 3. TTS 回應
 
-        mock_asr_result = {
-            "text": "我要飯糰",
-            "language": "zh",
-            "confidence": 0.95,
-            "segments": []
-        }
+        mock_asr_result = {"text": "我要飯糰", "language": "zh", "confidence": 0.95, "segments": []}
 
         dialogue_response = "想要哪個口味的飯糰？"
 
@@ -215,3 +214,63 @@ class TestTTSErrorHandling:
             assert isinstance(result, dict)
         except Exception:
             pass
+
+
+class TestSenseVoiceTranscribeBytes:
+    """SenseVoiceService.transcribe_bytes 單元測試"""
+
+    @staticmethod
+    def _make_wav_bytes(duration_s: float = 0.5, sample_rate: int = 16000) -> bytes:
+        """構造最小合法 WAV：16kHz mono float32 隨機資料"""
+        n_samples = int(sample_rate * duration_s)
+        # 使用固定 seed 確保可重現性
+        rng = np.random.default_rng(42)
+        audio = rng.random(n_samples, dtype=np.float32) * 0.1
+        buf = io.BytesIO()
+        sf.write(buf, audio, sample_rate, format="WAV", subtype="FLOAT")
+        return buf.getvalue()
+
+    def test_transcribe_bytes_passes_ndarray_to_model(self):
+        """transcribe_bytes 應將 WAV bytes 解碼為 ndarray 後傳給 model.generate"""
+        # 建立 SenseVoiceService 並注入 mock model（繞過真實模型載入）
+        svc = SenseVoiceService.__new__(SenseVoiceService)
+        svc.language = "zh"
+        svc.model_name = "FunAudioLLM/SenseVoiceSmall"
+
+        mock_model = MagicMock()
+        # 模擬 model.generate 回傳格式
+        mock_model.generate.return_value = [{"text": "你好"}]
+        svc.model = mock_model
+
+        wav_bytes = self._make_wav_bytes()
+        result = svc.transcribe_bytes(wav_bytes)
+
+        # 驗證 model.generate 被呼叫一次
+        mock_model.generate.assert_called_once()
+        call_kwargs = mock_model.generate.call_args
+
+        # 確認傳入的 input 是 float32 ndarray
+        # 用 is None 判斷避免 ndarray 的真值歧義
+        actual_input = call_kwargs.kwargs.get("input")
+        if actual_input is None:
+            actual_input = call_kwargs.args[0]
+        assert isinstance(actual_input, np.ndarray), "input 必須是 ndarray"
+        assert actual_input.dtype == np.float32, "dtype 必須是 float32"
+
+        # 驗證回傳 dict 包含必要 key
+        assert isinstance(result, dict)
+        assert "text" in result
+        assert "language" in result
+        assert "confidence" in result
+
+    def test_transcribe_bytes_returns_error_when_model_none(self):
+        """model 未載入時應回傳含 error key 的 dict"""
+        svc = SenseVoiceService.__new__(SenseVoiceService)
+        svc.language = "zh"
+        svc.model = None
+
+        wav_bytes = self._make_wav_bytes()
+        result = svc.transcribe_bytes(wav_bytes)
+
+        assert result["text"] == ""
+        assert "error" in result
