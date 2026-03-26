@@ -171,20 +171,17 @@ app.add_middleware(RequestIdMiddleware)
 _STARTUP_BYPASS = frozenset({"/healthz", "/readyz", "/docs", "/openapi.json"})
 
 
-class StartupGuardMiddleware(BaseHTTPMiddleware):
+@app.middleware("http")
+async def startup_guard(request: Request, call_next):
     """startup 完成前，非 health 端點回 503"""
+    from src.services import container as _ctr
 
-    async def dispatch(self, request, call_next):
-        from src.services import container
+    if _ctr.session_store is None and request.url.path not in _STARTUP_BYPASS:
+        from starlette.responses import JSONResponse
 
-        if container.session_store is None and request.url.path not in _STARTUP_BYPASS:
-            from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=503, content={"detail": "伺服器啟動中，請稍候"})
+    return await call_next(request)
 
-            return JSONResponse(status_code=503, content={"detail": "伺服器啟動中，請稍候"})
-        return await call_next(request)
-
-
-app.add_middleware(StartupGuardMiddleware)
 
 # 註冊路由
 app.include_router(health_router)
