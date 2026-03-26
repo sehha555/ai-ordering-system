@@ -44,9 +44,10 @@ def generate_report(results: list[RequestResult], concurrency: int, mode: str) -
 
     if totals:
         totals_sorted = sorted(totals)
-        p50 = totals_sorted[int(len(totals_sorted) * 0.5)]
-        p95 = totals_sorted[int(len(totals_sorted) * 0.95)]
-        p99 = totals_sorted[min(int(len(totals_sorted) * 0.99), len(totals_sorted) - 1)]
+        n = len(totals_sorted)
+        p50 = totals_sorted[min(int(n * 0.5), n - 1)]
+        p95 = totals_sorted[min(int(n * 0.95), n - 1)]
+        p99 = totals_sorted[min(int(n * 0.99), n - 1)]
 
         avg_total = f"{statistics.mean(totals):.2f}"
         avg_ttfa = f"{statistics.mean(ttfas):.2f}" if ttfas else "-"

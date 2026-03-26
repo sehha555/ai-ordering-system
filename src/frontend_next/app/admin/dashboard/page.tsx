@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { BarChart3, RefreshCw } from 'lucide-react';
 import {
   LineChart,
@@ -64,6 +64,13 @@ const BRAND = {
   textSub:  '#8a9a9f',
 } as const;
 
+const METRIC_LABELS: Record<string, string> = {
+  total: '總延遲',
+  asr: 'ASR',
+  dm: 'DM',
+  tts: 'TTS',
+};
+
 // ───────────────────────────── 工具函式 ─────────────────────────
 
 /** 格式化時間戳為 HH:MM */
@@ -118,7 +125,7 @@ function StatCard({
     >
       <span className="text-xs font-medium" style={{ color: BRAND.textSub }}>{label}</span>
       <span className="text-2xl font-black" style={{ color, lineHeight: 1.1 }}>
-        {value !== null ? value.toFixed(3) : '—'}
+        {value !== null ? (Number.isInteger(value) ? value : value.toFixed(3)) : '—'}
         {value !== null && <span className="text-sm font-semibold ml-1">{unit}</span>}
       </span>
       {sub && <span className="text-xs" style={{ color: BRAND.textSub }}>{sub}</span>}
@@ -177,36 +184,41 @@ export default function AdminDashboardPage() {
     };
   }, [timeRange, fetchData]);
 
-  // ── 衍生統計 ─────────────────────────────────────────────────
+  // ── 衍生統計（memoize 避免每次 render 重算） ──────────────────
 
-  const totalValues   = extractValues(entries, 'total_s');
-  const asrValues     = extractValues(entries, 'asr_s');
-  const dmValues      = extractValues(entries, 'dm_s');
-  const ttsValues     = extractValues(entries, 'tts_s');
+  const { p95Total, avgTotal, avgAsr, avgDm, avgTts, count, lineData, barData } = useMemo(() => {
+    const totalVals = extractValues(entries, 'total_s');
+    const asrVals   = extractValues(entries, 'asr_s');
+    const dmVals    = extractValues(entries, 'dm_s');
+    const ttsVals   = extractValues(entries, 'tts_s');
 
-  const p95Total      = calcP95(totalValues);
-  const avgTotal      = avg(totalValues);
-  const avgAsr        = avg(asrValues);
-  const avgDm         = avg(dmValues);
-  const avgTts        = avg(ttsValues);
-  const count         = entries.length;
+    const _avgTotal = avg(totalVals);
+    const _avgAsr   = avg(asrVals);
+    const _avgDm    = avg(dmVals);
+    const _avgTts   = avg(ttsVals);
 
-  // 折線圖資料：每筆記錄 + 時間標籤
-  const lineData = entries.map((e) => ({
-    time:    formatTime(e.timestamp),
-    total:   e.total_s,
-    asr:     e.asr_s,
-    dm:      e.dm_s,
-    tts:     e.tts_s,
-  }));
-
-  // 各階段平均長條圖資料
-  const barData = [
-    { name: 'ASR',   value: avgAsr,  fill: BRAND.warning },
-    { name: 'DM',    value: avgDm,   fill: BRAND.dark },
-    { name: 'TTS',   value: avgTts,  fill: BRAND.success },
-    { name: '總延遲', value: avgTotal, fill: BRAND.primary },
-  ].filter((d) => d.value !== null);
+    return {
+      p95Total: calcP95(totalVals),
+      avgTotal: _avgTotal,
+      avgAsr:   _avgAsr,
+      avgDm:    _avgDm,
+      avgTts:   _avgTts,
+      count:    entries.length,
+      lineData: entries.map((e) => ({
+        time:  formatTime(e.timestamp),
+        total: e.total_s,
+        asr:   e.asr_s,
+        dm:    e.dm_s,
+        tts:   e.tts_s,
+      })),
+      barData: [
+        { name: 'ASR',   value: _avgAsr,   fill: BRAND.warning },
+        { name: 'DM',    value: _avgDm,    fill: BRAND.dark },
+        { name: 'TTS',   value: _avgTts,   fill: BRAND.success },
+        { name: '總延遲', value: _avgTotal, fill: BRAND.primary },
+      ].filter((d) => d.value !== null),
+    };
+  }, [entries]);
 
   // ───────────────────────────── 渲染 ─────────────────────────────
 
@@ -304,23 +316,7 @@ export default function AdminDashboardPage() {
               <StatCard label="平均 ASR" value={avgAsr} color={BRAND.warning} />
               <StatCard label="平均 DM"  value={avgDm}  color={BRAND.dark} />
               <StatCard label="平均 TTS" value={avgTts} color={BRAND.success} />
-              <div
-                className="rounded-2xl p-4 flex flex-col gap-1"
-                style={{
-                  backgroundColor: BRAND.cardBg,
-                  border: `1px solid ${BRAND.border}`,
-                  boxShadow: '0 2px 8px rgba(114,157,173,0.10)',
-                }}
-              >
-                <span className="text-xs font-medium" style={{ color: BRAND.textSub }}>請求數</span>
-                <span className="text-2xl font-black" style={{ color: BRAND.textMain, lineHeight: 1.1 }}>
-                  {count}
-                  <span className="text-sm font-semibold ml-1">筆</span>
-                </span>
-                <span className="text-xs" style={{ color: BRAND.textSub }}>
-                  {timeRange.label} 內
-                </span>
-              </div>
+              <StatCard label="請求數" value={count} unit="筆" color={BRAND.textMain} sub={`${timeRange.label} 內`} />
               {stats && stats.averages.total_s !== null && (
                 <StatCard
                   label="In-memory 平均"
@@ -363,17 +359,11 @@ export default function AdminDashboardPage() {
                     }}
                     formatter={(value, name) => [
                       typeof value === 'number' ? `${value.toFixed(3)}s` : String(value),
-                      name === 'total' ? '總延遲' :
-                      name === 'asr'   ? 'ASR'    :
-                      name === 'dm'    ? 'DM'     : 'TTS',
+                      METRIC_LABELS[name as string] ?? name,
                     ]}
                   />
                   <Legend
-                    formatter={(value: string) =>
-                      value === 'total' ? '總延遲' :
-                      value === 'asr'   ? 'ASR'    :
-                      value === 'dm'    ? 'DM'     : 'TTS'
-                    }
+                    formatter={(value: string) => METRIC_LABELS[value] ?? value}
                     wrapperStyle={{ fontSize: 11 }}
                   />
                   <Line

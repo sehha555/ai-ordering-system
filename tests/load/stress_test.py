@@ -54,7 +54,7 @@ async def text_chat_client(
             async with client.stream(
                 "POST",
                 f"{base_url}/api/text-chat",
-                data={"text": msg, "session_id": session_id},
+                json={"text": msg, "session_id": session_id},
             ) as resp:
                 events, ttfa = await _parse_sse_events(resp)
                 total = time.perf_counter() - start

@@ -1,13 +1,17 @@
 # src/services/asr_service.py
 """ASR Service - 語音辨識服務 (Qwen3-ASR 或 SenseVoice-Small)"""
 
-from loguru import logger
-import os
-from typing import Optional
 import io
+import os
+import re
+from typing import Optional
 
 import numpy as np
 import soundfile as sf
+from loguru import logger
+
+_SENSEVOICE_TAG_RE = re.compile(r"<\|[^|]*\|>")
+_DEFAULT_CONFIDENCE = 0.95
 
 
 def _wav_bytes_to_ndarray(wav_bytes: bytes) -> tuple[np.ndarray, int]:
@@ -72,22 +76,45 @@ class ASRService:
         except Exception as e:
             logger.error(f"[ASR] 模型載入失敗: {e}")
 
-    def transcribe(self, audio_path: str, language: Optional[str] = None) -> dict:
-        """
-        將語音文件轉為文字
+    def _parse_qwen_results(self, results, qwen_language: str) -> dict:
+        """共用結果解析：Qwen3-ASR transcribe 回傳值 → 標準 dict"""
+        if not results or len(results) == 0:
+            return {"text": "", "error": "無法獲取轉錄結果", "language": None, "confidence": 0.0}
 
-        Args:
-            audio_path: 音訊文件路徑 (支持 mp3, wav, m4a, flac 等)
-            language: 語言代碼（可覆蓋預設值，如 "zh", "en"）
+        result = results[0]
+        full_text = result.text.strip() if result.text else ""
+        detected_language = result.language if hasattr(result, "language") else qwen_language
 
-        Returns:
-            {
-                "text": "辨識出的文字",
-                "language": "檢測到的語言",
-                "confidence": 0.0-1.0,
-                "segments": [...]
+        logger.info("[ASR] 轉錄完成: '{}'", full_text)
+        logger.info("[ASR] 檢測語言: {}", detected_language)
+
+        if not full_text:
+            return {
+                "text": "",
+                "error": "語音內容為空或無法識別",
+                "language": detected_language,
+                "confidence": 0.0,
             }
-        """
+
+        segments = []
+        if hasattr(result, "words") and result.words:
+            for word in result.words:
+                segments.append(
+                    {
+                        "start": word.start if hasattr(word, "start") else 0,
+                        "end": word.end if hasattr(word, "end") else 0,
+                        "text": word.word if hasattr(word, "word") else str(word),
+                    }
+                )
+
+        return {
+            "text": full_text,
+            "language": detected_language,
+            "confidence": _DEFAULT_CONFIDENCE,
+            "segments": segments,
+        }
+
+    def transcribe(self, audio_path: str, language: Optional[str] = None) -> dict:
         if self.model is None:
             return {
                 "text": "",
@@ -106,76 +133,18 @@ class ASRService:
                 }
 
             logger.info("[ASR] 開始轉錄: {}", audio_path)
-
-            # 轉換語言代碼為 Qwen3 格式
             lang_code = language or self.language
             qwen_language = self.LANGUAGE_MAP.get(lang_code, "Chinese")
 
-            # 使用 Qwen3-ASR 進行語音識別
-            results = self.model.transcribe(
-                audio=audio_path,
-                language=qwen_language,
-            )
-
-            # 取得第一個結果（單一音訊輸入）
-            if results and len(results) > 0:
-                result = results[0]
-                full_text = result.text.strip() if result.text else ""
-                detected_language = (
-                    result.language if hasattr(result, "language") else qwen_language
-                )
-
-                logger.info("[ASR] 轉錄完成: '{}'", full_text)
-                logger.info("[ASR] 檢測語言: {}", detected_language)
-
-                if not full_text:
-                    return {
-                        "text": "",
-                        "error": "語音內容為空或無法識別",
-                        "language": detected_language,
-                        "confidence": 0.0,
-                    }
-
-                # 構建 segments（如果有時間戳記）
-                segments = []
-                if hasattr(result, "words") and result.words:
-                    for word in result.words:
-                        segments.append(
-                            {
-                                "start": word.start if hasattr(word, "start") else 0,
-                                "end": word.end if hasattr(word, "end") else 0,
-                                "text": word.word if hasattr(word, "word") else str(word),
-                            }
-                        )
-
-                return {
-                    "text": full_text,
-                    "language": detected_language,
-                    "confidence": 0.95,  # Qwen3-ASR 通常信心度很高
-                    "segments": segments,
-                }
-            else:
-                return {
-                    "text": "",
-                    "error": "無法獲取轉錄結果",
-                    "language": None,
-                    "confidence": 0.0,
-                }
+            results = self.model.transcribe(audio=audio_path, language=qwen_language)
+            return self._parse_qwen_results(results, qwen_language)
 
         except Exception as e:
             logger.exception("[ASR] 轉錄失敗")
             return {"text": "", "error": str(e), "language": None, "confidence": 0.0}
 
     def transcribe_bytes(self, wav_bytes: bytes, language: Optional[str] = None) -> dict:
-        """WAV bytes 直接轉錄，省去 tempfile I/O
-
-        Args:
-            wav_bytes: 16kHz mono float32 WAV bytes
-            language: 語言代碼（可覆蓋預設值，如 "zh", "en"）
-
-        Returns:
-            與 transcribe() 相同格式的 dict
-        """
+        """WAV bytes 直接轉錄，省去 tempfile I/O"""
         if self.model is None:
             return {
                 "text": "",
@@ -186,63 +155,12 @@ class ASRService:
 
         try:
             ndarray, sr = _wav_bytes_to_ndarray(wav_bytes)
-
-            # 轉換語言代碼為 Qwen3 格式
             lang_code = language or self.language
             qwen_language = self.LANGUAGE_MAP.get(lang_code, "Chinese")
 
             logger.info("[ASR] 開始轉錄（bytes 介面，sr={}）", sr)
-
-            # 以 (ndarray, sr) tuple 傳入，Qwen3-ASR 支援此格式
-            results = self.model.transcribe(
-                audio=(ndarray, sr),
-                language=qwen_language,
-            )
-
-            # 取得第一個結果（單一音訊輸入）
-            if results and len(results) > 0:
-                result = results[0]
-                full_text = result.text.strip() if result.text else ""
-                detected_language = (
-                    result.language if hasattr(result, "language") else qwen_language
-                )
-
-                logger.info("[ASR] 轉錄完成: '{}'", full_text)
-                logger.info("[ASR] 檢測語言: {}", detected_language)
-
-                if not full_text:
-                    return {
-                        "text": "",
-                        "error": "語音內容為空或無法識別",
-                        "language": detected_language,
-                        "confidence": 0.0,
-                    }
-
-                # 構建 segments（如果有時間戳記）
-                segments = []
-                if hasattr(result, "words") and result.words:
-                    for word in result.words:
-                        segments.append(
-                            {
-                                "start": word.start if hasattr(word, "start") else 0,
-                                "end": word.end if hasattr(word, "end") else 0,
-                                "text": word.word if hasattr(word, "word") else str(word),
-                            }
-                        )
-
-                return {
-                    "text": full_text,
-                    "language": detected_language,
-                    "confidence": 0.95,
-                    "segments": segments,
-                }
-            else:
-                return {
-                    "text": "",
-                    "error": "無法獲取轉錄結果",
-                    "language": None,
-                    "confidence": 0.0,
-                }
+            results = self.model.transcribe(audio=(ndarray, sr), language=qwen_language)
+            return self._parse_qwen_results(results, qwen_language)
 
         except Exception as e:
             logger.exception("[ASR] 轉錄失敗（bytes 介面）")
@@ -305,6 +223,19 @@ class SenseVoiceService:
         except Exception as e:
             logger.error(f"[ASR] SenseVoice 載入失敗: {e}")
 
+    def _parse_sensevoice_result(self, res, language: str) -> dict:
+        """共用結果解析：SenseVoice generate 回傳值 → 標準 dict"""
+        text = res[0]["text"].strip() if res else ""
+        # ModelScope 版 SenseVoice 輸出含特殊 tag，需清除
+        text = _SENSEVOICE_TAG_RE.sub("", text).strip()
+        logger.info("[ASR] SenseVoice 轉錄完成: '{}'", text)
+        return {
+            "text": text,
+            "language": language,
+            "confidence": _DEFAULT_CONFIDENCE,
+            "segments": [],
+        }
+
     def transcribe(self, audio_path: str, language: Optional[str] = None) -> dict:
         if self.model is None:
             return {
@@ -323,40 +254,18 @@ class SenseVoiceService:
             }
 
         try:
+            lang = language or self.language
             logger.info("[ASR] SenseVoice 開始轉錄: {}", audio_path)
             res = self.model.generate(
-                input=audio_path,
-                cache={},
-                language=language or self.language,
-                use_itn=True,
-                batch_size_s=60,
+                input=audio_path, cache={}, language=lang, use_itn=True, batch_size_s=60
             )
-            text = res[0]["text"].strip() if res else ""
-            # ModelScope 版 SenseVoice 輸出含特殊 tag，需清除
-            import re
-
-            text = re.sub(r"<\|[^|]*\|>", "", text).strip()
-            logger.info("[ASR] SenseVoice 轉錄完成: '{}'", text)
-            return {
-                "text": text,
-                "language": language or self.language,
-                "confidence": 0.95,
-                "segments": [],
-            }
+            return self._parse_sensevoice_result(res, lang)
         except Exception as e:
             logger.exception("[ASR] SenseVoice 轉錄失敗")
             return {"text": "", "error": str(e), "language": None, "confidence": 0.0}
 
     def transcribe_bytes(self, wav_bytes: bytes, language: Optional[str] = None) -> dict:
-        """WAV bytes 直接轉錄，省去 tempfile I/O
-
-        Args:
-            wav_bytes: 16kHz mono float32 WAV bytes
-            language: 語言代碼（可覆蓋預設值，如 "zh", "en"）
-
-        Returns:
-            與 transcribe() 相同格式的 dict
-        """
+        """WAV bytes 直接轉錄，省去 tempfile I/O"""
         if self.model is None:
             return {
                 "text": "",
@@ -366,29 +275,13 @@ class SenseVoiceService:
             }
 
         try:
-            # FunASR 支援直接傳入 ndarray，sr 自動處理
             ndarray, _ = _wav_bytes_to_ndarray(wav_bytes)
-
+            lang = language or self.language
             logger.info("[ASR] SenseVoice 開始轉錄（bytes 介面）")
             res = self.model.generate(
-                input=ndarray,
-                cache={},
-                language=language or self.language,
-                use_itn=True,
-                batch_size_s=60,
+                input=ndarray, cache={}, language=lang, use_itn=True, batch_size_s=60
             )
-            text = res[0]["text"].strip() if res else ""
-            # ModelScope 版 SenseVoice 輸出含特殊 tag，需清除
-            import re
-
-            text = re.sub(r"<\|[^|]*\|>", "", text).strip()
-            logger.info("[ASR] SenseVoice 轉錄完成: '{}'", text)
-            return {
-                "text": text,
-                "language": language or self.language,
-                "confidence": 0.95,
-                "segments": [],
-            }
+            return self._parse_sensevoice_result(res, lang)
         except Exception as e:
             logger.exception("[ASR] SenseVoice 轉錄失敗（bytes 介面）")
             return {"text": "", "error": str(e), "language": None, "confidence": 0.0}
