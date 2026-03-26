@@ -509,12 +509,15 @@ async def voice_chat(
                 "pipe:1",
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE,
             )
-            wav_bytes, _ = await proc.communicate(input=audio_bytes)
+            wav_bytes, stderr_bytes = await proc.communicate(input=audio_bytes)
 
             if proc.returncode != 0 or not wav_bytes:
-                logger.warning("[ASR] ffmpeg 轉換失敗（returncode={}）", proc.returncode)
+                stderr_msg = (stderr_bytes or b"")[:500].decode(errors="replace")
+                logger.warning(
+                    "[ASR] ffmpeg 轉換失敗（returncode={}）: {}", proc.returncode, stderr_msg
+                )
                 return ""
 
             loop = asyncio.get_running_loop()

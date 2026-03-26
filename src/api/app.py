@@ -168,6 +168,24 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(RequestIdMiddleware)
 
+_STARTUP_BYPASS = frozenset({"/healthz", "/readyz", "/docs", "/openapi.json"})
+
+
+class StartupGuardMiddleware(BaseHTTPMiddleware):
+    """startup 完成前，非 health 端點回 503"""
+
+    async def dispatch(self, request, call_next):
+        from src.services import container
+
+        if container.session_store is None and request.url.path not in _STARTUP_BYPASS:
+            from fastapi.responses import JSONResponse
+
+            return JSONResponse(status_code=503, content={"detail": "伺服器啟動中，請稍候"})
+        return await call_next(request)
+
+
+app.add_middleware(StartupGuardMiddleware)
+
 # 註冊路由
 app.include_router(health_router)
 app.include_router(voice_router, prefix="/api", tags=["voice"])
@@ -236,7 +254,7 @@ async def serve_frontend():
 
 
 @app.get("/api/perf-stats")
-async def get_perf_stats():
+async def get_perf_stats(api_key: str = Depends(get_api_key)):
     """
     回傳最近 50 筆語音請求各階段耗時統計
     欄位：asr_s, dm_s, ttfa_s（首個音訊）, tts_s, total_s
@@ -246,7 +264,7 @@ async def get_perf_stats():
 
 
 @app.get("/api/perf-history")
-def get_perf_history(hours: float = 24, limit: int = 500):
+def get_perf_history(hours: float = 24, limit: int = 500, api_key: str = Depends(get_api_key)):
     """從 SQLite 查詢歷史效能紀錄（同步 def，FastAPI 自動在 threadpool 執行）"""
     return {"entries": perf_collector.query_history(hours=hours, limit=limit)}
 

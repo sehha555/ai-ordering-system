@@ -114,9 +114,12 @@ export function useSSE({
       useStore.getState().setConnectionError(
         isTimeout ? '回應超時，請再試一次' : '自動追問傳送失敗，請稍後再試'
       );
-      setStatus('idle');
-      if (vadEnabled && isListeningRef.current) {
-        startVADLoop();
+      // 播放中時讓 playback completion 處理 idle 轉換，避免重複觸發 autoPrompt
+      if (!isPlayingRef.current) {
+        setStatus('idle');
+        if (vadEnabled && isListeningRef.current) {
+          startVADLoop();
+        }
       }
     }
   }, [setStatus, vadEnabled, sessionId, startVADLoop, streamDoneRef, audioQueueRef, isPlayingRef, isListeningRef]);
@@ -181,9 +184,12 @@ export function useSSE({
       useStore.getState().setConnectionError(
         isTimeout ? '回應超時，請再試一次' : '連線失敗，請稍後再試'
       );
-      setStatus('idle');
-      if (vadEnabled && isListeningRef.current) {
-        startVADLoop();
+      // 播放中時讓 playback completion 處理 idle 轉換，避免重複觸發 autoPrompt
+      if (!isPlayingRef.current) {
+        setStatus('idle');
+        if (vadEnabled && isListeningRef.current) {
+          startVADLoop();
+        }
       }
     }
   }, [setStatus, vadEnabled, startVADLoop, sessionId, streamDoneRef, audioQueueRef, isPlayingRef, isListeningRef]);

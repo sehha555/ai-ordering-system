@@ -12,10 +12,12 @@ class OrderRepository:
         self._init_db()
 
     @contextmanager
-    def _connection(self):
-        """連接 contextmanager — 自動 commit/rollback/close"""
+    def _connection(self, *, immediate: bool = False):
+        """連接 contextmanager — 自動 commit/rollback/close。immediate=True 使用 BEGIN IMMEDIATE。"""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
+        if immediate:
+            conn.execute("BEGIN IMMEDIATE")
         try:
             yield conn
             conn.commit()
@@ -108,8 +110,7 @@ class OrderRepository:
         created_at = order_payload.get("created_at", datetime.now().isoformat())
         total_price = order_payload.get("total_price", 0)
 
-        with self._connection() as conn:
-            conn.execute("BEGIN IMMEDIATE")
+        with self._connection(immediate=True) as conn:
             row = conn.execute(
                 "SELECT COUNT(*) as cnt FROM orders WHERE created_at LIKE ?",
                 (f"{today}%",),
