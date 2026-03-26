@@ -1,6 +1,7 @@
 # src/utils/perf_collector.py
 """效能數據收集器 — in-memory circular buffer + SQLite 持久化，供 /api/perf-stats 使用"""
 
+import asyncio
 import sqlite3
 import threading
 import time
@@ -127,8 +128,6 @@ class PerfCollector:
         self._entries.append(entry)
         # 非阻塞：SQLite 寫入移到 thread pool，不阻塞 event loop
         try:
-            import asyncio
-
             loop = asyncio.get_running_loop()
             loop.run_in_executor(None, self._persist, entry)
         except RuntimeError:

@@ -39,8 +39,8 @@ class InMemorySessionStore:
         self._max_sessions = max_sessions
 
     def get(self, session_id: str, default: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        self._last_access[session_id] = time.time()
         if session_id in self._data:
+            self._last_access[session_id] = time.time()
             return self._data[session_id]
         if default is not None:
             return default
@@ -57,6 +57,7 @@ class InMemorySessionStore:
         # 建立預設 session
         new_session = _default_session_state()
         self._data[session_id] = new_session
+        self._last_access[session_id] = time.time()
         return new_session
 
     def set(self, session_id: str, state: Dict[str, Any]) -> None:

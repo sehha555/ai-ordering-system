@@ -138,7 +138,10 @@ async def lifespan(app):
     except asyncio.CancelledError:
         pass
     if _container.llm_caller:
-        await _container.llm_caller.aclose()
+        try:
+            await _container.llm_caller.aclose()
+        except Exception:
+            pass
 
 
 app = FastAPI(title="Yuan Rice Ball Order API", lifespan=lifespan)

@@ -352,14 +352,17 @@ export default function AdminOrdersPage() {
     toastTimer.current = setTimeout(() => setToast(null), 3000);
   }, []);
 
+  // ── Admin auth helper ──
+  const getAdminHeaders = useCallback((): Record<string, string> => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') || '' : '';
+    return token ? { 'X-API-Key': token } : {};
+  }, []);
+
   // ── 載入今日訂單 ──
   const fetchOrders = useCallback(async () => {
     try {
       setFetchError(null);
-      const adminToken = typeof window !== 'undefined' ? localStorage.getItem('admin_token') || '' : '';
-      const headers: Record<string, string> = {};
-      if (adminToken) headers['X-API-Key'] = adminToken;
-      const res = await fetch('/admin/orders/list', { headers });
+      const res = await fetch('/admin/orders/list', { headers: getAdminHeaders() });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setOrders(data.items);
@@ -375,8 +378,9 @@ export default function AdminOrdersPage() {
 
   // ── SSE 訂閱 ──
   useEffect(() => {
-    const adminToken = typeof window !== 'undefined' ? localStorage.getItem('admin_token') || '' : '';
-    const streamUrl = adminToken ? `/admin/orders/stream?token=${encodeURIComponent(adminToken)}` : '/admin/orders/stream';
+    const authHeaders = getAdminHeaders();
+    const tokenParam = authHeaders['X-API-Key'] ? `?token=${encodeURIComponent(authHeaders['X-API-Key'])}` : '';
+    const streamUrl = `/admin/orders/stream${tokenParam}`;
     const es = new EventSource(streamUrl);
 
     es.addEventListener('new_order', (e) => {
@@ -408,7 +412,7 @@ export default function AdminOrdersPage() {
     try {
       await fetch(`/admin/orders/${order_id}/status`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAdminHeaders() },
         body: JSON.stringify({ status }),
       });
     } catch (e) {
@@ -426,7 +430,7 @@ export default function AdminOrdersPage() {
     try {
       await fetch(`/admin/orders/${order_id}/payment`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAdminHeaders() },
         body: JSON.stringify({ payment_status: next }),
       });
     } catch (e) {
