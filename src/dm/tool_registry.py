@@ -1,6 +1,12 @@
 """工具註冊表 - 管理 LLM 可調用的工具"""
 
+import contextvars
 from typing import Dict, Any, List, Callable, Optional, Set
+
+# per-request session ID（避免全域單例的併發覆蓋問題）
+_current_session_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "_current_session_id", default=None
+)
 from src.dm.dialogue_manager import DialogueManager
 from src.dm.session_store import InMemorySessionStore
 from src.dm import cart_manager
@@ -56,17 +62,22 @@ class ToolRegistry:
         """
         self.dm = dialogue_manager
         self.store = session_store
-        self._session_id: Optional[str] = None
 
     def set_session_id(self, session_id: str) -> None:
-        """設置當前會話 ID"""
-        self._session_id = session_id
+        """設置當前會話 ID（per-request，使用 contextvars 避免併發覆蓋）"""
+        _current_session_id.set(session_id)
+
+    @property
+    def _session_id(self) -> Optional[str]:
+        """向後相容：讀取 contextvars 中的 session_id"""
+        return _current_session_id.get()
 
     def get_current_session(self) -> Dict[str, Any]:
         """取得當前會話"""
-        if not self._session_id:
+        sid = _current_session_id.get()
+        if not sid:
             raise RuntimeError("Session ID not set")
-        return self.store.get(self._session_id)
+        return self.store.get(sid)
 
     # ============ 別名解析輔助方法 ============
 

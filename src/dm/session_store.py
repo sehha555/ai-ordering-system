@@ -29,11 +29,14 @@ def _default_session_state() -> Dict[str, Any]:
 
 
 class InMemorySessionStore:
-    def __init__(self, ttl_minutes: int = 30, on_expire: Optional[Callable] = None):
+    def __init__(
+        self, ttl_minutes: int = 30, on_expire: Optional[Callable] = None, max_sessions: int = 500
+    ):
         self._data: Dict[str, Dict[str, Any]] = {}
         self._last_access: Dict[str, float] = {}
         self._ttl_seconds = ttl_minutes * 60
         self._on_expire = on_expire  # callback(session_id, session_data)
+        self._max_sessions = max_sessions
 
     def get(self, session_id: str, default: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         self._last_access[session_id] = time.time()
@@ -41,7 +44,17 @@ class InMemorySessionStore:
             return self._data[session_id]
         if default is not None:
             return default
-        # 不在 _data 且無 default 時，建立預設 session
+        # 容量檢查：達上限時先清過期，仍滿則淘汰最舊
+        if len(self._data) >= self._max_sessions:
+            self.cleanup()
+        if len(self._data) >= self._max_sessions:
+            oldest = min(self._last_access, key=self._last_access.get)  # type: ignore[arg-type]
+            self._data.pop(oldest, None)
+            self._last_access.pop(oldest, None)
+            logger.warning(
+                "[SessionStore] 達上限 {}，淘汰最舊 session {}", self._max_sessions, oldest[:8]
+            )
+        # 建立預設 session
         new_session = _default_session_state()
         self._data[session_id] = new_session
         return new_session

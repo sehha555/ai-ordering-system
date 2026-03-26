@@ -356,7 +356,10 @@ export default function AdminOrdersPage() {
   const fetchOrders = useCallback(async () => {
     try {
       setFetchError(null);
-      const res = await fetch('/admin/orders/list');
+      const adminToken = typeof window !== 'undefined' ? localStorage.getItem('admin_token') || '' : '';
+      const headers: Record<string, string> = {};
+      if (adminToken) headers['X-API-Key'] = adminToken;
+      const res = await fetch('/admin/orders/list', { headers });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setOrders(data.items);
@@ -372,7 +375,9 @@ export default function AdminOrdersPage() {
 
   // ── SSE 訂閱 ──
   useEffect(() => {
-    const es = new EventSource('/admin/orders/stream');
+    const adminToken = typeof window !== 'undefined' ? localStorage.getItem('admin_token') || '' : '';
+    const streamUrl = adminToken ? `/admin/orders/stream?token=${encodeURIComponent(adminToken)}` : '/admin/orders/stream';
+    const es = new EventSource(streamUrl);
 
     es.addEventListener('new_order', (e) => {
       const order: Order = JSON.parse(e.data);

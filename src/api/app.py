@@ -131,12 +131,14 @@ async def lifespan(app):
 
     yield
 
-    # shutdown: 取消背景任務
+    # shutdown: 取消背景任務、關閉 httpx client
     cleanup_task.cancel()
     try:
         await cleanup_task
     except asyncio.CancelledError:
         pass
+    if _container.llm_caller:
+        await _container.llm_caller.aclose()
 
 
 app = FastAPI(title="Yuan Rice Ball Order API", lifespan=lifespan)

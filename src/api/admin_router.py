@@ -21,12 +21,12 @@ from src.tools.menu import menu_state_service
 from src.config.menu_constants import build_menu_categories
 from src.repository.order_repository import order_repo
 from src.api.order_broadcaster import order_broadcaster, format_order_for_admin
-from src.api.auth import get_api_key
+from src.api.auth import get_api_key_or_token
 
 router = APIRouter(
     prefix="/admin",
     tags=["admin"],
-    dependencies=[Depends(get_api_key)],
+    dependencies=[Depends(get_api_key_or_token)],
 )
 
 # ── 菜單資料路徑（讀取所有品項名稱供驗證用）────────────────────────────

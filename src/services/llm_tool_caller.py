@@ -93,6 +93,11 @@ class LLMToolCaller:
         self.max_arg_chars = max_arg_chars
         self.max_retries = max_retries
         self.retry_base_delay = retry_base_delay
+        self._client = httpx.AsyncClient(timeout=timeout)
+
+    async def aclose(self) -> None:
+        """關閉持久 httpx client（app shutdown 時呼叫）"""
+        await self._client.aclose()
 
     def _build_payload(
         self,
@@ -144,37 +149,37 @@ class LLMToolCaller:
     async def _post(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """非阻塞 POST 請求，帶指數退避重試（連線錯誤 / 5xx）。"""
         last_exc: Exception = RuntimeError("no attempts made")
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            for attempt in range(self.max_retries + 1):
-                try:
-                    r = await client.post(self.base_url, json=payload)
-                    if r.status_code >= 500 and attempt < self.max_retries:
-                        delay = self.retry_base_delay * (2**attempt)
-                        logger.warning(
-                            "[LLM] 5xx 錯誤 ({}), {}s 後重試 ({}/{})",
-                            r.status_code,
-                            delay,
-                            attempt + 1,
-                            self.max_retries,
-                        )
-                        await asyncio.sleep(delay)
-                        continue
-                    r.raise_for_status()
-                    return r.json()
-                except (httpx.ConnectError, httpx.TimeoutException) as e:
-                    last_exc = e
-                    if attempt < self.max_retries:
-                        delay = self.retry_base_delay * (2**attempt)
-                        logger.warning(
-                            "[LLM] 連線失敗 ({}), {}s 後重試 ({}/{})",
-                            type(e).__name__,
-                            delay,
-                            attempt + 1,
-                            self.max_retries,
-                        )
-                        await asyncio.sleep(delay)
-                        continue
-                    raise
+        client = self._client
+        for attempt in range(self.max_retries + 1):
+            try:
+                r = await client.post(self.base_url, json=payload)
+                if r.status_code >= 500 and attempt < self.max_retries:
+                    delay = self.retry_base_delay * (2**attempt)
+                    logger.warning(
+                        "[LLM] 5xx 錯誤 ({}), {}s 後重試 ({}/{})",
+                        r.status_code,
+                        delay,
+                        attempt + 1,
+                        self.max_retries,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                r.raise_for_status()
+                return r.json()
+            except (httpx.ConnectError, httpx.TimeoutException) as e:
+                last_exc = e
+                if attempt < self.max_retries:
+                    delay = self.retry_base_delay * (2**attempt)
+                    logger.warning(
+                        "[LLM] 連線失敗 ({}), {}s 後重試 ({}/{})",
+                        type(e).__name__,
+                        delay,
+                        attempt + 1,
+                        self.max_retries,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                raise
         raise last_exc
 
     async def call_llm_async(
@@ -451,23 +456,22 @@ class LLMToolCaller:
         payload = self._build_payload(
             messages, temperature=temperature, stream=True, max_tokens=max_tokens
         )
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            async with client.stream("POST", self.base_url, json=payload) as resp:
-                resp.raise_for_status()
-                async for line in resp.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    data_str = line[6:]
-                    if data_str.strip() == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(data_str)
-                        delta = chunk["choices"][0].get("delta", {})
-                        content = delta.get("content")
-                        if content:
-                            yield content
-                    except (json.JSONDecodeError, KeyError, IndexError):
-                        continue
+        async with self._client.stream("POST", self.base_url, json=payload) as resp:
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                data_str = line[6:]
+                if data_str.strip() == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data_str)
+                    delta = chunk["choices"][0].get("delta", {})
+                    content = delta.get("content")
+                    if content:
+                        yield content
+                except (json.JSONDecodeError, KeyError, IndexError):
+                    continue
 
     async def call_llm_stream_with_tools(
         self,
@@ -496,45 +500,44 @@ class LLMToolCaller:
         content_acc = ""
         finish_reason = None
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            async with client.stream("POST", self.base_url, json=payload) as resp:
-                resp.raise_for_status()
-                async for line in resp.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    data_str = line[6:]
-                    if data_str.strip() == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(data_str)
-                    except json.JSONDecodeError:
-                        continue
-                    choice = chunk.get("choices", [{}])[0]
-                    delta = choice.get("delta", {})
-                    finish_reason = choice.get("finish_reason") or finish_reason
+        async with self._client.stream("POST", self.base_url, json=payload) as resp:
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                data_str = line[6:]
+                if data_str.strip() == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data_str)
+                except json.JSONDecodeError:
+                    continue
+                choice = chunk.get("choices", [{}])[0]
+                delta = choice.get("delta", {})
+                finish_reason = choice.get("finish_reason") or finish_reason
 
-                    # Tool call delta 累積
-                    if delta.get("tool_calls"):
-                        for tc_delta in delta["tool_calls"]:
-                            idx = tc_delta.get("index", 0)
-                            if idx not in tool_calls_acc:
-                                tool_calls_acc[idx] = {
-                                    "id": tc_delta.get("id", f"toolcall_{idx}"),
-                                    "name": "",
-                                    "arguments": "",
-                                }
-                            acc = tool_calls_acc[idx]
-                            fn = tc_delta.get("function", {})
-                            if fn.get("name"):
-                                acc["name"] += fn["name"]
-                            if fn.get("arguments"):
-                                acc["arguments"] += fn["arguments"]
+                # Tool call delta 累積
+                if delta.get("tool_calls"):
+                    for tc_delta in delta["tool_calls"]:
+                        idx = tc_delta.get("index", 0)
+                        if idx not in tool_calls_acc:
+                            tool_calls_acc[idx] = {
+                                "id": tc_delta.get("id", f"toolcall_{idx}"),
+                                "name": "",
+                                "arguments": "",
+                            }
+                        acc = tool_calls_acc[idx]
+                        fn = tc_delta.get("function", {})
+                        if fn.get("name"):
+                            acc["name"] += fn["name"]
+                        if fn.get("arguments"):
+                            acc["arguments"] += fn["arguments"]
 
-                    # Content delta 即時 yield
-                    content = delta.get("content")
-                    if content:
-                        content_acc += content
-                        yield {"type": "content_delta", "content": content}
+                # Content delta 即時 yield
+                content = delta.get("content")
+                if content:
+                    content_acc += content
+                    yield {"type": "content_delta", "content": content}
 
         # 組裝 raw_message（模擬非串流回覆格式，供 pick_first_tool_call 使用）
         raw_message: Dict[str, Any] = {"content": content_acc or None}

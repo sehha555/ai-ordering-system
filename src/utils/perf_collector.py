@@ -125,7 +125,15 @@ class PerfCollector:
     ) -> None:
         entry = _PerfEntry(asr_s=asr_s, dm_s=dm_s, ttfa_s=ttfa_s, tts_s=tts_s, total_s=total_s)
         self._entries.append(entry)
-        self._persist(entry)
+        # 非阻塞：SQLite 寫入移到 thread pool，不阻塞 event loop
+        try:
+            import asyncio
+
+            loop = asyncio.get_running_loop()
+            loop.run_in_executor(None, self._persist, entry)
+        except RuntimeError:
+            # 非 async context（測試等），直接同步寫入
+            self._persist(entry)
 
     def get_stats(self) -> dict:
         entries = list(self._entries)

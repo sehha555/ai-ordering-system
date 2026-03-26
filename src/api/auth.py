@@ -1,6 +1,9 @@
 """認證相關依賴"""
+
 import logging
-from fastapi import HTTPException, Security
+from typing import Optional
+
+from fastapi import HTTPException, Query, Security
 from fastapi.security import APIKeyHeader
 from src.config.settings import settings
 
@@ -19,3 +22,16 @@ def get_api_key(api_key: str = Security(api_key_header)):
     if api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API Key")
     return api_key
+
+
+def get_api_key_or_token(
+    api_key: str = Security(api_key_header),
+    token: Optional[str] = Query(None, alias="token"),
+):
+    """同時接受 header 和 query param token（EventSource 不支援 header）"""
+    if not API_KEY:
+        return "dev"
+    key = api_key or token
+    if key != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API Key")
+    return key
