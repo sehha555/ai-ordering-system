@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 # 專案根目錄（order_repository.py → repository/ → src/ → project root）
-_PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..", "..")
+_PROJECT_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
 class OrderRepository:
@@ -18,10 +18,8 @@ class OrderRepository:
     @contextmanager
     def _connection(self, *, immediate: bool = False):
         """連接 contextmanager — 自動 commit/rollback/close。immediate=True 使用 BEGIN IMMEDIATE。"""
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=5)
         conn.row_factory = sqlite3.Row
-        # 高併發下等待鎖釋放最多 5 秒，避免 "database is locked" 錯誤
-        conn.execute("PRAGMA busy_timeout = 5000")
         if immediate:
             conn.execute("BEGIN IMMEDIATE")
         try:
