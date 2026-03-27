@@ -34,7 +34,7 @@ def get_adapter(adapter_type: str, adapter_name: str, params: dict):
         raise ValueError(f"不支援的 adapter 類型: {adapter_type}")
 
 
-def load_test_data(benchmark_type: str) -> list[dict]:
+def load_test_data(benchmark_type: str, scenarios: str | None = None) -> list[dict]:
     data_dir = Path(__file__).parent / "test_data" / benchmark_type
     if benchmark_type == "asr":
         manifest = data_dir / "manifest.json"
@@ -46,7 +46,10 @@ def load_test_data(benchmark_type: str) -> list[dict]:
         with open(data_dir / "test_sentences.json", "r", encoding="utf-8") as f:
             return json.load(f)
     elif benchmark_type == "llm":
-        with open(data_dir / "test_scenarios.json", "r", encoding="utf-8") as f:
+        # --scenarios unified → test_scenarios_unified.json
+        # 未指定 → test_scenarios.json（原始版本）
+        filename = f"test_scenarios_{scenarios}.json" if scenarios else "test_scenarios.json"
+        with open(data_dir / filename, "r", encoding="utf-8") as f:
             return json.load(f)
     return []
 
@@ -278,6 +281,12 @@ def main():
     parser.add_argument("--limit", type=int, default=None, help="只跑前 N 個測試案例")
     parser.add_argument("--fast", action="store_true", help="快速模式：repeat=1 + limit=20")
     parser.add_argument("--workers", type=int, default=None, help="平行 workers 數（預設讀 config）")
+    parser.add_argument(
+        "--scenarios",
+        type=str,
+        default=None,
+        help="指定 scenario 檔案名後綴（不含路徑和 .json），如 'unified' → test_scenarios_unified.json",
+    )
     args = parser.parse_args()
 
     config = load_config(Path(args.config) if args.config else None)
@@ -306,7 +315,7 @@ def main():
                 print(f"⚠️  找不到模型 {args.model}，跳過")
                 continue
 
-        test_data = load_test_data(btype)
+        test_data = load_test_data(btype, getattr(args, "scenarios", None))
         if not test_data:
             print(f"⚠️  {btype} 沒有測試資料，跳過")
             continue
