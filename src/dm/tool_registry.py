@@ -1,6 +1,8 @@
 """工具註冊表 - 管理 LLM 可調用的工具"""
 
 import contextvars
+import json
+from pathlib import Path
 from typing import Dict, Any, List, Callable, Optional, Set
 
 # per-request session ID（避免全域單例的併發覆蓋問題）
@@ -29,6 +31,40 @@ from src.repository.order_repository import order_repo
 
 # 蛋餅別名
 EGG_PANCAKE_ALIASES = EggPancakeTool.FLAVOR_ALIASES
+
+# 載體後綴（用於從完整品項名稱中提取口味）
+_CARRIER_SUFFIXES = ["蛋吐司", "吐司", "蛋漢堡", "蛋堡", "漢堡", "蛋饅頭", "饅頭"]
+
+# 載體分類到 carrier 參數的對應
+_CARRIER_CATEGORY_MAP = {"吐司": "吐司", "漢堡": "漢堡", "饅頭": "饅頭"}
+
+# 套餐簡稱別名（「一號餐」→「套餐一」等，在別名解析中使用）
+_COMBO_NUMBER_ALIASES: Dict[str, str] = {
+    "一號餐": "套餐一", "二號餐": "套餐二", "三號餐": "套餐三",
+    "四號餐": "套餐四", "五號餐": "套餐五", "六號餐": "套餐六",
+    "七號餐": "套餐七", "A餐": "套餐A", "B餐": "套餐B",
+    "C餐": "套餐C", "D餐": "套餐D", "E餐": "套餐E",
+}
+
+
+def _build_menu_index() -> Dict[str, Dict[str, Any]]:
+    """
+    啟動時從 menu_all.json 建立 name→{category, price} 索引。
+    模組層級呼叫，結果快取為 _MENU_INDEX 供 add_item 使用。
+    """
+    menu_path = Path(__file__).parent.parent / "tools" / "menu" / "menu_all.json"
+    with open(menu_path, encoding="utf-8-sig") as f:
+        items = json.load(f)
+    index: Dict[str, Dict[str, Any]] = {}
+    for item in items:
+        name = item.get("name", "")
+        if name:
+            index[name] = {"category": item.get("category", ""), "price": item.get("price", 0)}
+    return index
+
+
+# 模組載入時建立一次索引（避免每次 add_item 讀檔）
+_MENU_INDEX: Dict[str, Dict[str, Any]] = _build_menu_index()
 
 # 結帳正規化映射（finalize_order / preview_checkout 共用）
 _DINE_TYPE_MAP: Dict[str, str] = {
@@ -124,6 +160,212 @@ class ToolRegistry:
         counter = session.get("cart_id_counter", 0) + 1
         session["cart_id_counter"] = counter
         return f"{prefix}_{counter}"
+
+    # ============ 統一點餐入口 ============
+
+    def _resolve_item_name(self, name: str) -> Optional[Dict[str, Any]]:
+        """
+        從 name 字串找到對應的菜單品項資訊。
+        查詢順序：
+        1. 精確匹配 _MENU_INDEX（含完整品項名如「有糖豆漿(中)」）
+        2. 套餐 startsWith 匹配（「套餐一」→「套餐一 醬燒肉片蛋餅+豆漿(大)」）
+        3. 飲料別名解析後比對（不含杯型，加杯型後再精確匹配）
+        4. 飯糰別名解析後比對
+        5. 蛋餅別名解析後比對
+        6. 點心別名解析後比對
+        7. 套餐數字別名解析（「三號餐」→「套餐三」）
+        8. 子字串匹配（輔助）
+        回傳 None 表示找不到。
+        """
+        if not name:
+            return None
+
+        # 1. 精確匹配
+        if name in _MENU_INDEX:
+            return {**_MENU_INDEX[name], "resolved_name": name}
+
+        # 2. 套餐 startsWith 匹配（「套餐一」→ 找 key 以「套餐一 」開頭的）
+        for full_name, info in _MENU_INDEX.items():
+            if info["category"] == "套餐" and full_name.startswith(name + " "):
+                # 回傳時提取短名（「套餐一」），方便後續 add_combo 使用
+                return {"category": "套餐", "price": info["price"], "resolved_name": name}
+
+        # 3. 套餐本身就是短名（如「套餐一」精確不中但存在套餐）
+        # 注意：套餐別名解析放在這裡一起處理
+        resolved_combo = _COMBO_NUMBER_ALIASES.get(name)
+        if resolved_combo:
+            # 遞迴查找標準套餐名
+            return self._resolve_item_name(resolved_combo)
+
+        # 4. 飲料別名解析（得到標準名，不含杯型；杯型由 add_item 外層提供）
+        resolved_drink = self._resolve_drink_flavor(name)
+        if resolved_drink and resolved_drink != name:
+            # 檢查標準名 + (中) 是否存在（代表是飲料）
+            probe = f"{resolved_drink}(中)"
+            if probe in _MENU_INDEX:
+                return {"category": "飲品", "price": _MENU_INDEX[probe]["price"], "resolved_name": resolved_drink}
+
+        # 嘗試直接用 name 作為飲料標準名
+        probe_mid = f"{name}(中)"
+        if probe_mid in _MENU_INDEX:
+            return {"category": "飲品", "price": _MENU_INDEX[probe_mid]["price"], "resolved_name": name}
+
+        # 5. 飯糰別名解析
+        resolved_riceball = self._resolve_riceball_flavor(name)
+        if resolved_riceball:
+            # 在 menu 中找到以 resolved_riceball 結尾的飯糰品項
+            for full_name, info in _MENU_INDEX.items():
+                if info["category"] == "飯糰" and full_name.endswith(resolved_riceball):
+                    return {"category": "飯糰", "price": info["price"], "resolved_name": resolved_riceball}
+            # 若 resolved_riceball 本身就是完整菜單名
+            if resolved_riceball in _MENU_INDEX:
+                return {**_MENU_INDEX[resolved_riceball], "resolved_name": resolved_riceball}
+
+        # 6. 蛋餅別名解析
+        resolved_ep = self._resolve_egg_pancake_flavor(name)
+        if resolved_ep and resolved_ep != name:
+            if resolved_ep in _MENU_INDEX:
+                return {**_MENU_INDEX[resolved_ep], "resolved_name": resolved_ep}
+
+        # 7. 點心別名解析
+        resolved_snack = self._resolve_snack_flavor(name)
+        if resolved_snack and resolved_snack != name and resolved_snack in _MENU_INDEX:
+            return {**_MENU_INDEX[resolved_snack], "resolved_name": resolved_snack}
+
+        # 8. 子字串匹配（最後的補漏）
+        for full_name, info in _MENU_INDEX.items():
+            if name in full_name or full_name in name:
+                return {**info, "resolved_name": full_name}
+
+        return None
+
+    def add_item(
+        self,
+        name: str,
+        quantity: int = 1,
+        rice: Optional[str] = None,
+        size: Optional[str] = None,
+        temp: Optional[str] = None,
+        flavor: Optional[str] = None,
+        spicy: bool = False,
+        extra_egg: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        統一點餐入口。LLM 只需傳 name（品項名稱），後端自動路由到正確分類。
+
+        路由規則：
+        - 飯糰 → add_riceball（需要 rice，缺則 ok:false 追問）
+        - 飲品 → add_drink（需要 size + temp，缺則 ok:false 追問）
+        - 吐司/漢堡/饅頭 → add_carrier（自動提取 carrier 和 flavor）
+        - 蛋餅 → add_egg_pancake（自動提取 flavor）
+        - 果醬吐司 → 解析 flavor/size 後加入
+        - 點心/蔥抓餅/鐵板麵 → add_snack
+        - 套餐 → add_combo（需要 temp，缺則 ok:false 追問）
+        """
+        if not name:
+            return {"ok": False, "message": "請告訴我要點什麼品項"}
+
+        # 找到品項資訊
+        item_info = self._resolve_item_name(name)
+        if item_info is None:
+            return {"ok": False, "message": f"找不到「{name}」，請確認名稱或查詢菜單"}
+
+        category = item_info["category"]
+        resolved_name = item_info["resolved_name"]
+
+        # ── 飯糰 ──
+        if category == "飯糰":
+            if not rice:
+                return {"ok": False, "missing": ["rice"], "message": "飯糰要白米紫米還是混米？"}
+            return self.add_riceball(
+                flavor=resolved_name, rice=rice, spicy=spicy,
+                extra_egg=extra_egg, quantity=quantity
+            )
+
+        # ── 飲品 ──
+        if category == "飲品":
+            missing = []
+            if not size:
+                missing.append("size")
+            if not temp:
+                missing.append("temp")
+            if missing:
+                if "size" in missing and "temp" in missing:
+                    msg = "要中杯還是大杯？冰的還是溫的？"
+                elif "size" in missing:
+                    msg = "要中杯還是大杯？"
+                else:
+                    msg = "飲料要冰的還是溫的？"
+                return {"ok": False, "missing": missing, "message": msg}
+            return self.add_drink(
+                flavor=resolved_name, size=size, temp=temp, quantity=quantity
+            )
+
+        # ── 吐司 / 漢堡 / 饅頭（載體） ──
+        if category in _CARRIER_CATEGORY_MAP:
+            carrier = _CARRIER_CATEGORY_MAP[category]
+            # 從完整品項名稱提取口味（去掉載體後綴）
+            extracted_flavor = resolved_name
+            for suffix in _CARRIER_SUFFIXES:
+                if extracted_flavor.endswith(suffix):
+                    extracted_flavor = extracted_flavor[: -len(suffix)]
+                    break
+            return self.add_carrier(
+                carrier=carrier, flavor=extracted_flavor, quantity=quantity
+            )
+
+        # ── 蛋餅 ──
+        if category == "蛋餅":
+            # 去掉「蛋餅」後綴取得口味
+            ep_flavor = resolved_name
+            if ep_flavor.endswith("蛋餅"):
+                ep_flavor = ep_flavor[:-2]
+            return self.add_egg_pancake(flavor=ep_flavor, quantity=quantity)
+
+        # ── 果醬吐司 ──
+        if category == "果醬吐司":
+            # resolved_name 格式：「果醬吐司(草莓/薄片)」或傳入的 name 帶括號
+            jam_flavor = flavor
+            jam_size = size or "薄片"  # 預設薄片
+            # 嘗試從 resolved_name 解析
+            import re as _re
+            m = _re.search(r"果醬吐司\(([^/]+)/([^)]+)\)", resolved_name)
+            if m:
+                jam_flavor = m.group(1)
+                jam_size = m.group(2)
+            if not jam_flavor:
+                return {"ok": False, "missing": ["flavor"], "message": "果醬吐司什麼口味？草莓花生蒜香奶酥巧克力"}
+            session = self.get_current_session()
+            item_id = self._next_item_id(session, "jam_toast")
+            jam_name = f"果醬吐司({jam_flavor}/{jam_size})"
+            item: Dict[str, Any] = {
+                "item_id": item_id,
+                "itemtype": "jam_toast",
+                "flavor": jam_flavor,
+                "size": jam_size,
+                "jam_toast": jam_name,
+                "quantity": max(1, quantity),
+            }
+            session["cart"].append(item)
+            return {
+                "ok": True,
+                "item_id": item_id,
+                "message": f"已加入 {quantity}份 {jam_name}",
+                "cart_count": len(session["cart"]),
+            }
+
+        # ── 點心 / 蔥抓餅 / 鐵板麵 ──
+        if category in ("點心", "蔥抓餅", "鐵板麵"):
+            return self.add_snack(flavor=resolved_name, quantity=quantity)
+
+        # ── 套餐 ──
+        if category == "套餐":
+            return self.add_combo(
+                combo_name=resolved_name, temp=temp, rice=rice, flavor=flavor, quantity=quantity
+            )
+
+        # 未知分類 — 回傳錯誤
+        return {"ok": False, "message": f"品項「{name}」分類（{category}）不支援，請查詢菜單"}
 
     # ============ 品項專屬工具 ============
 
@@ -921,177 +1163,69 @@ class ToolRegistry:
 
     def get_tools_schema(self) -> List[Dict[str, Any]]:
         """
-        取得 OpenAI Function Calling 格式的工具 schema
+        取得 OpenAI Function Calling 格式的工具 schema。
 
-        Returns:
-            工具 schema 列表
+        只暴露 2 個 tool：
+        - add_item：統一點餐入口，後端依 name 自動路由
+        - query_menu：菜單查詢
+
+        舊的 add_riceball/add_drink/add_carrier/add_egg_pancake/add_snack/add_combo
+        保留在 tool_map 供 backward compat，但不再暴露給 LLM。
         """
         return [
             {
                 "type": "function",
                 "function": {
-                    "name": "add_riceball",
-                    "description": "加入飯糰到購物車。當客人說「一個鮪魚飯糰白米」「紫米培根加辣」時調用。flavor（口味）和 rice（米種）都必填，缺一則追問。flavor 只填口味名稱不帶「飯糰」後綴。spicy 是 boolean。",
+                    "name": "add_item",
+                    "description": (
+                        "加入品項到購物車。name 填菜單品項名稱"
+                        "（如「香燻培根飯糰」「原味蛋餅」「培根蛋吐司」「純鮮奶茶」「套餐一」「薯餅(1片)」）。"
+                        "飯糰額外必填 rice；飲料額外必填 size 和 temp；套餐額外必填 temp。"
+                        "缺少必填欄位時回傳 ok:false 和追問訊息。"
+                    ),
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "flavor": {
+                            "name": {
                                 "type": "string",
-                                "description": "飯糰口味，只填口味名稱，如：源味傳統、香燻培根、醬燒里肌、起司蛋、鮪魚蛋、鮭魚等",
-                            },
-                            "rice": {
-                                "type": "string",
-                                "enum": ["白米", "紫米", "混米"],
-                                "description": "米種，必填",
-                            },
-                            "large": {
-                                "type": "boolean",
-                                "default": False,
-                                "description": "是否加大",
-                            },
-                            "extra_egg": {
-                                "type": "boolean",
-                                "default": False,
-                                "description": "是否加蛋",
-                            },
-                            "spicy": {
-                                "type": "boolean",
-                                "default": False,
-                                "description": "是否加辣菜脯",
+                                "description": "菜單品項名稱，如「香燻培根飯糰」「純鮮奶茶」「套餐一」「培根蛋吐司」",
                             },
                             "quantity": {
                                 "type": "integer",
                                 "default": 1,
                                 "description": "數量",
                             },
-                            "customization": {
+                            "rice": {
                                 "type": "string",
-                                "description": "客製化需求",
-                            },
-                        },
-                        "required": ["flavor", "rice"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "add_drink",
-                    "description": "加入飲料到購物車。當客人說「一杯大冰紅茶」「中杯溫豆漿」時調用。flavor（品項）、size（杯型）、temp（溫度）都必填。",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "flavor": {
-                                "type": "string",
-                                "description": "飲料名稱，如：有糖豆漿、純鮮奶茶、紅茶拿鐵等",
+                                "enum": ["白米", "紫米", "混米"],
+                                "description": "米種（飯糰及含飯糰套餐必填）",
                             },
                             "size": {
                                 "type": "string",
                                 "enum": ["中杯", "大杯"],
-                                "description": "杯型，必填",
+                                "description": "杯型（飲料必填）",
                             },
                             "temp": {
                                 "type": "string",
                                 "enum": ["冰", "溫", "熱"],
-                                "description": "溫度，必填",
-                            },
-                            "quantity": {"type": "integer", "default": 1},
-                            "customization": {"type": "string"},
-                        },
-                        "required": ["flavor", "size", "temp"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "add_carrier",
-                    "description": "加入吐司/漢堡/饅頭系列到購物車。當客人說「火腿蛋吐司」「起司蛋漢堡」「黑糖饅頭夾蛋」時調用。carrier（載體）和 flavor（餡料）都必填。客人只說「饅頭夾蛋」未指定饅頭口味時要追問。",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "carrier": {
-                                "type": "string",
-                                "enum": ["吐司", "漢堡", "饅頭"],
-                                "description": "載體類型，必填",
+                                "description": "溫度（飲料和套餐飲料必填）",
                             },
                             "flavor": {
                                 "type": "string",
-                                "description": "餡料口味，如：豬肉蛋、火腿蛋、起司蛋等。若 carrier 為饅頭，flavor 指饅頭種類（黑糖饅頭/白饅頭/黑糖花捲/白花捲/芋頭饅頭），非餡料；未指定饅頭種類時須追問。",
+                                "description": "子選項（套餐的饅頭口味/鐵板麵口味/吐司口味/果醬口味）",
                             },
-                            "quantity": {"type": "integer", "default": 1},
-                            "customization": {"type": "string"},
-                        },
-                        "required": ["carrier", "flavor"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "add_egg_pancake",
-                    "description": "加入蛋餅到購物車。當客人說「一個起司蛋餅」「原味蛋餅」時調用。flavor（口味）必填。",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "flavor": {
-                                "type": "string",
-                                "description": "蛋餅口味，如：原味、起司、培根、鮪魚等",
+                            "spicy": {
+                                "type": "boolean",
+                                "default": False,
+                                "description": "加辣菜脯（飯糰）",
                             },
-                            "quantity": {"type": "integer", "default": 1},
-                            "customization": {"type": "string"},
-                        },
-                        "required": ["flavor"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "add_snack",
-                    "description": "加入點心到購物車。當客人說「一份薯餅」「蘿蔔糕加蛋」「玉米鐵板麵」時調用。包含：薯餅、蘿蔔糕、韭菜餡餅、蔥抓餅、鐵板麵系列。flavor 必填，鐵板麵只填口味（如「玉米」「蘑菇」）。",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "flavor": {
-                                "type": "string",
-                                "description": "點心名稱，如：薯餅、蘿蔔糕加蛋、韭菜餡餅、玉米（鐵板麵）、蘑菇（鐵板麵）等",
+                            "extra_egg": {
+                                "type": "boolean",
+                                "default": False,
+                                "description": "加蛋（飯糰）",
                             },
-                            "quantity": {"type": "integer", "default": 1},
-                            "customization": {"type": "string"},
                         },
-                        "required": ["flavor"],
-                    },
-                },
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "add_combo",
-                    "description": "加入套餐到購物車。當客人說「套餐一」「二號餐」「兒童餐」時調用。combo_name 必填，call 後依 ok:false 訊息追問缺少的規格。",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "combo_name": {
-                                "type": "string",
-                                "enum": [
-                                    "套餐一",
-                                    "套餐二",
-                                    "套餐三",
-                                    "套餐四",
-                                    "套餐A",
-                                    "套餐B",
-                                    "兒童餐",
-                                ],
-                                "description": "套餐名稱，必填",
-                            },
-                            "rice": {"type": "string", "enum": ["白米", "紫米", "混米"]},
-                            "temp": {"type": "string", "enum": ["冰", "溫", "熱"]},
-                            "flavor": {"type": "string"},
-                            "quantity": {"type": "integer", "default": 1},
-                            "customization": {"type": "string"},
-                        },
-                        "required": ["combo_name"],
+                        "required": ["name"],
                     },
                 },
             },
@@ -1123,7 +1257,9 @@ class ToolRegistry:
             工具映射字典
         """
         return {
-            # 品項專屬工具（新）
+            # 統一入口（LLM 使用）
+            "add_item": self.add_item,
+            # 品項專屬工具（backward compat，LLM 不再直接呼叫）
             "add_riceball": self.add_riceball,
             "add_drink": self.add_drink,
             "add_carrier": self.add_carrier,
@@ -1150,7 +1286,9 @@ class ToolRegistry:
             參數映射字典
         """
         return {
-            # 品項專屬工具（新）
+            # 統一入口（LLM 使用）
+            "add_item": {"name", "quantity", "rice", "size", "temp", "flavor", "spicy", "extra_egg"},
+            # 品項專屬工具（backward compat）
             "add_riceball": {
                 "flavor",
                 "rice",

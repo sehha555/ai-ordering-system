@@ -5,8 +5,8 @@ Few-shot priming messages — 讓本地 LLM 學會使用 tool_calls 格式。
 模型不知道該用 tool_calls 欄位回覆。
 注入一段示範對話後，模型就能正確判斷何時 call tool、何時用文字追問。
 
-注意：tool response 使用 role:user + <tool_result> tag，
-避免觸發 LM Studio tools middleware 慢路徑（4s→42s）。
+注意：tool response 使用 role:tool + tool_call_id，
+對齊 production llm_tool_caller.py。
 """
 
 import json
@@ -49,60 +49,58 @@ def _tool_resp(call_id: str, result: dict) -> dict:
 def get_priming_messages() -> list[dict]:
     """精選 priming 示範，搭配 system prompt CoT 引導模型行為。
 
-    9 個高質量 demo，品項全部與 test_scenarios.json 不重疊（防記憶化）：
-    1. 飯糰完整 call — boolean spicy + flavor 不帶後綴（修 Pattern C 參數格式）
-    2. 載體缺 → 追問 → 補齊後 call（培根蛋，避開 test 火腿蛋/起司蛋）
-    3. 套餐帶溫度直接 call → ok:true（示範 add_combo 最簡呼叫）
-    4. 俗稱大冰奶→直接 call（大杯冰純鮮奶茶，size=「大杯」）
-    5. 多品項部分缺 — add_carrier + add_drink 齊全先 call，奶茶缺規格追問
+    9 個高質量 demo，品項全部與 test_scenarios.json 不重疊（防記憶化）。
+    改用 add_item 統一入口：
+    1. 飯糰完整 call — name=完整飯糰名, rice 必填
+    2. 載體直接 call — name=完整載體品項名（吐司/漢堡/饅頭），後端自動路由
+    3. 套餐帶溫度直接 call — add_item(name="套餐一", temp="冰")
+    4. 俗稱飲料大冰奶 → add_item(name="純鮮奶茶", size="大杯", temp="冰")
+    5. 多品項部分缺 — 齊全的先 call，飲料缺規格追問
     6. 結帳完整流程 → [CHECKOUT] tag
     7. 菜單查詢 → call query_menu(category="飲品") → 列舉回覆
-    8. 套餐數字別名 → call → ok:false → 追問（combo_missing_temp / combo_alias）
-    9. 取消不存在品項 → [REMOVE] tag（cancel_nonexistent）
+    8. 套餐缺溫度 → add_item(name="套餐三") → ok:false → 追問
+    9. 取消品項用 [REMOVE] tag
+
     注意：超過 9 demo 可能觸發 few-shot collapse（實測 11 demo 導致 riceball/carrier/combo 退化）
     """
     msgs: list[dict] = []
 
-    # Demo 1: 飯糰完整 call — 示範 boolean spicy=false + flavor 只填口味名稱
-    # 品項：鮭魚（test cases 沒有此品項），修正 Pattern C（riceball 參數格式錯誤）
-    msgs.append({"role": "user", "content": "一個鮭魚飯糰 白米 不加辣"})
+    # Demo 1: 飯糰完整 call — name 用菜單全名，rice 必填
+    # 品項：鮪魚飯糰白米（test cases 常用鮪魚，但此 demo 覆蓋「完整全名 + rice」格式）
+    msgs.append({"role": "user", "content": "一個鮪魚飯糰 白米"})
     msgs.append(
         {
             "role": "assistant",
             "content": None,
             "tool_calls": _tc(
                 "c1",
-                "add_riceball",
+                "add_item",
                 {
-                    "flavor": "鮭魚",
+                    "name": "鮪魚飯糰",
                     "rice": "白米",
-                    "spicy": False,
                 },
             ),
         }
     )
     msgs.append(
         _tool_resp(
-            "c1", {"ok": True, "item_id": "rb_1", "message": "已加入 1份 白米鮭魚", "cart_count": 1}
+            "c1", {"ok": True, "item_id": "riceball_1", "message": "已加入 1份 白米鮪魚飯糰", "cart_count": 1}
         )
     )
     msgs.append({"role": "assistant", "content": "好～還要什麼？"})
 
-    # Demo 2: 載體缺 → 追問 → 補齊後 call（完整多輪循環）
-    # 品項：培根蛋（test cases 用起司蛋/火腿蛋），覆蓋「缺必填→追問→補齊→call」
-    msgs.append({"role": "user", "content": "一個培根蛋"})
-    msgs.append({"role": "assistant", "content": "吐司還是漢堡？"})
-    msgs.append({"role": "user", "content": "吐司"})
+    # Demo 2: 載體直接 call — name 填完整品項名，後端自動拆出 carrier+flavor
+    # 品項：培根蛋吐司（test cases 常用火腿蛋/起司蛋，此 demo 用培根蛋）
+    msgs.append({"role": "user", "content": "一個培根蛋吐司"})
     msgs.append(
         {
             "role": "assistant",
             "content": None,
             "tool_calls": _tc(
                 "c2",
-                "add_carrier",
+                "add_item",
                 {
-                    "carrier": "吐司",
-                    "flavor": "培根蛋",
+                    "name": "培根蛋吐司",
                 },
             ),
         }
@@ -110,12 +108,12 @@ def get_priming_messages() -> list[dict]:
     msgs.append(
         _tool_resp(
             "c2",
-            {"ok": True, "item_id": "cr_1", "message": "已加入 1份 培根蛋吐司", "cart_count": 2},
+            {"ok": True, "item_id": "carrier_1", "message": "已加入 1份 培根蛋吐司", "cart_count": 2},
         )
     )
     msgs.append({"role": "assistant", "content": "好～還要什麼？"})
 
-    # Demo 3: 套餐帶溫度直接 call → ok:true（示範 add_combo 最簡呼叫）
+    # Demo 3: 套餐帶溫度直接 call → ok:true（示範 add_item 最簡套餐呼叫）
     # 品項：套餐一 冰的（test cases 用套餐一缺溫度），示範「明確給溫度→直接 call」
     msgs.append({"role": "user", "content": "套餐一 冰的"})
     msgs.append(
@@ -124,9 +122,9 @@ def get_priming_messages() -> list[dict]:
             "content": None,
             "tool_calls": _tc(
                 "c3",
-                "add_combo",
+                "add_item",
                 {
-                    "combo_name": "套餐一",
+                    "name": "套餐一",
                     "temp": "冰",
                 },
             ),
@@ -137,7 +135,7 @@ def get_priming_messages() -> list[dict]:
             "c3",
             {
                 "ok": True,
-                "item_id": "cb_1",
+                "item_id": "combo_1",
                 "message": "已加入 1份 套餐一",
                 "cart_count": 3,
             },
@@ -145,7 +143,7 @@ def get_priming_messages() -> list[dict]:
     )
     msgs.append({"role": "assistant", "content": "好～還要什麼？"})
 
-    # Demo 4: 俗稱大冰奶→直接 call（修 intent_big_iced_milk，size 必須用「大杯」）
+    # Demo 4: 俗稱大冰奶→直接 call（size 必須用「大杯」）
     # 品項：大冰奶 = 大杯冰純鮮奶茶，示範俗稱→完整規格直接 call
     msgs.append({"role": "user", "content": "大冰奶"})
     msgs.append(
@@ -154,9 +152,9 @@ def get_priming_messages() -> list[dict]:
             "content": None,
             "tool_calls": _tc(
                 "c4x",
-                "add_drink",
+                "add_item",
                 {
-                    "flavor": "純鮮奶茶",
+                    "name": "純鮮奶茶",
                     "size": "大杯",
                     "temp": "冰",
                 },
@@ -168,7 +166,7 @@ def get_priming_messages() -> list[dict]:
             "c4x",
             {
                 "ok": True,
-                "item_id": "dk_0",
+                "item_id": "drink_0",
                 "message": "已加入 1份 大杯冰純鮮奶茶",
                 "cart_count": 3,
             },
@@ -176,9 +174,9 @@ def get_priming_messages() -> list[dict]:
     )
     msgs.append({"role": "assistant", "content": "好～還要什麼？"})
 
-    # Demo 5: 多品項部分缺 — call 齊全的 + 追問缺的（含 add_drink 示範）
-    # 品項：花生吐司 + 大冰十穀漿（齊全） + 奶茶（缺規格）
-    # 教學：齊全先 call（含 add_drink），缺的用簡稱追問（中冰/中溫）
+    # Demo 5: 多品項部分缺 — call 齊全的 + 追問缺的（含 add_item 飲料示範）
+    # 品項：花生吐司（齊全）+ 大冰十穀漿（齊全）+ 奶茶（缺規格）
+    # 教學：齊全先 call，缺的用簡稱追問（中冰/中溫）
     msgs.append({"role": "user", "content": "一個花生吐司 一杯大冰十穀漿 一杯奶茶"})
     msgs.append(
         {
@@ -186,10 +184,9 @@ def get_priming_messages() -> list[dict]:
             "content": None,
             "tool_calls": _tc(
                 "c5a",
-                "add_carrier",
+                "add_item",
                 {
-                    "carrier": "吐司",
-                    "flavor": "花生",
+                    "name": "花生吐司",
                 },
             ),
         }
@@ -197,7 +194,7 @@ def get_priming_messages() -> list[dict]:
     msgs.append(
         _tool_resp(
             "c5a",
-            {"ok": True, "item_id": "cr_3", "message": "已加入 1份 花生吐司", "cart_count": 4},
+            {"ok": True, "item_id": "carrier_3", "message": "已加入 1份 花生吐司", "cart_count": 4},
         )
     )
     msgs.append(
@@ -206,9 +203,9 @@ def get_priming_messages() -> list[dict]:
             "content": None,
             "tool_calls": _tc(
                 "c5b",
-                "add_drink",
+                "add_item",
                 {
-                    "flavor": "十穀漿",
+                    "name": "十穀漿",
                     "size": "大杯",
                     "temp": "冰",
                 },
@@ -218,7 +215,7 @@ def get_priming_messages() -> list[dict]:
     msgs.append(
         _tool_resp(
             "c5b",
-            {"ok": True, "item_id": "dk_1", "message": "已加入 1份 大杯冰十穀漿", "cart_count": 5},
+            {"ok": True, "item_id": "drink_1", "message": "已加入 1份 大杯冰十穀漿", "cart_count": 5},
         )
     )
     msgs.append({"role": "assistant", "content": "好，奶茶要中冰還是中溫？"})
@@ -257,8 +254,8 @@ def get_priming_messages() -> list[dict]:
         }
     )
 
-    # Demo 8: 套餐數字別名 → call → ok:false → 追問（示範別名解析 + ok:false 反饋循環）
-    # 品項：三號餐（test cases 用套餐一/四），覆蓋 combo_missing_temp / combo_alias
+    # Demo 8: 套餐缺溫度 → call → ok:false → 追問（示範套餐必填溫度 + ok:false 反饋循環）
+    # 品項：套餐三（test cases 用套餐一/四），覆蓋 combo_missing_temp
     msgs.append({"role": "user", "content": "一個三號餐"})
     msgs.append(
         {
@@ -266,14 +263,14 @@ def get_priming_messages() -> list[dict]:
             "content": None,
             "tool_calls": _tc(
                 "c8",
-                "add_combo",
+                "add_item",
                 {
-                    "combo_name": "套餐三",
+                    "name": "套餐三",
                 },
             ),
         }
     )
-    msgs.append(_tool_resp("c8", {"ok": False, "message": "缺飲料溫度，冰的還是溫的？"}))
+    msgs.append(_tool_resp("c8", {"ok": False, "message": "飲料冰的還是溫的"}))
     msgs.append({"role": "assistant", "content": "飲料要冰的還是溫的？"})
 
     # Demo 9: 取消品項用 [REMOVE] tag（不 call tool，系統攔截處理）
