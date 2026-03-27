@@ -1213,8 +1213,10 @@ class ToolRegistry:
                 "function": {
                     "name": "add_item",
                     "description": (
-                        "加入品項到購物車。name 填菜單品項名稱"
+                        "加入品項到購物車。所有點餐請求必須透過此工具，禁止跳過直接回覆。"
+                        "name 填菜單品項名稱"
                         "（如「香燻培根飯糰」「原味蛋餅」「培根蛋吐司」「純鮮奶茶」「套餐一」「薯餅(1片)」）。"
+                        "不確定品項名稱也要呼叫，後端會自動比對。"
                         "飯糰額外必填 rice；飲料額外必填 size 和 temp；套餐額外必填 temp。"
                         "缺少必填欄位時回傳 ok:false 和追問訊息。"
                     ),
@@ -1270,7 +1272,7 @@ class ToolRegistry:
                 "type": "function",
                 "function": {
                     "name": "query_menu",
-                    "description": "當客人問有什麼可以點、詢問菜單內容、或你不確定某品項是否存在時調用。回傳分類清單或指定分類的品項（含售罄狀態與價格）；飯糰分類額外附成分表。category 不填則回傳所有分類名稱。",
+                    "description": "當客人問有什麼可以點、詢問菜單內容時必須調用，禁止靠記憶直接回覆菜單。回傳分類清單或指定分類的品項（含售罄狀態與價格）；飯糰分類額外附成分表。category 不填則回傳所有分類名稱。",
                     "parameters": {
                         "type": "object",
                         "properties": {
