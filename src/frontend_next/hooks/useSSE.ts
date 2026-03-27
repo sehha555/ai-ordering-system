@@ -2,7 +2,7 @@ import { useRef, useCallback, RefObject } from 'react';
 import { useStore } from '../store/useStore';
 import type { AppStatus, CartItem } from '../types';
 
-const SSE_TIMEOUT = 30000;
+const SSE_TIMEOUT = 90000; // 90s — 後端 LLM 每步最多 25s，多步 tool call 需更長等待
 const AUTO_PROMPT_DELAY = 3000;
 const AUTO_PROMPT_TEXT = '這樣就好嗎？';
 

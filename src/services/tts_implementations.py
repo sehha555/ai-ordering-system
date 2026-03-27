@@ -12,10 +12,13 @@ class EdgeTTSModel(TTSModel):
         self.voice = voice
 
     async def run_stream(self, text: str) -> AsyncIterator[bytes]:
-        communicate = edge_tts.Communicate(text, self.voice)
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                yield chunk["data"]
+        try:
+            communicate = edge_tts.Communicate(text, self.voice)
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    yield chunk["data"]
+        except Exception as e:
+            logger.error("[TTS] Edge TTS run_stream 失敗: {}", e)
 
 
 class Qwen3TTSModel(TTSModel):
@@ -103,6 +106,7 @@ def create_tts_model(backend: str = "edgetts") -> TTSModel:
     """工廠函式：依 backend 建立 TTS 模型"""
     if backend == "qwen3tts":
         from src.config.models import QWEN3TTS_MODEL, QWEN3TTS_SPEAKER
+
         return Qwen3TTSModel(model_id=QWEN3TTS_MODEL, speaker=QWEN3TTS_SPEAKER)
     else:
         return EdgeTTSModel()

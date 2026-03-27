@@ -64,8 +64,9 @@ async def get_cart_summary(request: Request, session_id: str, api_key: str = Dep
             "message": f"購物車共 {len(cart)} 項，總計 ${total_price}",
         }
 
-    except Exception as e:
-        return {"ok": False, "error": str(e), "items": [], "total_price": 0}
+    except Exception:
+        logger.exception("[CART] get_cart_summary 異常")
+        return {"ok": False, "error": "內部錯誤", "items": [], "total_price": 0}
 
 
 @router.post("/api/checkout")
@@ -145,6 +146,8 @@ async def checkout(request: Request, body: CheckoutRequest, api_key: str = Depen
             "payment_method": payment_method,
         }
 
-    except Exception as e:
+    except HTTPException:
+        raise  # 保留已包裝的 HTTPException（如 400 空購物車）
+    except Exception:
         logger.exception("[CHECKOUT] 結帳異常")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="結帳處理失敗")

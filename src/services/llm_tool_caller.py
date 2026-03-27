@@ -283,6 +283,7 @@ class LLMToolCaller:
         try:
             result = tool_map[fn](**safe_args)
         except Exception as e:
+            logger.error("[LLM] tool 執行失敗: {} — {}", fn, e)
             return {"ok": False, "error": f"tool_exec_error:{type(e).__name__}", "result": None}
 
         return {"ok": True, "error": None, "result": result}

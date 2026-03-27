@@ -1,5 +1,6 @@
 """認證相關依賴"""
 
+import hmac
 import logging
 from typing import Optional
 
@@ -19,7 +20,8 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 def get_api_key(api_key: str = Security(api_key_header)):
     if not API_KEY:
         return "dev"
-    if api_key != API_KEY:
+    # 使用 hmac.compare_digest 防止 timing attack；None 視為驗證失敗
+    if not api_key or not hmac.compare_digest(api_key, API_KEY):
         raise HTTPException(status_code=401, detail="Invalid API Key")
     return api_key
 
@@ -32,6 +34,7 @@ def get_api_key_or_token(
     if not API_KEY:
         return "dev"
     key = api_key or token
-    if key != API_KEY:
+    # 使用 hmac.compare_digest 防止 timing attack；None 視為驗證失敗
+    if not key or not hmac.compare_digest(key, API_KEY):
         raise HTTPException(status_code=401, detail="Invalid API Key")
     return key

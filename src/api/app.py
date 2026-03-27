@@ -155,8 +155,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "X-API-Key", "Authorization"],
 )
 
 
@@ -164,7 +164,7 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
     """為每個 HTTP 請求生成短 UUID，存入 ContextVar 供日誌追蹤"""
 
     async def dispatch(self, request, call_next):
-        rid = str(uuid.uuid4())[:8]
+        rid = str(uuid.uuid4())[:12]
         request_id_var.set(rid)
         response = await call_next(request)
         response.headers["X-Request-Id"] = rid

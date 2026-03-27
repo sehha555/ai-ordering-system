@@ -1,9 +1,13 @@
+import re
 import sqlite3
 import json
 import os
 from contextlib import contextmanager
 from datetime import datetime
 from typing import List, Dict, Any, Optional
+
+# 專案根目錄（order_repository.py → repository/ → src/ → project root）
+_PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..", "..")
 
 
 class OrderRepository:
@@ -16,6 +20,8 @@ class OrderRepository:
         """連接 contextmanager — 自動 commit/rollback/close。immediate=True 使用 BEGIN IMMEDIATE。"""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
+        # 高併發下等待鎖釋放最多 5 秒，避免 "database is locked" 錯誤
+        conn.execute("PRAGMA busy_timeout = 5000")
         if immediate:
             conn.execute("BEGIN IMMEDIATE")
         try:
@@ -144,8 +150,14 @@ class OrderRepository:
     ):
         """保存對話紀錄為 JSON 檔案"""
         today = datetime.now().strftime("%Y-%m-%d")
-        log_dir = os.path.join("logs", today)
+        # 使用絕對路徑，避免相對路徑依賴 CWD
+        log_dir = os.path.join(_PROJECT_ROOT, "logs", today)
         os.makedirs(log_dir, exist_ok=True)
+
+        # sanitize session_id，只允許英數字、連字符、底線，防止路徑穿越攻擊
+        safe_id = re.sub(r"[^a-zA-Z0-9_-]", "", session_id)
+        if not safe_id:
+            safe_id = "unknown"
 
         log_data = {
             "session_id": session_id,
@@ -157,7 +169,7 @@ class OrderRepository:
             "created_at": datetime.now().isoformat(),
         }
 
-        log_file = os.path.join(log_dir, f"{session_id}.json")
+        log_file = os.path.join(log_dir, f"{safe_id}.json")
         with open(log_file, "w", encoding="utf-8") as f:
             json.dump(log_data, f, ensure_ascii=False, indent=2)
 
