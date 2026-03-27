@@ -84,7 +84,13 @@ def get_priming_messages() -> list[dict]:
     )
     msgs.append(
         _tool_resp(
-            "c1", {"ok": True, "item_id": "riceball_1", "message": "已加入 1份 白米鮪魚飯糰", "cart_count": 1}
+            "c1",
+            {
+                "ok": True,
+                "item_id": "riceball_1",
+                "message": "已加入 1份 白米鮪魚飯糰",
+                "cart_count": 1,
+            },
         )
     )
     msgs.append({"role": "assistant", "content": "好～還要什麼？"})
@@ -108,7 +114,12 @@ def get_priming_messages() -> list[dict]:
     msgs.append(
         _tool_resp(
             "c2",
-            {"ok": True, "item_id": "carrier_1", "message": "已加入 1份 培根蛋吐司", "cart_count": 2},
+            {
+                "ok": True,
+                "item_id": "carrier_1",
+                "message": "已加入 1份 培根蛋吐司",
+                "cart_count": 2,
+            },
         )
     )
     msgs.append({"role": "assistant", "content": "好～還要什麼？"})
@@ -215,7 +226,12 @@ def get_priming_messages() -> list[dict]:
     msgs.append(
         _tool_resp(
             "c5b",
-            {"ok": True, "item_id": "drink_1", "message": "已加入 1份 大杯冰十穀漿", "cart_count": 5},
+            {
+                "ok": True,
+                "item_id": "drink_1",
+                "message": "已加入 1份 大杯冰十穀漿",
+                "cart_count": 5,
+            },
         )
     )
     msgs.append({"role": "assistant", "content": "好，奶茶要中冰還是中溫？"})
@@ -225,7 +241,8 @@ def get_priming_messages() -> list[dict]:
     msgs.append({"role": "assistant", "content": f"{CHECKOUT_TAG}內用還是外帶？"})
 
     # Demo 7: 客人詢問菜單品項 → call query_menu(category="飲品") → 列舉回覆
-    msgs.append({"role": "user", "content": "你們有什麼飲料"})
+    # 注意：user input 不能和 test case 太像（避免 9B 模型 surface memorization）
+    msgs.append({"role": "user", "content": "菜單上有什麼可以喝的"})
     msgs.append(
         {
             "role": "assistant",

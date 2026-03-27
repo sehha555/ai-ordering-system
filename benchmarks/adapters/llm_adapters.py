@@ -209,9 +209,21 @@ def _format_session_context(ctx: dict) -> str:
     else:
         lines.append("購物車：空")
 
+    # 舊格式：sold_out 為 list
     sold_out = ctx.get("sold_out", [])
     if sold_out:
         lines.append(f"\n【售完資訊】\n售完：{'、'.join(sold_out)}")
+
+    # 新格式：sold_out_categories 為 dict，支援整類或特定選項售完
+    sold_out_categories = ctx.get("sold_out_categories", {})
+    if sold_out_categories:
+        lines.append("\n【售完資訊】")
+        for category, value in sold_out_categories.items():
+            if value is True:
+                lines.append(f"【售完】{category}：全部售完")
+            elif isinstance(value, list):
+                options = "、".join(value)
+                lines.append(f"【售完】{category}：{options}售完")
 
     return "\n".join(lines)
 

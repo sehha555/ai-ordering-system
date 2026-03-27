@@ -1,4 +1,5 @@
 """LLM 評估指標"""
+
 from collections import Counter
 
 
@@ -14,7 +15,9 @@ def _match_args(expected_args: dict, actual_args: dict) -> bool:
     for key, expected_val in expected_args.items():
         actual_val = actual_args.get(key)
         if isinstance(expected_val, bool):
-            # bool 精確匹配
+            # bool 寬鬆匹配 — LLM 常回傳 "True"/"False" 字串
+            if isinstance(actual_val, str):
+                actual_val = actual_val.lower() == "true"
             if actual_val is not expected_val and actual_val != expected_val:
                 return False
         elif isinstance(expected_val, str):
@@ -95,9 +98,7 @@ def response_quality_check(response: str, expected_contains: list[str]) -> float
 import re as _re
 
 # 幻覺偵測 pattern（系統有問題/故障/出錯等）
-_HALLUCINATION_RE = _re.compile(
-    r'(?:不好意思|抱歉|對不起)[^。！？]*(?:系統|有問題|出錯|故障|異常)'
-)
+_HALLUCINATION_RE = _re.compile(r"(?:不好意思|抱歉|對不起)[^。！？]*(?:系統|有問題|出錯|故障|異常)")
 
 # ok:true 後回覆最大長度（超過視為冗長）
 _OK_TRUE_MAX_CHARS = 40
@@ -134,8 +135,9 @@ def response_score(
     #    跳過 verbose 檢查：查詢類工具、沒有預期 keyword 的場景
     actual_tool_names = {tc["name"] for tc in tool_calls} if tool_calls else set()
     is_query_tool = bool(actual_tool_names & _QUERY_TOOLS)
-    has_ok_tool = (bool(tool_calls) and bool(expected_tools)
-                   and not is_query_tool and bool(expected_contains))
+    has_ok_tool = (
+        bool(tool_calls) and bool(expected_tools) and not is_query_tool and bool(expected_contains)
+    )
     if has_ok_tool and len(response) > _OK_TRUE_MAX_CHARS:
         penalties.append(f"verbose:{len(response)}chars")
 
@@ -161,7 +163,9 @@ def _percentile(values: list[float], p: int) -> float:
     return sorted_v[lo] * (1 - frac) + sorted_v[hi] * frac
 
 
-def compute_llm_metrics(test_cases: list[dict], test_data: list[dict], pass_threshold: float = 0.8) -> dict:
+def compute_llm_metrics(
+    test_cases: list[dict], test_data: list[dict], pass_threshold: float = 0.8
+) -> dict:
     total_f1 = 0.0
     total_precision = 0.0
     total_recall = 0.0
@@ -176,7 +180,7 @@ def compute_llm_metrics(test_cases: list[dict], test_data: list[dict], pass_thre
     scenario_pass = 0
     scenario_total = 0
 
-    latencies_all = []      # 所有 run 的延遲（含 timeout）
+    latencies_all = []  # 所有 run 的延遲（含 timeout）
     latencies_success = []  # 成功 run 的延遲
 
     expected_map = {d["id"]: d for d in test_data}
@@ -203,7 +207,9 @@ def compute_llm_metrics(test_cases: list[dict], test_data: list[dict], pass_thre
                 total_prompt_tokens += run.get("prompt_tokens", 0)
                 total_completion_tokens += run.get("completion_tokens", 0)
 
-                scores = tool_call_match(run.get("tool_calls", []), expected_tools, case_expected_args)
+                scores = tool_call_match(
+                    run.get("tool_calls", []), expected_tools, case_expected_args
+                )
                 total_f1 += scores["f1"]
                 total_precision += scores["precision"]
                 total_recall += scores["recall"]
@@ -223,7 +229,9 @@ def compute_llm_metrics(test_cases: list[dict], test_data: list[dict], pass_thre
                 elif scores["f1"] < pass_threshold:
                     case_fail_reason = f"tool_call_f1={scores['f1']:.2f} < {pass_threshold}"
                 else:
-                    case_fail_reason = f"response_score={rs['score']:.2f} ({','.join(rs['penalties'])})"
+                    case_fail_reason = (
+                        f"response_score={rs['score']:.2f} ({','.join(rs['penalties'])})"
+                    )
             else:
                 error_msg = run.get("error", "unknown")
                 if "timed out" in error_msg.lower() or "timeout" in error_msg.lower():
@@ -237,17 +245,21 @@ def compute_llm_metrics(test_cases: list[dict], test_data: list[dict], pass_thre
         if case_passed:
             scenario_pass += 1
 
-        case_verdicts.append({
-            "case_id": case["case_id"],
-            "passed": case_passed,
-            "fail_reason": case_fail_reason if not case_passed else None,
-        })
+        case_verdicts.append(
+            {
+                "case_id": case["case_id"],
+                "passed": case_passed,
+                "fail_reason": case_fail_reason if not case_passed else None,
+            }
+        )
 
     n = max(success_count, 1)
 
     # tokens/sec（只算成功的 run）
     total_time_success = sum(latencies_success) if latencies_success else 1.0
-    tokens_per_sec = total_completion_tokens / total_time_success if total_completion_tokens > 0 else 0.0
+    tokens_per_sec = (
+        total_completion_tokens / total_time_success if total_completion_tokens > 0 else 0.0
+    )
 
     return {
         # 延遲

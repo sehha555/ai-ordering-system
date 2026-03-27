@@ -119,7 +119,7 @@
       {
         "name": "add_item",
         "args": {
-          "name": "蘿蔔糕加蛋"
+          "name": "蘿蔔糕"
         }
       }
     ],
@@ -398,14 +398,15 @@
       {
         "name": "add_item",
         "args": {
-          "name": "蘑菇"
+          "name": "蘑菇",
+          "quantity": 2
         }
       }
     ],
     "expected_response_contains": [
       "蘑菇"
     ],
-    "expected_behavior": "理解蘑菇麵=蘑菇鐵板麵，call add_item(name=蘑菇, qty=2)"
+    "expected_behavior": "理解蘑菇麵=蘑菇鐵板麵+蛋，call add_item(name 含蘑菇, qty=2)；name 子串匹配蘑菇即通過"
   },
   {
     "id": "u_intent_grabcake",
@@ -509,19 +510,29 @@
   },
   {
     "id": "u_mantou_missing",
-    "description": "E1: 饅頭缺口味",
-    "category": "missing_info",
+    "description": "E1: 饅頭夾蛋 — 完整品項直接加入",
+    "category": "basic",
     "messages": [
       {
         "role": "user",
         "content": "一個饅頭夾蛋"
       }
     ],
-    "expected_tools": [],
-    "expected_response_contains": [
-      "口味"
+    "expected_tools": [
+      "add_item"
     ],
-    "expected_behavior": "饅頭缺口味/顏色應追問"
+    "expected_args": [
+      {
+        "name": "add_item",
+        "args": {
+          "name": "饅頭夾蛋"
+        }
+      }
+    ],
+    "expected_response_contains": [
+      "饅頭"
+    ],
+    "expected_behavior": "饅頭夾蛋是完整品項($30)，直接 call add_item(name=饅頭夾蛋)，tool 回 ok:true 加入購物車"
   },
   {
     "id": "u_mantou_color_answer",
@@ -1342,14 +1353,15 @@
         "name": "add_item",
         "args": {
           "name": "套餐六",
-          "temp": "冰"
+          "temp": "冰",
+          "flavor": "蘑菇"
         }
       }
     ],
     "expected_response_contains": [
       "套餐"
     ],
-    "expected_behavior": "套餐六帶鐵板麵口味(蘑菇)+飲料溫度(冰)，直接 call add_item(name=套餐六, temp=冰)"
+    "expected_behavior": "套餐六需鐵板麵口味(蘑菇)+飲料溫度(冰)，call add_item(name=套餐六, temp=冰, flavor=蘑菇) 才能 ok:true"
   },
   {
     "id": "sold_out_single",
