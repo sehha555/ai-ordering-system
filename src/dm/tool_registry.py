@@ -40,10 +40,27 @@ _CARRIER_CATEGORY_MAP = {"吐司": "吐司", "漢堡": "漢堡", "饅頭": "饅�
 
 # 套餐簡稱別名（「一號餐」→「套餐一」等，在別名解析中使用）
 _COMBO_NUMBER_ALIASES: Dict[str, str] = {
-    "一號餐": "套餐一", "二號餐": "套餐二", "三號餐": "套餐三",
-    "四號餐": "套餐四", "五號餐": "套餐五", "六號餐": "套餐六",
-    "七號餐": "套餐七", "A餐": "套餐A", "B餐": "套餐B",
-    "C餐": "套餐C", "D餐": "套餐D", "E餐": "套餐E",
+    "一號餐": "套餐一",
+    "二號餐": "套餐二",
+    "三號餐": "套餐三",
+    "四號餐": "套餐四",
+    "五號餐": "套餐五",
+    "六號餐": "套餐六",
+    "七號餐": "套餐七",
+    "A餐": "套餐A",
+    "B餐": "套餐B",
+    "C餐": "套餐C",
+    "D餐": "套餐D",
+    "E餐": "套餐E",
+}
+
+# 口語俗稱 → 菜單品項名（_resolve_item_name 最先查）
+_COLLOQUIAL_ALIASES: Dict[str, str] = {
+    "花生厚片": "果醬吐司(花生/厚片)",
+    "草莓厚片": "果醬吐司(草莓/厚片)",
+    "蒜香厚片": "果醬吐司(蒜香/厚片)",
+    "奶酥厚片": "果醬吐司(奶酥/厚片)",
+    "巧克力厚片": "果醬吐司(巧克力/厚片)",
 }
 
 
@@ -152,7 +169,9 @@ class ToolRegistry:
         return self._resolve_alias(flavor, EGG_PANCAKE_ALIASES)
 
     def _resolve_snack_flavor(self, flavor: Optional[str]) -> Optional[str]:
-        """將點心別名轉換為標準名稱"""
+        """將點心別名轉換為標準名稱（已是完整菜單名則跳過，避免子串誤匹配）"""
+        if flavor and flavor in _MENU_INDEX:
+            return flavor
         return self._resolve_alias(flavor, SNACK_ALIASES)
 
     def _next_item_id(self, session: Dict[str, Any], prefix: str) -> str:
@@ -180,6 +199,10 @@ class ToolRegistry:
         if not name:
             return None
 
+        # 0. 口語俗稱（花生厚片→果醬吐司(花生/厚片) 等）
+        if name in _COLLOQUIAL_ALIASES:
+            return self._resolve_item_name(_COLLOQUIAL_ALIASES[name])
+
         # 1. 精確匹配
         if name in _MENU_INDEX:
             return {**_MENU_INDEX[name], "resolved_name": name}
@@ -203,12 +226,20 @@ class ToolRegistry:
             # 檢查標準名 + (中) 是否存在（代表是飲料）
             probe = f"{resolved_drink}(中)"
             if probe in _MENU_INDEX:
-                return {"category": "飲品", "price": _MENU_INDEX[probe]["price"], "resolved_name": resolved_drink}
+                return {
+                    "category": "飲品",
+                    "price": _MENU_INDEX[probe]["price"],
+                    "resolved_name": resolved_drink,
+                }
 
         # 嘗試直接用 name 作為飲料標準名
         probe_mid = f"{name}(中)"
         if probe_mid in _MENU_INDEX:
-            return {"category": "飲品", "price": _MENU_INDEX[probe_mid]["price"], "resolved_name": name}
+            return {
+                "category": "飲品",
+                "price": _MENU_INDEX[probe_mid]["price"],
+                "resolved_name": name,
+            }
 
         # 5. 飯糰別名解析
         resolved_riceball = self._resolve_riceball_flavor(name)
@@ -216,7 +247,11 @@ class ToolRegistry:
             # 在 menu 中找到以 resolved_riceball 結尾的飯糰品項
             for full_name, info in _MENU_INDEX.items():
                 if info["category"] == "飯糰" and full_name.endswith(resolved_riceball):
-                    return {"category": "飯糰", "price": info["price"], "resolved_name": resolved_riceball}
+                    return {
+                        "category": "飯糰",
+                        "price": info["price"],
+                        "resolved_name": resolved_riceball,
+                    }
             # 若 resolved_riceball 本身就是完整菜單名
             if resolved_riceball in _MENU_INDEX:
                 return {**_MENU_INDEX[resolved_riceball], "resolved_name": resolved_riceball}
@@ -278,8 +313,7 @@ class ToolRegistry:
             if not rice:
                 return {"ok": False, "missing": ["rice"], "message": "飯糰要白米紫米還是混米？"}
             return self.add_riceball(
-                flavor=resolved_name, rice=rice, spicy=spicy,
-                extra_egg=extra_egg, quantity=quantity
+                flavor=resolved_name, rice=rice, spicy=spicy, extra_egg=extra_egg, quantity=quantity
             )
 
         # ── 飲品 ──
@@ -297,9 +331,7 @@ class ToolRegistry:
                 else:
                     msg = "飲料要冰的還是溫的？"
                 return {"ok": False, "missing": missing, "message": msg}
-            return self.add_drink(
-                flavor=resolved_name, size=size, temp=temp, quantity=quantity
-            )
+            return self.add_drink(flavor=resolved_name, size=size, temp=temp, quantity=quantity)
 
         # ── 吐司 / 漢堡 / 饅頭（載體） ──
         if category in _CARRIER_CATEGORY_MAP:
@@ -310,9 +342,7 @@ class ToolRegistry:
                 if extracted_flavor.endswith(suffix):
                     extracted_flavor = extracted_flavor[: -len(suffix)]
                     break
-            return self.add_carrier(
-                carrier=carrier, flavor=extracted_flavor, quantity=quantity
-            )
+            return self.add_carrier(carrier=carrier, flavor=extracted_flavor, quantity=quantity)
 
         # ── 蛋餅 ──
         if category == "蛋餅":
@@ -329,12 +359,17 @@ class ToolRegistry:
             jam_size = size or "薄片"  # 預設薄片
             # 嘗試從 resolved_name 解析
             import re as _re
+
             m = _re.search(r"果醬吐司\(([^/]+)/([^)]+)\)", resolved_name)
             if m:
                 jam_flavor = m.group(1)
                 jam_size = m.group(2)
             if not jam_flavor:
-                return {"ok": False, "missing": ["flavor"], "message": "果醬吐司什麼口味？草莓花生蒜香奶酥巧克力"}
+                return {
+                    "ok": False,
+                    "missing": ["flavor"],
+                    "message": "果醬吐司什麼口味？草莓花生蒜香奶酥巧克力",
+                }
             session = self.get_current_session()
             item_id = self._next_item_id(session, "jam_toast")
             jam_name = f"果醬吐司({jam_flavor}/{jam_size})"
@@ -1287,7 +1322,16 @@ class ToolRegistry:
         """
         return {
             # 統一入口（LLM 使用）
-            "add_item": {"name", "quantity", "rice", "size", "temp", "flavor", "spicy", "extra_egg"},
+            "add_item": {
+                "name",
+                "quantity",
+                "rice",
+                "size",
+                "temp",
+                "flavor",
+                "spicy",
+                "extra_egg",
+            },
             # 品項專屬工具（backward compat）
             "add_riceball": {
                 "flavor",
