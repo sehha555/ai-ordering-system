@@ -46,6 +46,7 @@ def _get_all_valid_names() -> list[str]:
     # 菜單品項名稱
     try:
         from src.tools.menu import menu_price_service
+
         menu = menu_price_service.get_raw_menu()
         for item in menu:
             n = item.get("name", "")
@@ -57,6 +58,7 @@ def _get_all_valid_names() -> list[str]:
     # 蛋餅別名
     try:
         from src.tools.egg_pancake_tool import EggPancakeTool
+
         names.update(EggPancakeTool.FLAVOR_ALIASES.keys())
         names.update(EggPancakeTool.FLAVOR_ALIASES.values())
     except Exception:
@@ -65,6 +67,7 @@ def _get_all_valid_names() -> list[str]:
     # 飲料別名
     try:
         from src.tools.drink_tool import DRINK_ALIASES
+
         names.update(DRINK_ALIASES.keys())
         names.update(DRINK_ALIASES.values())
     except Exception:
@@ -73,6 +76,7 @@ def _get_all_valid_names() -> list[str]:
     # 飯糰別名
     try:
         from src.tools.riceball_tool import FLAVOR_ALIASES
+
         names.update(FLAVOR_ALIASES.keys())
         names.update(FLAVOR_ALIASES.values())
     except Exception:
@@ -81,6 +85,7 @@ def _get_all_valid_names() -> list[str]:
     # 點心別名
     try:
         from src.tools.snack_tool import SNACK_ALIASES
+
         names.update(SNACK_ALIASES.keys())
         names.update(SNACK_ALIASES.values())
     except Exception:
@@ -107,6 +112,7 @@ def _is_name_valid(name: str) -> bool:
     # 嘗試菜單直接比對（子字串）
     try:
         from src.tools.menu import menu_price_service
+
         menu = menu_price_service.get_raw_menu()
         for item in menu:
             item_name: str = item.get("name", "")
@@ -118,6 +124,7 @@ def _is_name_valid(name: str) -> bool:
     # 蛋餅別名解析
     try:
         from src.tools.egg_pancake_tool import EggPancakeTool
+
         for alias in sorted(EggPancakeTool.FLAVOR_ALIASES.keys(), key=len, reverse=True):
             if alias == name or alias in name:
                 return True
@@ -129,6 +136,7 @@ def _is_name_valid(name: str) -> bool:
     # 飲料別名解析
     try:
         from src.tools.drink_tool import DRINK_ALIASES
+
         for alias in sorted(DRINK_ALIASES.keys(), key=len, reverse=True):
             if alias == name or alias in name:
                 return True
@@ -140,6 +148,7 @@ def _is_name_valid(name: str) -> bool:
     # 飯糰別名解析
     try:
         from src.tools.riceball_tool import FLAVOR_ALIASES
+
         for alias in sorted(FLAVOR_ALIASES.keys(), key=len, reverse=True):
             if alias == name or alias in name:
                 return True
@@ -151,6 +160,7 @@ def _is_name_valid(name: str) -> bool:
     # 點心別名解析
     try:
         from src.tools.snack_tool import SNACK_ALIASES
+
         for alias in sorted(SNACK_ALIASES.keys(), key=len, reverse=True):
             if alias == name or alias in name:
                 return True
@@ -161,8 +171,19 @@ def _is_name_valid(name: str) -> bool:
 
     # 套餐名稱（固定清單）
     valid_combos = [
-        "套餐一", "套餐二", "套餐三", "套餐四", "套餐五", "套餐六", "套餐七",
-        "套餐A", "套餐B", "套餐C", "套餐D", "套餐E", "兒童餐",
+        "套餐一",
+        "套餐二",
+        "套餐三",
+        "套餐四",
+        "套餐五",
+        "套餐六",
+        "套餐七",
+        "套餐A",
+        "套餐B",
+        "套餐C",
+        "套餐D",
+        "套餐E",
+        "兒童餐",
     ]
     if name in valid_combos:
         return True
@@ -179,6 +200,7 @@ def _validate_drink_options(arguments: dict[str, Any]) -> list[str]:
         valid_sizes = ["中杯", "大杯"]
         try:
             from src.tools.drink_tool import SIZE_MAP
+
             resolved_size = SIZE_MAP.get(size, size)
         except Exception:
             resolved_size = size
@@ -190,6 +212,7 @@ def _validate_drink_options(arguments: dict[str, Any]) -> list[str]:
         valid_temps = ["冰", "溫", "熱"]
         try:
             from src.tools.drink_tool import TEMP_MAP
+
             resolved_temp = TEMP_MAP.get(temp, temp)
         except Exception:
             resolved_temp = temp
@@ -200,11 +223,17 @@ def _validate_drink_options(arguments: dict[str, Any]) -> list[str]:
 
 
 def _validate_riceball_options(arguments: dict[str, Any]) -> list[str]:
-    """驗證飯糰的 rice 額外參數（若有傳入）"""
+    """驗證飯糰的 rice 額外參數（若有傳入）
+    饅頭品項允許用 rice 傳口味（如 rice='黑糖' = 黑糖饅頭），跳過米種驗證。
+    """
     errors: list[str] = []
 
     rice = arguments.get("rice")
     if rice is not None:
+        # 饅頭品項用 rice 欄位傳口味資訊（如 黑糖/白糖），不是米種，跳過驗證
+        name = arguments.get("name", "")
+        if "饅頭" in name:
+            return errors
         valid_rice = ["白米", "紫米", "混米"]
         if rice not in valid_rice:
             errors.append(f"米種 '{rice}' 不合法，可選：{'、'.join(valid_rice)}")
@@ -240,9 +269,7 @@ def validate_add_item(arguments: dict[str, Any]) -> Optional[dict[str, Any]]:
         suggestions = _fuzzy_suggest(name, valid_names)
         suggestion_str = "、".join(suggestions) if suggestions else "查詢菜單了解可用品項"
         errors.append(
-            f"品項 '{name}' 不在菜單中。"
-            f"相近品項：{suggestion_str}"
-            f"。請修正後重新呼叫 add_item。"
+            f"品項 '{name}' 不在菜單中。相近品項：{suggestion_str}。請修正後重新呼叫 add_item。"
         )
     else:
         # 品項合法，進一步驗證可選欄位

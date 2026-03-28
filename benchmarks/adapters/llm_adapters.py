@@ -16,6 +16,10 @@ logger = logging.getLogger(__name__)
 # Qwen 模型有時把 tool call 輸出到 content 而非 tool_calls 欄位
 _TOOL_CALL_PREFIX_RE = re.compile(r"[<\|im_start\|>]*\s*(?:<tool_call>\s*)?(\{)", re.DOTALL)
 
+# Text Tag 模式正則（與 voice_router.py 保持一致）
+_ADD_RE = re.compile(r"\[ADD:([^\]]+)\]")
+_QUERY_RE = re.compile(r"\[QUERY(?::([^\]]*))?\]")
+
 
 def _extract_json_objects(text: str) -> list[dict]:
     """從文字中提取所有含 "name" 的 JSON 物件（支援巢狀括號）"""
@@ -179,23 +183,38 @@ def _is_followup_question(text: str) -> bool:
 
 
 def _apply_response_template(model_text: str, tool_calls: list, exec_results: list) -> str:
-    """Response Template：ok:true 後用 code 構建回覆（對齊 production llm_tool_caller.py）"""
+    """Response Template：ok:true 後用 code 構建回覆（對齊 production llm_tool_caller.py）
+
+    query_menu ok:true → 保留 model 的品項列表文字（不覆蓋）
+    add_item ok:true → 一律套用 template（不保留 model text，避免遺失品項資訊）
+      - 多個 ok:true：用第一個 ok:true 的 message（保留主要品項資訊）
+    ok:false → 用 tool_msg 構建追問（比 model 的「好～還要什麼？」更精確）
+      - 多個 exec：用最後一個 ok:false 的 message
+    """
     if not tool_calls or not exec_results:
         return model_text
 
+    # query_menu ok:true → 保留 model 文字（品項列表由 model 生成，不覆蓋）
+    if any(tc["name"] == "query_menu" for tc in tool_calls):
+        return model_text
+
+    # 找第一個 ok:true
+    first_ok = next((r for r in exec_results if r.get("ok")), None)
+    if first_ok:
+        tool_msg = first_ok.get("message", "")
+        if not tool_msg:
+            return model_text
+        return f"好，{tool_msg}～還要什麼？"
+
+    # 全部 ok:false：用最後一個 ok:false 的 tool_msg 構建追問
     last_exec = exec_results[-1]
-    if not last_exec.get("ok"):
-        return model_text
-
-    # 模型在追問缺資訊 → 保留
-    if _is_followup_question(model_text):
-        return model_text
-
     tool_msg = last_exec.get("message", "")
-    if not tool_msg:
-        return model_text
+    if tool_msg:
+        # 避免重複問號（tool_msg 本身已含問號時不再加）
+        suffix = "" if tool_msg.endswith("？") else "？"
+        return f"請問{tool_msg}{suffix}"
 
-    return f"好，{tool_msg}～還要什麼？"
+    return model_text
 
 
 def _format_session_context(ctx: dict) -> str:
@@ -217,13 +236,30 @@ def _format_session_context(ctx: dict) -> str:
     # 新格式：sold_out_categories 為 dict，支援整類或特定選項售完
     sold_out_categories = ctx.get("sold_out_categories", {})
     if sold_out_categories:
-        lines.append("\n【售完資訊】")
+        sold_items = []
+        option_restrictions = []
         for category, value in sold_out_categories.items():
             if value is True:
-                lines.append(f"【售完】{category}：全部售完")
+                sold_items.append(category)
             elif isinstance(value, list):
-                options = "、".join(value)
-                lines.append(f"【售完】{category}：{options}售完")
+                # 選項售完：轉為「xx（yy 選項）」格式放入 售完 清單
+                for opt in value:
+                    sold_items.append(f"{opt}（{category}選項）")
+                # 同時加選項限制說明
+                option_restrictions.append(f"{category}：{' 和 '.join(value)}不可選")
+        sold_out_block = ["【售完資訊】（優先級最高，違反以下規則視為錯誤）"]
+        if sold_items:
+            sold_out_block.append(f"售完：{'、'.join(sold_items)}")
+        if option_restrictions:
+            for category, value in sold_out_categories.items():
+                if isinstance(value, list):
+                    avail_hint = (
+                        "紫米或混米" if category == "飯糰米種" and "白米" in value else "其他選項"
+                    )
+                    sold_out_block.append(
+                        f"[規則] 若客人點{'、'.join(value)}，需回覆：{'、'.join(value)}售完，目前只有{avail_hint}，絕不能自己替換"
+                    )
+        lines.append("\n" + "\n".join(sold_out_block))
 
     return "\n".join(lines)
 
@@ -561,9 +597,172 @@ class RawCompletionAdapter(BaseLLMAdapter):
         }
 
 
+class TextTagAdapter(BaseLLMAdapter):
+    """Text Tag adapter — 不送 tools 參數，從 LLM 文字輸出解析 [ADD:...] / [QUERY:...] tags。
+
+    與 OpenAICompatibleAdapter 的差異：
+    - 不帶 tools 欄位（純文字模式）
+    - MAX_TOOL_STEPS=1（模型一次輸出所有 tags，無多輪 tool loop）
+    - 解析完 tags 後轉換為標準 tool_calls 格式，相容既有 scoring 邏輯
+    """
+
+    MAX_TOOL_STEPS = 1
+
+    def __init__(self, params: dict):
+        super().__init__(params)
+        self._system_prompt = None
+        self._priming = None
+        self._client: httpx.Client | None = None
+
+    def _ensure_static_context(self):
+        """懶載入靜態 context（system prompt、priming）— 不載入 tools_schema"""
+        if self._system_prompt is None:
+            # 只需要 system_prompt；tools_schema 不送給 LLM
+            from src.dm.system_prompts import build_system_prompt
+
+            self._system_prompt = build_system_prompt()
+            self._priming = _load_priming_messages()
+
+    def _get_client(self, timeout: float) -> httpx.Client:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.Client(timeout=timeout)
+        return self._client
+
+    def close(self):
+        if self._client is not None and not self._client.is_closed:
+            self._client.close()
+
+    def _parse_text_tags(self, text: str) -> tuple[list[dict], str]:
+        """從 text 中解析 [ADD:...] / [QUERY:...] tags，回傳 (tool_calls, cleaned_text)"""
+        tool_calls = []
+
+        # 解析 [ADD:品項名|key=value|...]
+        for match in _ADD_RE.finditer(text):
+            content = match.group(1)
+            parts = content.split("|")
+            name = parts[0].strip()
+            args: dict = {"name": name}
+            for part in parts[1:]:
+                if "=" in part:
+                    k, v = part.split("=", 1)
+                    k, v = k.strip(), v.strip()
+                    if k == "qty":
+                        try:
+                            args["quantity"] = int(v)
+                        except ValueError:
+                            pass
+                    elif k in ("rice", "size", "temp", "flavor"):
+                        args[k] = v
+                    elif k in ("spicy", "extra_egg"):
+                        args[k] = v.lower() == "true"
+            tool_calls.append({"name": "add_item", "arguments": args})
+
+        # 解析 [QUERY:category] 或 [QUERY]
+        for match in _QUERY_RE.finditer(text):
+            category = match.group(1)
+            args = {}
+            if category and category.strip():
+                args["category"] = category.strip()
+            tool_calls.append({"name": "query_menu", "arguments": args})
+
+        # 移除所有 tags
+        cleaned = _ADD_RE.sub("", text)
+        cleaned = _QUERY_RE.sub("", cleaned).strip()
+
+        return tool_calls, cleaned
+
+    def run(self, test_case: dict, timeout: float = 60) -> dict:
+        self._ensure_static_context()
+        tool_map, allowed_args = _create_fresh_tool_context(test_case.get("session_context"))
+        base_url = self.params["base_url"]
+        model = self.params["model"]
+        temperature = self.params.get("temperature", 0.0)
+        url = (
+            f"{base_url}/chat/completions"
+            if not base_url.endswith("/chat/completions")
+            else base_url
+        )
+
+        sampling_overrides = {}
+        for key in ("repeat_penalty", "min_p", "top_p", "top_k"):
+            if key in self.params:
+                sampling_overrides[key] = self.params[key]
+
+        messages = [{"role": "system", "content": self._system_prompt}]
+        messages.extend(self._priming)
+        messages.extend(
+            _inject_session_context(test_case["messages"], test_case.get("session_context"))
+        )
+
+        # force_no_think：Qwen3.5 預設啟動 thinking，文字 tag 模式不需要
+        if self.params.get("force_no_think", False):
+            messages.append({"role": "assistant", "content": "<think>\n</think>\n", "prefix": True})
+
+        # 純文字模式 — 不帶 tools 參數
+        payload = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            **sampling_overrides,
+        }
+
+        logger.debug("TextTag request | model=%s | messages=%d", model, len(messages))
+
+        client = self._get_client(timeout)
+        resp = client.post(url, json=payload)
+        if resp.status_code != 200:
+            logger.error("LLM API 回傳 %d: %s", resp.status_code, resp.text[:500])
+        resp.raise_for_status()
+        data = resp.json()
+
+        usage = data.get("usage", {})
+        total_tokens = usage.get("total_tokens", 0)
+        total_prompt_tokens = usage.get("prompt_tokens", 0)
+        total_completion_tokens = usage.get("completion_tokens", 0)
+        actual_model = data.get("model", "")
+
+        message = data["choices"][0]["message"]
+        raw_content = message.get("content") or ""
+
+        # 清理 thinking block
+        raw_content = re.sub(r"<think>.*?</think>", "", raw_content, flags=re.DOTALL).strip()
+
+        # 解析 text tags → tool_calls
+        tool_calls, cleaned_text = self._parse_text_tags(raw_content)
+
+        # 執行 tools
+        all_exec_results = []
+        for tc in tool_calls:
+            exec_result = _execute_tool(tool_map, allowed_args, tc["name"], tc["arguments"])
+            all_exec_results.append(exec_result)
+            if not exec_result.get("ok"):
+                logger.debug(
+                    "TextTag tool 執行失敗: %s → %s", tc["name"], exec_result.get("message")
+                )
+
+        # Response Template
+        response_text = _apply_response_template(cleaned_text, tool_calls, all_exec_results)
+
+        if actual_model and actual_model != model:
+            logger.warning(
+                "模型不符！請求 %s → 實際 %s（LM Studio 可能 fallback）", model, actual_model
+            )
+
+        return {
+            "response": response_text,
+            "raw_responses": [{"step": 0, "content": raw_content, "tool_calls": []}],
+            "tool_calls": tool_calls,
+            "actual_model": actual_model,
+            "tokens": total_tokens,
+            "prompt_tokens": total_prompt_tokens,
+            "completion_tokens": total_completion_tokens,
+        }
+
+
 REGISTRY = {
     "openai_compatible": OpenAICompatibleAdapter,
     "raw_completion": RawCompletionAdapter,
+    "text_tag": TextTagAdapter,
 }
 
 

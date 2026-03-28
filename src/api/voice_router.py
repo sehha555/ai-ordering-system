@@ -54,6 +54,12 @@ _ORDER_INTENT_KEYWORDS = [
 # [REMOVE] tag 正則
 _REMOVE_RE = re.compile(r"\[REMOVE:(.+?)\]")
 
+# [ADD:品項名|key=value|...] — 點餐 tag
+_ADD_RE = re.compile(r"\[ADD:([^\]]+)\]")
+
+# [QUERY:分類] 或 [QUERY] — 菜單查詢 tag
+_QUERY_RE = re.compile(r"\[QUERY(?::([^\]]*))?\]")
+
 # 規則層攔截常數
 _EMPTY_CART_MOD_KEYWORDS = ["刪掉", "移除", "撤銷", "取消上一", "刪掉剛剛"]
 _DRINK_INQUIRY_PATTERNS = [
@@ -361,6 +367,54 @@ class StreamingDMAdapter:
                                 msg_text = remove_result.get("message", "已移除")
                                 full_text = f"{msg_text}～還需要什麼？"
                             self._patch_last_assistant(session["llm_history"], full_text)
+
+                    # ── [ADD:品項名|key=value|...] 攔截 ──
+                    if "[ADD:" in full_text:
+                        for add_content in _ADD_RE.findall(full_text):
+                            parts = add_content.split("|")
+                            item_name = parts[0].strip()
+                            kwargs: dict = {"name": item_name}
+                            for part in parts[1:]:
+                                if "=" in part:
+                                    key, value = part.split("=", 1)
+                                    key = key.strip()
+                                    value = value.strip()
+                                    if key == "qty":
+                                        try:
+                                            kwargs["quantity"] = int(value)
+                                        except ValueError:
+                                            pass
+                                    elif key in ("rice", "size", "temp", "flavor"):
+                                        kwargs[key] = value
+                                    elif key in ("spicy", "extra_egg"):
+                                        kwargs[key] = value.lower() == "true"
+                            add_result = _tool_registry.add_item(**kwargs)
+                            if not add_result.get("ok"):
+                                logger.warning(
+                                    "[ADD tag] 執行失敗: {} → {}",
+                                    add_content,
+                                    add_result.get("message"),
+                                )
+                        full_text = _ADD_RE.sub("", full_text).strip()
+                        self._patch_last_assistant(session["llm_history"], full_text)
+
+                    # ── [QUERY:分類] 攔截 ──
+                    if "[QUERY" in full_text:
+                        query_match = _QUERY_RE.search(full_text)
+                        if query_match:
+                            category = query_match.group(1)
+                            if category:
+                                category = category.strip() or None
+                            else:
+                                category = None
+                            query_result = _tool_registry.query_menu(category=category)
+                            logger.info(
+                                "[QUERY tag] category={} → {} 項",
+                                category,
+                                query_result.get("count", 0),
+                            )
+                        full_text = _QUERY_RE.sub("", full_text).strip()
+                        self._patch_last_assistant(session["llm_history"], full_text)
 
                     _session_store.set(self._session_id, session)
 

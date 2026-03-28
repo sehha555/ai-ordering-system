@@ -169,10 +169,21 @@ class ToolRegistry:
         return self._resolve_alias(flavor, EGG_PANCAKE_ALIASES)
 
     def _resolve_snack_flavor(self, flavor: Optional[str]) -> Optional[str]:
-        """將點心別名轉換為標準名稱（已是完整菜單名則跳過，避免子串誤匹配）"""
-        if flavor and flavor in _MENU_INDEX:
+        """將點心別名轉換為標準名稱（已是完整菜單名則跳過，避免子串誤匹配）
+        只做完全匹配或 name 結尾是 ≥2 字元的 alias，
+        避免 "起司蛋" 因含單字 "蛋" 被錯誤解析為 "荷包蛋"。
+        """
+        if not flavor:
+            return None
+        if flavor in _MENU_INDEX:
             return flavor
-        return self._resolve_alias(flavor, SNACK_ALIASES)
+        for alias in sorted(SNACK_ALIASES.keys(), key=len, reverse=True):
+            if alias == flavor:
+                return SNACK_ALIASES[alias]
+            # 結尾匹配：alias 長度 >= 2，避免單字 "蛋" 誤匹配
+            if len(alias) >= 2 and flavor.endswith(alias):
+                return SNACK_ALIASES[alias]
+        return None
 
     def _next_item_id(self, session: Dict[str, Any], prefix: str) -> str:
         """分配下一個 item_id，同時遞增計數器"""
@@ -342,10 +353,32 @@ class ToolRegistry:
                 if extracted_flavor.endswith(suffix):
                     extracted_flavor = extracted_flavor[: -len(suffix)]
                     break
+
+            # 饅頭特殊處理：若 rice 含口味資訊（非真正米種），重建完整品項名
+            # 場景：model 輸出 [ADD:饅頭夾蛋|rice=黑糖]，期望解析為「黑糖饅頭夾蛋」或「黑糖饅頭」
+            _RICE_TYPES = {"白米", "紫米", "混米"}
+            if category == "饅頭" and rice and rice not in _RICE_TYPES:
+                # 先試 {rice}{原始名稱}（如 黑糖饅頭夾蛋）— 只接受饅頭類 category
+                rebuilt = f"{rice}{resolved_name}"
+                rebuilt_info = self._resolve_item_name(rebuilt)
+                if rebuilt_info is not None and rebuilt_info.get("category") == "饅頭":
+                    return self.add_item(name=rebuilt, quantity=quantity)
+                # 再試 {rice}饅頭（如 黑糖饅頭）
+                rebuilt_base = f"{rice}饅頭"
+                rebuilt_base_info = self._resolve_item_name(rebuilt_base)
+                if rebuilt_base_info is not None and rebuilt_base_info.get("category") == "饅頭":
+                    return self.add_item(name=rebuilt_base, quantity=quantity)
+
             return self.add_carrier(carrier=carrier, flavor=extracted_flavor, quantity=quantity)
 
         # ── 蛋餅 ──
         if category == "蛋餅":
+            # 若只傳入分類名（"蛋餅"）且沒有 flavor 參數，追問口味
+            if name == "蛋餅" and not flavor:
+                return {"ok": False, "missing": ["flavor"], "message": "蛋餅要什麼口味？"}
+            # 有 flavor 參數時直接使用（如 add_item(name='蛋餅', flavor='玉米')）
+            if name == "蛋餅" and flavor:
+                return self.add_item(name=f"{flavor}蛋餅", quantity=quantity)
             # 去掉「蛋餅」後綴取得口味
             ep_flavor = resolved_name
             if ep_flavor.endswith("蛋餅"):
