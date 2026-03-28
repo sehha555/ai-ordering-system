@@ -338,7 +338,7 @@ class StreamingDMAdapter:
                 system_prompt=SystemPromptBuilder().build(),
                 user_text=text,
                 history=session["llm_history"],
-                tools_schema=_tool_registry.get_tools_schema(),
+                tools_schema=[],  # text tag mode：不送 tools，tag 由 done 事件攔截
                 tool_map=_tool_registry.get_tool_map(),
                 allowed_args=_tool_registry.get_allowed_args(),
                 context=ctx,
@@ -346,7 +346,15 @@ class StreamingDMAdapter:
                 evt_type = event.get("type")
 
                 if evt_type == "text_delta":
-                    yield event
+                    # text tag mode：strip tags 再送 TTS（tags 在 done 事件處理）
+                    content = event.get("content", "")
+                    content = _ADD_RE.sub("", content)
+                    content = _QUERY_RE.sub("", content)
+                    content = _REMOVE_RE.sub("", content)
+                    content = content.replace(CHECKOUT_TAG, "")
+                    content = content.strip()
+                    if content:
+                        yield {"type": "text_delta", "content": content}
 
                 elif evt_type == "early_tts":
                     yield event  # pass through 給 orchestrator 立即送 TTS

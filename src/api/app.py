@@ -113,13 +113,12 @@ async def lifespan(app):
 
             system_prompt = SystemPromptBuilder().build()
             priming = get_priming_messages()
-            tools_schema = _tool_registry.get_tools_schema()
             messages = [
                 {"role": "system", "content": system_prompt},
                 *priming,
                 {"role": "user", "content": "你好"},
             ]
-            await _llm_caller.ping(messages=messages, tools_schema=tools_schema)
+            await _llm_caller.ping(messages=messages)  # text tag mode：不送 tools_schema
             logger.info("[STARTUP] LLM KV cache 預熱完成")
         except Exception as e:
             logger.warning("[STARTUP] LLM warmup 失敗（不影響啟動）: {}", e)

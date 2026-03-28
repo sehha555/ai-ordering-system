@@ -120,9 +120,9 @@ class LLMToolCaller:
         }
         if stream:
             payload["stream"] = True
-        if tools_schema is not None:
+        if tools_schema:
             payload["tools"] = tools_schema
-        if tool_choice is not None:
+        if tool_choice is not None and tools_schema:
             payload["tool_choice"] = tool_choice
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
