@@ -17,28 +17,6 @@ import difflib
 from typing import Any, Optional
 
 
-def _build_item_index() -> dict[str, str]:
-    """
-    建立品項名稱索引：別名 → 標準品項類別。
-    涵蓋所有可透過 add_item 下單的品項（蛋餅、飲料、飯糰、載體、點心、套餐、果醬吐司）。
-    """
-    from src.tools.menu import menu_price_service
-
-    # 載入菜單原始資料
-    menu = menu_price_service.get_raw_menu()
-    index: dict[str, str] = {}
-
-    for item in menu:
-        name: str = item.get("name", "")
-        cat: str = item.get("category", "")
-        if not name or not cat:
-            continue
-        # 原始全名作為合法鍵
-        index[name] = cat
-
-    return index
-
-
 def _get_all_valid_names() -> list[str]:
     """取得所有合法品項名稱（含別名），用於 fuzzy suggest"""
     names: set[str] = set()

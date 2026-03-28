@@ -2,6 +2,7 @@
 
 import contextvars
 import json
+import re
 from pathlib import Path
 from typing import Dict, Any, List, Callable, Optional, Set
 
@@ -31,6 +32,12 @@ from src.repository.order_repository import order_repo
 
 # 蛋餅別名
 EGG_PANCAKE_ALIASES = EggPancakeTool.FLAVOR_ALIASES
+
+# 預排序別名 keys（避免每次 _resolve_alias 重新排序）
+_RICEBALL_ALIASES_SORTED = tuple(sorted(RICEBALL_ALIASES.keys(), key=len, reverse=True))
+_DRINK_ALIASES_SORTED = tuple(sorted(DRINK_ALIASES.keys(), key=len, reverse=True))
+_EGG_PANCAKE_ALIASES_SORTED = tuple(sorted(EGG_PANCAKE_ALIASES.keys(), key=len, reverse=True))
+_SNACK_ALIASES_SORTED = tuple(sorted(SNACK_ALIASES.keys(), key=len, reverse=True))
 
 # 載體後綴（用於從完整品項名稱中提取口味）
 _CARRIER_SUFFIXES = ["蛋吐司", "吐司", "蛋漢堡", "蛋堡", "漢堡", "蛋饅頭", "饅頭"]
@@ -62,6 +69,9 @@ _COLLOQUIAL_ALIASES: Dict[str, str] = {
     "奶酥厚片": "果醬吐司(奶酥/厚片)",
     "巧克力厚片": "果醬吐司(巧克力/厚片)",
 }
+
+# 果醬吐司名稱解析（預編譯，避免 add_item 內部每次 import + compile）
+_JAM_TOAST_RE = re.compile(r"果醬吐司\(([^/]+)/([^)]+)\)")
 
 
 def _build_menu_index() -> Dict[str, Dict[str, Any]]:
@@ -135,14 +145,14 @@ class ToolRegistry:
     # ============ 別名解析輔助方法 ============
 
     def _resolve_alias(
-        self, value: Optional[str], aliases: dict, sort_by_len: bool = True
+        self, value: Optional[str], aliases: dict, sorted_keys: Optional[tuple] = None
     ) -> Optional[str]:
-        """通用別名解析：在 aliases 中找匹配項，回傳標準名稱；無匹配則原樣回傳"""
+        """通用別名解析：在 aliases 中找匹配項，回傳標準名稱；無匹配則原樣回傳。
+        sorted_keys: 預排序的 keys tuple（模組層級快取），省去每次排序開銷。
+        """
         if value is None:
             return None
-        candidates = (
-            sorted(aliases.keys(), key=len, reverse=True) if sort_by_len else list(aliases.keys())
-        )
+        candidates = sorted_keys if sorted_keys is not None else aliases.keys()
         for alias in candidates:
             if alias == value or alias in value:
                 return aliases[alias]
@@ -150,23 +160,23 @@ class ToolRegistry:
 
     def _resolve_riceball_flavor(self, flavor: Optional[str]) -> Optional[str]:
         """將飯糰口味別名轉換為標準名稱"""
-        return self._resolve_alias(flavor, RICEBALL_ALIASES)
+        return self._resolve_alias(flavor, RICEBALL_ALIASES, _RICEBALL_ALIASES_SORTED)
 
     def _resolve_drink_flavor(self, flavor: Optional[str]) -> Optional[str]:
         """將飲料別名轉換為標準名稱"""
-        return self._resolve_alias(flavor, DRINK_ALIASES)
+        return self._resolve_alias(flavor, DRINK_ALIASES, _DRINK_ALIASES_SORTED)
 
     def _resolve_drink_size(self, size: Optional[str]) -> Optional[str]:
         """將飲料杯型轉換為標準名稱"""
-        return self._resolve_alias(size, DRINK_SIZE_MAP, sort_by_len=False)
+        return self._resolve_alias(size, DRINK_SIZE_MAP)
 
     def _resolve_drink_temp(self, temp: Optional[str]) -> Optional[str]:
         """將飲料溫度轉換為標準名稱"""
-        return self._resolve_alias(temp, DRINK_TEMP_MAP, sort_by_len=False)
+        return self._resolve_alias(temp, DRINK_TEMP_MAP)
 
     def _resolve_egg_pancake_flavor(self, flavor: Optional[str]) -> Optional[str]:
         """將蛋餅口味別名轉換為標準名稱"""
-        return self._resolve_alias(flavor, EGG_PANCAKE_ALIASES)
+        return self._resolve_alias(flavor, EGG_PANCAKE_ALIASES, _EGG_PANCAKE_ALIASES_SORTED)
 
     def _resolve_snack_flavor(self, flavor: Optional[str]) -> Optional[str]:
         """將點心別名轉換為標準名稱（已是完整菜單名則跳過，避免子串誤匹配）
@@ -177,10 +187,9 @@ class ToolRegistry:
             return None
         if flavor in _MENU_INDEX:
             return flavor
-        for alias in sorted(SNACK_ALIASES.keys(), key=len, reverse=True):
+        for alias in _SNACK_ALIASES_SORTED:
             if alias == flavor:
                 return SNACK_ALIASES[alias]
-            # 結尾匹配：alias 長度 >= 2，避免單字 "蛋" 誤匹配
             if len(alias) >= 2 and flavor.endswith(alias):
                 return SNACK_ALIASES[alias]
         return None
@@ -390,10 +399,7 @@ class ToolRegistry:
             # resolved_name 格式：「果醬吐司(草莓/薄片)」或傳入的 name 帶括號
             jam_flavor = flavor
             jam_size = size or "薄片"  # 預設薄片
-            # 嘗試從 resolved_name 解析
-            import re as _re
-
-            m = _re.search(r"果醬吐司\(([^/]+)/([^)]+)\)", resolved_name)
+            m = _JAM_TOAST_RE.search(resolved_name)
             if m:
                 jam_flavor = m.group(1)
                 jam_size = m.group(2)

@@ -77,6 +77,46 @@ router = APIRouter()
 _streaming_tts = create_tts_model(TTS_BACKEND)
 
 
+class ASRAdapter:
+    """ASR 適配器 — 將同步 ASR 方法包裝為異步（webm→ffmpeg→wav→transcribe）"""
+
+    def __init__(self, asr_service):
+        self._asr = asr_service
+
+    async def transcribe(self, audio_bytes: bytes) -> str:
+        proc = await asyncio.create_subprocess_exec(
+            "ffmpeg",
+            "-y",
+            "-i",
+            "pipe:0",
+            "-ar",
+            "16000",
+            "-ac",
+            "1",
+            "-f",
+            "wav",
+            "pipe:1",
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        wav_bytes, stderr_bytes = await proc.communicate(input=audio_bytes)
+
+        if proc.returncode != 0 or not wav_bytes:
+            stderr_msg = (stderr_bytes or b"")[:500].decode(errors="replace")
+            logger.warning(
+                "[ASR] ffmpeg 轉換失敗（returncode={}）: {}", proc.returncode, stderr_msg
+            )
+            return ""
+
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, self._asr.transcribe_bytes, wav_bytes)
+        asr_error = result.get("error")
+        if asr_error:
+            logger.warning("[ASR] 辨識錯誤: {}", asr_error)
+        return postprocess(result.get("text", ""))
+
+
 async def _sse_wrap(stream, label: str):
     """將 orchestrator 的 event stream 包裝為 SSE 格式（全域 try/except 防止靜默斷線）"""
     try:
@@ -541,45 +581,6 @@ async def voice_chat(
 
     # 使用啟動時已載入的 TTS 實例
     streaming_tts = _streaming_tts
-
-    # 建立 ASR 適配器（將同步方法包裝為異步）
-    class ASRAdapter:
-        def __init__(self, asr_service):
-            self._asr = asr_service
-
-        async def transcribe(self, audio_bytes: bytes) -> str:
-            # pipe 模式：webm bytes → ffmpeg stdin → wav bytes（省去 webm 磁碟 I/O）
-            proc = await asyncio.create_subprocess_exec(
-                "ffmpeg",
-                "-y",
-                "-i",
-                "pipe:0",
-                "-ar",
-                "16000",
-                "-ac",
-                "1",
-                "-f",
-                "wav",
-                "pipe:1",
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            wav_bytes, stderr_bytes = await proc.communicate(input=audio_bytes)
-
-            if proc.returncode != 0 or not wav_bytes:
-                stderr_msg = (stderr_bytes or b"")[:500].decode(errors="replace")
-                logger.warning(
-                    "[ASR] ffmpeg 轉換失敗（returncode={}）: {}", proc.returncode, stderr_msg
-                )
-                return ""
-
-            loop = asyncio.get_running_loop()
-            result = await loop.run_in_executor(None, self._asr.transcribe_bytes, wav_bytes)
-            asr_error = result.get("error")
-            if asr_error:
-                logger.warning("[ASR] 辨識錯誤: {}", asr_error)
-            return postprocess(result.get("text", ""))
 
     asr_adapter = ASRAdapter(_asr_service)
     dm_adapter = StreamingDMAdapter(session_id)

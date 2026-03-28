@@ -13,41 +13,8 @@ Few-shot priming messages — 讓本地 LLM 學會使用 text tag 格式輸出�
 注意：超過 9 demo 可能觸發 few-shot collapse（riceball/carrier/combo 退化）
 """
 
-import json
-
-# 統一 tag 格式，benchmark adapter 也引用此常數
-TOOL_RESULT_TAG = "tool_result"
-
 # LLM 回覆中的結帳標記（voice_router 攔截用）
 CHECKOUT_TAG = "[CHECKOUT]"
-
-
-def _tc(call_id: str, name: str, args: dict) -> list[dict]:
-    """構建 tool_calls 格式（保留供外部引用，priming 不再使用）"""
-    return [
-        {
-            "id": call_id,
-            "type": "function",
-            "function": {
-                "name": name,
-                "arguments": json.dumps(args, ensure_ascii=False),
-            },
-        }
-    ]
-
-
-def format_tool_result(result: dict) -> str:
-    """將工具執行結果格式化為 <tool_result> 文字（保留供外部引用）"""
-    return f"<{TOOL_RESULT_TAG}>\n{json.dumps(result, ensure_ascii=False)}\n</{TOOL_RESULT_TAG}>"
-
-
-def _tool_resp(call_id: str, result: dict) -> dict:
-    """構建 tool response（保留供外部引用，priming 不再使用）"""
-    return {
-        "role": "tool",
-        "tool_call_id": call_id,
-        "content": json.dumps(result, ensure_ascii=False),
-    }
 
 
 def get_priming_messages() -> list[dict]:
