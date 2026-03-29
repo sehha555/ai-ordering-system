@@ -6,8 +6,7 @@ import { test, expect } from '@playwright/test'
 import { captureTextSSE, CaptureResult } from '../helpers/sseCapture'
 import { attachSSEReport, assertTTS, assertNoError } from '../helpers/report'
 
-// TODO: 拿到菜單後替換
-const ITEM_1 = '{{品項1}}'   // e.g. '鮪魚飯糰'
+const ITEM_1 = '原味蛋餅'
 
 test.describe('結帳流程 @fullstack', () => {
   test.skip(!!process.env.CI, 'Skip in CI — requires backend + LM Studio')

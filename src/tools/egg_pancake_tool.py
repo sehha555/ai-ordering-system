@@ -31,13 +31,11 @@ class EggPancakeTool:
         "紫米蛋餅": "紫米蛋餅",
         "起司蛋餅": "起司蛋餅",
         "原味蛋餅": "原味蛋餅",
-
         # 業務同義
         "蔬菜蛋餅": "高麗菜蛋餅",
         "醬燒蛋餅": "醬燒肉片蛋餅",
         "肉片蛋餅": "醬燒肉片蛋餅",
         "醬燒肉片": "醬燒肉片蛋餅",
-
         # 模糊
         "蛋餅": "原味蛋餅",
     }
@@ -105,8 +103,7 @@ class EggPancakeTool:
 
         base_required = self._implied_counts(base_flavor)
         addons_required, addons_extra = self._parse_addons_required_vs_extra(
-            text=text,
-            base_required=base_required
+            text=text, base_required=base_required
         )
 
         required_counts = self._add_counts(base_required, addons_required)
@@ -115,10 +112,10 @@ class EggPancakeTool:
         final_flavor, charge_counts = self._choose_cheapest_carrier(
             required_counts=required_counts,
             extra_counts=addons_extra,
-            candidates=carrier_candidates
+            candidates=carrier_candidates,
         )
 
-        needs_pack_together_confirm = (qty == 2)
+        needs_pack_together_confirm = qty == 2
         pack_together_question = "要不要2份裝在一起？" if needs_pack_together_confirm else None
 
         sauces = [self.SAUCE_DEFAULT]
@@ -129,7 +126,7 @@ class EggPancakeTool:
         ingredients_add = self._expand_counts(charge_counts)
 
         return {
-            "itemtype": "egg_pancake", # Use 'itemtype' for consistency with DM
+            "itemtype": "egg_pancake",  # Use 'itemtype' for consistency with DM
             "quantity": qty,
             "flavor": final_flavor,
             "ingredients_add": ingredients_add,
@@ -145,15 +142,13 @@ class EggPancakeTool:
         flavor = frame["flavor"]
         qty = frame["quantity"]
         addons_list: List[str] = frame.get("ingredients_add", [])
+        # flavor 可能是 "原味" 或 "原味蛋餅"，get_price 需要完整名
+        price_key = flavor if flavor.endswith("蛋餅") else f"{flavor}蛋餅"
 
         try:
-            base_price = menu_price_service.get_price("蛋餅", flavor)
+            base_price = menu_price_service.get_price("蛋餅", price_key)
         except KeyError:
-            return {
-                "status": "error",
-                "total_price": None,
-                "message": f"找不到品項：{flavor}"
-            }
+            return {"status": "error", "total_price": None, "message": f"找不到品項：{flavor}"}
 
         addon_total = sum(self.ADDON_PRICES.get(a, 0) for a in addons_list)
         single = base_price + addon_total
@@ -179,7 +174,19 @@ class EggPancakeTool:
         return "原味蛋餅"
 
     def _parse_quantity(self, text: str) -> int:
-        zh_map = {"一": 1, "二": 2, "兩": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
+        zh_map = {
+            "一": 1,
+            "二": 2,
+            "兩": 2,
+            "三": 3,
+            "四": 4,
+            "五": 5,
+            "六": 6,
+            "七": 7,
+            "八": 8,
+            "九": 9,
+            "十": 10,
+        }
 
         m = re.search(r"(\d+)\s*個?", text)
         if m:
@@ -239,10 +246,24 @@ class EggPancakeTool:
             return 1
         if s.isdigit():
             return int(s)
-        zh_map = {"一": 1, "二": 2, "兩": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
+        zh_map = {
+            "一": 1,
+            "二": 2,
+            "兩": 2,
+            "三": 3,
+            "四": 4,
+            "五": 5,
+            "六": 6,
+            "七": 7,
+            "八": 8,
+            "九": 9,
+            "十": 10,
+        }
         return zh_map.get(s, 1)
 
-    def _build_carrier_candidates(self, base_flavor: str, required_counts: Dict[str, int]) -> List[str]:
+    def _build_carrier_candidates(
+        self, base_flavor: str, required_counts: Dict[str, int]
+    ) -> List[str]:
         candidates = [base_flavor]
         for ing in required_counts.keys():
             carrier = self.CARRIER_MAP.get(ing)
@@ -273,7 +294,9 @@ class EggPancakeTool:
                 continue
 
             charge = self._add_counts(missing, extra_counts)
-            total = base_price + sum(self.ADDON_PRICES.get(ing, 0) * cnt for ing, cnt in charge.items())
+            total = base_price + sum(
+                self.ADDON_PRICES.get(ing, 0) * cnt for ing, cnt in charge.items()
+            )
             covered_value = 0
             for ing, req_cnt in required_counts.items():
                 implied_cnt = implied.get(ing, 0)
@@ -286,8 +309,13 @@ class EggPancakeTool:
                 "total": total,
                 "covered_value": covered_value,
             }
-            if best is None or cand["total"] < best["total"] or \
-               (cand["total"] == best["total"] and cand["covered_value"] > best["covered_value"]):
+            if (
+                best is None
+                or cand["total"] < best["total"]
+                or (
+                    cand["total"] == best["total"] and cand["covered_value"] > best["covered_value"]
+                )
+            ):
                 best = cand
 
         if best is None:
@@ -324,6 +352,7 @@ class EggPancakeTool:
                 seen.add(x)
                 out.append(x)
         return out
+
 
 egg_pancake_tool = EggPancakeTool()
 

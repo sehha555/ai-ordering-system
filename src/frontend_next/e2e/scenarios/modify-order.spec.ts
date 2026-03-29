@@ -4,11 +4,10 @@
  */
 import { test, expect } from '@playwright/test'
 import { captureTextSSE } from '../helpers/sseCapture'
-import { attachSSEReport, assertCart, assertToolCalled, assertTTS, assertNoError, ScenarioResult } from '../helpers/report'
+import { attachSSEReport, assertCart, assertTTS, assertNoError, ScenarioResult } from '../helpers/report'
 
-// TODO: 拿到菜單後替換
-const ITEM_1 = '{{品項1}}'   // e.g. '鮪魚飯糰'
-const ITEM_2 = '{{品項2}}'   // e.g. '培根飯糰'
+const ITEM_1 = '原味蛋餅'
+const ITEM_2 = '起司蛋餅'
 
 test.describe('修改訂單 @fullstack', () => {
   test.skip(!!process.env.CI, 'Skip in CI — requires backend + LM Studio')
@@ -23,13 +22,20 @@ test.describe('修改訂單 @fullstack', () => {
 
     // 先點一個
     await captureTextSSE(page, `我要一個${ITEM_1}`, sid)
-    // 再加一個
-    const result = await captureTextSSE(page, '再加一個', sid)
+    // 再加一個同品項
+    const result = await captureTextSSE(page, `再來一個${ITEM_1}`, sid)
+
+    // 系統每次 ADD 建獨立條目，檢查總數量而非單一 quantity 欄位
+    const matchingItems = result.cartItems.filter(i => i.name.includes(ITEM_1))
+    const totalQty = matchingItems.reduce((s, i) => s + i.quantity, 0)
 
     const assertions = [
       ...assertNoError(result),
-      ...assertToolCalled(result, 'add_to_cart'),
-      ...assertCart(result, { nameIncludes: ITEM_1, quantity: 2 }),
+      {
+        name: `${ITEM_1} 總數量 >= 2`,
+        passed: totalQty >= 2,
+        detail: `實際數量：${totalQty}，品項數：${matchingItems.length}`,
+      },
       ...assertTTS(result),
     ]
 

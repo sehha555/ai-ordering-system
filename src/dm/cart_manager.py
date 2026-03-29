@@ -23,7 +23,8 @@ def format_item(frame: Dict[str, Any]) -> str:
     if rtype == "carrier":
         return f"{frame.get('flavor', '')}{frame.get('carrier', '餐點')}"
     if rtype == "egg_pancake":
-        return frame.get("flavor", "蛋餅")
+        f = frame.get("flavor", "蛋餅")
+        return f if f.endswith("蛋餅") else f"{f}蛋餅"
     if rtype == "snack":
         base = frame.get("snack", "點心")
         details = [
