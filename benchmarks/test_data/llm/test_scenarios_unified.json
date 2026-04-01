@@ -105,21 +105,13 @@
         "content": "我要一杯紅茶"
       }
     ],
-    "expected_tools": [
-      "add_item"
-    ],
+    "expected_tools": [],
     "expected_response_contains": [
-      "紅茶"
+      "冰",
+      "溫"
     ],
-    "expected_behavior": "客人說「一杯紅茶」，model 假設中杯冰（台灣常見預設）→ 直接 call add_item，接受此行為",
-    "expected_args": [
-      {
-        "name": "add_item",
-        "args": {
-          "name": "紅茶"
-        }
-      }
-    ]
+    "expected_behavior": "缺 temp，先問溫度「冰的還是溫的？」，不加 tag，不問杯型",
+    "expected_args": []
   },
   {
     "id": "u_snack_simple",
@@ -236,22 +228,13 @@
         "content": "我要一個鮪魚飯糰"
       }
     ],
-    "expected_tools": [
-      "add_item"
-    ],
-    "expected_args": [
-      {
-        "name": "add_item",
-        "args": {
-          "name": "鮪魚"
-        }
-      }
-    ],
+    "expected_tools": [],
+    "expected_args": [],
     "expected_response_contains": [
       "紫米",
       "白米"
     ],
-    "expected_behavior": "text tag 模式下 model 輸出 [ADD:鮪魚飯糰] 同時追問白米/紫米，expected_tools 改為 add_item"
+    "expected_behavior": "缺米種，必須追問「紫米白米？」，絕對不能自己猜白米直接下單"
   },
   {
     "id": "u_riceball_multi_round",
@@ -748,22 +731,13 @@
         "content": "一個套餐一"
       }
     ],
-    "expected_tools": [
-      "add_item"
-    ],
+    "expected_tools": [],
     "expected_response_contains": [
       "冰",
       "溫"
     ],
-    "expected_behavior": "模型 call add_item(name=套餐一)，系統回 ok:false 追問飲料溫度",
-    "expected_args": [
-      {
-        "name": "add_item",
-        "args": {
-          "name": "套餐一"
-        }
-      }
-    ]
+    "expected_behavior": "缺飲料溫度，追問「冰的還是溫的？」，不加 tag（正確行為）",
+    "expected_args": []
   },
   {
     "id": "u_combo_alias",
@@ -1363,7 +1337,8 @@
     "expected_response_contains": [
       "沒有"
     ],
-    "expected_behavior": "菜單上沒有珍珠奶茶，應告知客人並建議其他飲料"
+    "expected_behavior": "珍珠奶茶菜單沒有，必須說「沒有賣」，不能自動替換成鮮奶茶",
+    "expected_args": []
   },
   {
     "id": "combo_five",
@@ -1516,5 +1491,223 @@
       "售完"
     ],
     "expected_behavior": "套餐二含飯糰，白米售完應告知只能紫米或混米"
+  },
+  {
+    "id": "swap_riceball",
+    "description": "N1: 更換飯糰口味 — 甜換原味",
+    "category": "edge_case",
+    "messages": [
+      {
+        "role": "user",
+        "content": "甜飯糰換源味飯糰"
+      }
+    ],
+    "expected_tools": [
+      "add_item"
+    ],
+    "expected_args": [
+      {
+        "name": "add_item",
+        "args": {
+          "name": "源味"
+        }
+      }
+    ],
+    "expected_response_contains": [
+      "源味"
+    ],
+    "expected_behavior": "應 [REMOVE:甜飯糰] + [ADD:源味傳統飯糰|rice=白米]，購物車更新"
+  },
+  {
+    "id": "swap_drink_size",
+    "description": "N2: 換飲料大小 — 中杯奶茶換大杯",
+    "category": "edge_case",
+    "messages": [
+      {
+        "role": "user",
+        "content": "一杯中冰鮮奶茶"
+      },
+      {
+        "role": "assistant",
+        "content": "[ADD:純鮮奶茶|size=中杯|temp=冰]好，中冰鮮奶茶～還要什麼？"
+      },
+      {
+        "role": "user",
+        "content": "奶茶換大杯的"
+      }
+    ],
+    "expected_tools": [
+      "add_item"
+    ],
+    "expected_args": [
+      {
+        "name": "add_item",
+        "args": {
+          "name": "鮮奶茶",
+          "size": "大杯"
+        }
+      }
+    ],
+    "expected_response_contains": [
+      "大杯"
+    ],
+    "expected_behavior": "應 [REMOVE:鮮奶茶] + [ADD:純鮮奶茶|size=大杯|temp=冰]"
+  },
+  {
+    "id": "swap_to_different_category",
+    "description": "N3: 跨品類更換 — 蛋餅換吐司（資訊不足）",
+    "category": "edge_case",
+    "messages": [
+      {
+        "role": "user",
+        "content": "一個原味蛋餅"
+      },
+      {
+        "role": "assistant",
+        "content": "[ADD:原味蛋餅]好～還要什麼？"
+      },
+      {
+        "role": "user",
+        "content": "蛋餅不要了換吐司"
+      }
+    ],
+    "expected_tools": [],
+    "expected_args": [],
+    "expected_response_contains": [
+      "吐司"
+    ],
+    "expected_behavior": "應 [REMOVE:蛋餅]，再追問吐司種類（哪種/口味皆可）"
+  },
+  {
+    "id": "sold_out_during_order",
+    "description": "N4: 點餐途中品項售完 — 起司蛋餅在售完清單",
+    "category": "edge_case",
+    "session_context": {
+      "cart_items": [],
+      "cart_count": 0,
+      "sold_out": [
+        "起司蛋餅"
+      ]
+    },
+    "messages": [
+      {
+        "role": "user",
+        "content": "再來一個起司蛋餅"
+      }
+    ],
+    "expected_tools": [],
+    "expected_args": [],
+    "expected_response_contains": [
+      "售完"
+    ],
+    "expected_behavior": "起司蛋餅在售完清單中（session_context.sold_out 注入），告知起司蛋餅售完，建議其他口味"
+  },
+  {
+    "id": "sold_out_suggest_alternative",
+    "description": "N5: 售完後客人接受推薦 — 改點玉米蛋餅",
+    "category": "edge_case",
+    "messages": [
+      {
+        "role": "user",
+        "content": "一個起司蛋餅"
+      },
+      {
+        "role": "assistant",
+        "content": "不好意思，起司蛋餅目前售完了～我們還有原味、玉米、培根蛋餅，要換一個嗎？"
+      },
+      {
+        "role": "user",
+        "content": "那玉米的好了"
+      }
+    ],
+    "expected_tools": [
+      "add_item"
+    ],
+    "expected_args": [
+      {
+        "name": "add_item",
+        "args": {
+          "name": "玉米"
+        }
+      }
+    ],
+    "expected_response_contains": [
+      "玉米"
+    ],
+    "expected_behavior": "客人接受替代品，應 [ADD:玉米蛋餅]"
+  },
+  {
+    "id": "sold_out_rice_fallback",
+    "description": "N6: 米種售完自動限制 — 白米售完只能紫米",
+    "category": "edge_case",
+    "session_context": {
+      "cart_items": [],
+      "cart_count": 0,
+      "sold_out_categories": {
+        "飯糰米種": [
+          "白米"
+        ]
+      }
+    },
+    "messages": [
+      {
+        "role": "user",
+        "content": "一個鮪魚飯糰，白米"
+      }
+    ],
+    "expected_tools": [],
+    "expected_args": [],
+    "expected_response_contains": [
+      "白米",
+      "售完"
+    ],
+    "expected_behavior": "白米在售完分類中（sold_out_categories.飯糰米種 注入），告知白米售完，只能選紫米，追問是否改紫米"
+  },
+  {
+    "id": "sold_out_carrier_cascade",
+    "description": "N7: 載體售完連動 — 吐司全售完",
+    "category": "edge_case",
+    "session_context": {
+      "cart_items": [],
+      "cart_count": 0,
+      "sold_out_categories": {
+        "吐司": true
+      }
+    },
+    "messages": [
+      {
+        "role": "user",
+        "content": "一個培根蛋吐司"
+      }
+    ],
+    "expected_tools": [],
+    "expected_args": [],
+    "expected_response_contains": [
+      "吐司",
+      "售完"
+    ],
+    "expected_behavior": "吐司載體在售完分類中（sold_out_categories.吐司 注入），告知吐司全售完，建議漢堡或其他"
+  },
+  {
+    "id": "swap_nonexistent_remove_but_add",
+    "description": "N8: 更換但原品項不在購物車 — 購物車空仍處理新品意圖",
+    "category": "edge_case",
+    "session_context": {
+      "cart_items": [],
+      "cart_count": 0
+    },
+    "messages": [
+      {
+        "role": "user",
+        "content": "把飯糰換成蛋餅"
+      }
+    ],
+    "expected_tools": [],
+    "expected_args": [],
+    "expected_response_contains": [
+      "蛋餅",
+      "口味"
+    ],
+    "expected_behavior": "購物車沒有飯糰（cart 為空），但仍要處理新品項意圖（蛋餅），追問口味"
   }
 ]

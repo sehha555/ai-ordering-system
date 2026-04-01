@@ -54,3 +54,4 @@ training_env/
 
 # Node
 node_modules/
+.gstack/

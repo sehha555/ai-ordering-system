@@ -103,7 +103,7 @@ class LLMToolCaller:
         self,
         messages: List[Dict[str, Any]],
         *,
-        temperature: float = 0.3,
+        temperature: float = 0.2,
         stream: bool = False,
         tools_schema: Optional[List[Dict[str, Any]]] = None,
         tool_choice: Optional[str] = None,
@@ -188,7 +188,7 @@ class LLMToolCaller:
         messages: List[Dict[str, Any]],
         tools_schema: Optional[List[Dict[str, Any]]] = None,
         tool_choice: Optional[str] = None,
-        temperature: float = 0.3,
+        temperature: float = 0.2,
     ) -> Dict[str, Any]:
         """非阻塞 LLM 呼叫，用於 async context。"""
         return await self._post(
@@ -206,7 +206,7 @@ class LLMToolCaller:
         messages: List[Dict[str, Any]],
         tools_schema: Optional[List[Dict[str, Any]]] = None,
         tool_choice: Optional[str] = None,  # "auto" | "required" | {"type":"function",...}
-        temperature: float = 0.3,
+        temperature: float = 0.2,
     ) -> Dict[str, Any]:
         return await self._post(
             self._build_payload(
@@ -450,7 +450,7 @@ class LLMToolCaller:
         self,
         *,
         messages: List[Dict[str, Any]],
-        temperature: float = 0.3,
+        temperature: float = 0.2,
         max_tokens: Optional[int] = None,
     ) -> AsyncIterator[str]:
         """串流呼叫 LLM，逐 token yield content delta。僅用於最終文字回覆（無 tools）。"""
@@ -480,7 +480,7 @@ class LLMToolCaller:
         messages: List[Dict[str, Any]],
         tools_schema: List[Dict[str, Any]],
         tool_choice: str = "auto",
-        temperature: float = 0.3,
+        temperature: float = 0.2,
     ) -> AsyncIterator[Dict[str, Any]]:
         """串流 LLM 呼叫，同時處理 tool_calls delta 和 content delta。
 

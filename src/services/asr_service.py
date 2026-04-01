@@ -210,9 +210,27 @@ class SenseVoiceService:
             import torch
 
             device = "cuda" if torch.cuda.is_available() else "cpu"
-            logger.info(f"[ASR] 正在載入 SenseVoice {model_id} ({device}, hub={hub})...")
+
+            # ModelScope hub 離線優先：cache 存在時直接用本地路徑，避免 modelscope.cn 校驗 hang
+            resolved_model = model_id
+            if hub == "ms":
+                import os
+
+                cache_dir = os.path.join(
+                    os.path.expanduser("~"),
+                    ".cache",
+                    "modelscope",
+                    "hub",
+                    "models",
+                    *model_id.split("/"),
+                )
+                if os.path.exists(os.path.join(cache_dir, "model.pt")):
+                    resolved_model = cache_dir
+                    logger.info(f"[ASR] 使用本地快取: {resolved_model}")
+
+            logger.info(f"[ASR] 正在載入 SenseVoice {resolved_model} ({device}, hub={hub})...")
             self.model = AutoModel(
-                model=model_id,
+                model=resolved_model,
                 hub=hub,
                 device=device,
                 disable_update=True,

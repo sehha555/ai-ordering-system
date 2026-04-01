@@ -30,6 +30,7 @@ def get_priming_messages() -> list[dict]:
     7. 查飲品菜單 → [QUERY:飲品] + 列舉回覆
     8. 套餐缺溫度 → 不加 tag，直接追問（關鍵：缺必填時不輸出 [ADD:...]）
     9. 取消品項 → [REMOVE:奶茶] tag
+    10. 更換品項 → [REMOVE:舊] + [ADD:新] 同時用
     """
     msgs: list[dict] = []
 
@@ -88,6 +89,15 @@ def get_priming_messages() -> list[dict]:
     msgs.append({"role": "user", "content": "幫我把奶茶取消"})
     msgs.append(
         {"role": "assistant", "content": "[REMOVE:奶茶]購物車裡沒有奶茶喔，不用取消～還需要什麼？"}
+    )
+
+    # Demo 10: 更換品項 → [REMOVE] + [ADD] 同時使用
+    msgs.append({"role": "user", "content": "甜飯糰換源味飯糰"})
+    msgs.append(
+        {
+            "role": "assistant",
+            "content": "[REMOVE:甜飯糰][ADD:源味傳統飯糰|rice=白米]好，已換成白米源味傳統飯糰～還要什麼？",
+        }
     )
 
     return msgs

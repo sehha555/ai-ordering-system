@@ -46,7 +46,7 @@ llm:
       params:
         base_url: "http://127.0.0.1:1234/v1"
         model: "unsloth/qwen3.5-9b"
-        temperature: 0.3
+        temperature: 0.2
         top_p: 0.8
         top_k: 20
         min_p: 0.01
@@ -57,7 +57,7 @@ llm:
       params:
         base_url: "http://127.0.0.1:1234/v1"
         model: "unsloth/qwen3.5-9b"
-        temperature: 0.3
+        temperature: 0.2
         top_p: 0.8
         top_k: 20
         min_p: 0.01
