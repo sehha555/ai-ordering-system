@@ -1,34 +1,68 @@
 """飲料解析工具 - 完整簡寫 + 大冰規範 + size/temp 分離"""
+
 import re
 from typing import Dict, List, Optional, Any
 
 from src.tools.menu import menu_price_service
-from src.tools.riceball_tool import _chinese_number_to_int # Import Chinese number parser
+from src.tools.riceball_tool import _chinese_number_to_int  # Import Chinese number parser
 
 # 完整簡寫 + 大冰規範（長字優先）
 DRINK_ALIASES = {
     # 大冰簡寫（最高優先）
-    "大冰豆": "有糖豆漿", "大冰清": "無糖豆漿", "大冰紅": "精選紅茶",
-    "大冰米": "花生糙米漿", "大冰混": "米漿+豆漿", "大冰薏": "燕麥薏仁漿",
-    "大冰綠": "無糖清香綠茶", "大冰薏牛": "燕麥薏仁牛奶",
-    "大冰奶": "純鮮奶茶", "大冰黑糖": "黑糖純鮮奶茶",
-    "大冰咖": "純鮮奶咖啡", "大冰十穀": "十穀漿",
-
+    "大冰豆": "有糖豆漿",
+    "大冰清": "無糖豆漿",
+    "大冰紅": "精選紅茶",
+    "大冰米": "花生糙米漿",
+    "大冰混": "米漿+豆漿",
+    "大冰薏": "燕麥薏仁漿",
+    "大冰綠": "無糖清香綠茶",
+    "大冰薏牛": "燕麥薏仁牛奶",
+    "大冰奶": "純鮮奶茶",
+    "大冰黑糖": "黑糖純鮮奶茶",
+    "大冰咖": "純鮮奶咖啡",
+    "大冰十穀": "十穀漿",
     # 單字簡寫
-    "豆": "有糖豆漿", "清": "無糖豆漿", "紅": "精選紅茶",
-    "米": "花生糙米漿", "薏": "燕麥薏仁漿", "薏牛": "燕麥薏仁牛奶",
-    "混": "米漿+豆漿", "綠": "無糖清香綠茶", "奶": "純鮮奶茶",
-    "黑糖": "黑糖純鮮奶茶", "咖": "純鮮奶咖啡", "十穀": "十穀漿",
-
+    "豆": "有糖豆漿",
+    "清": "無糖豆漿",
+    "紅": "精選紅茶",
+    "米": "花生糙米漿",
+    "薏": "燕麥薏仁漿",
+    "薏牛": "燕麥薏仁牛奶",
+    "混": "米漿+豆漿",
+    "綠": "無糖清香綠茶",
+    "奶": "純鮮奶茶",
+    "黑糖": "黑糖純鮮奶茶",
+    "咖": "純鮮奶咖啡",
+    "十穀": "十穀漿",
     # 完整別稱
-    "有糖豆漿": "有糖豆漿", "豆漿": "有糖豆漿", "無糖豆漿": "無糖豆漿", "清漿": "無糖豆漿",
-    "白漿": "無糖豆漿", "花生糙米漿": "花生糙米漿", "米漿": "花生糙米漿",
-    "糙米漿": "花生糙米漿", "燕麥薏仁漿": "燕麥薏仁漿",
-    "五穀漿": "五穀漿", "豆紅": "紅豆", "紅豆": "紅豆",
-    "純鮮奶茶": "純鮮奶茶", "鮮奶茶": "純鮮奶茶", "奶茶": "純鮮奶茶",
-    "精選紅茶": "精選紅茶", "無糖清香綠茶": "無糖清香綠茶",
-    "米漿+豆漿": "米漿+豆漿", "燕麥薏仁牛奶": "燕麥薏仁牛奶",
-    "純鮮奶咖啡": "純鮮奶咖啡"
+    "有糖豆漿": "有糖豆漿",
+    "豆漿": "有糖豆漿",
+    "無糖豆漿": "無糖豆漿",
+    "清漿": "無糖豆漿",
+    "白漿": "無糖豆漿",
+    "花生糙米漿": "花生糙米漿",
+    "米漿": "花生糙米漿",
+    "糙米漿": "花生糙米漿",
+    "燕麥薏仁漿": "燕麥薏仁漿",
+    "五穀漿": "五穀漿",
+    "豆紅": "紅豆",
+    "紅豆": "紅豆",
+    "純鮮奶茶": "純鮮奶茶",
+    "鮮奶茶": "純鮮奶茶",
+    "奶茶": "純鮮奶茶",
+    "精選紅茶": "精選紅茶",
+    "紅茶": "精選紅茶",
+    "綠茶": "無糖清香綠茶",
+    "無糖清香綠茶": "無糖清香綠茶",
+    "黑糖奶茶": "黑糖純鮮奶茶",
+    "黑糖純鮮奶茶": "黑糖純鮮奶茶",
+    "薏仁漿": "燕麥薏仁漿",
+    "薏仁牛奶": "燕麥薏仁牛奶",
+    "咖啡": "純鮮奶咖啡",
+    "鮮奶咖啡": "純鮮奶咖啡",
+    "米漿+豆漿": "米漿+豆漿",
+    "燕麥薏仁牛奶": "燕麥薏仁牛奶",
+    "純鮮奶咖啡": "純鮮奶咖啡",
 }
 
 SIZE_MAP = {"大": "大杯", "中": "中杯", "小": "中杯"}
@@ -37,9 +71,15 @@ SUGAR_MAP = {"無糖": "無糖", "半糖": "半糖", "有糖": "有糖"}
 
 # 優先順序：先吃 shortcut，再退回單獨判斷
 TEMP_SIZE_SHORTCUTS = {
-    "大冰": ("大杯", "冰"), "中冰": ("中杯", "冰"), "小冰": ("中杯", "冰"),
-    "大熱": ("大杯", "熱"), "中熱": ("中杯", "熱"), "小熱": ("中杯", "熱"),
-    "大溫": ("大杯", "溫"), "中溫": ("中杯", "溫"), "小溫": ("中杯", "溫"),
+    "大冰": ("大杯", "冰"),
+    "中冰": ("中杯", "冰"),
+    "小冰": ("中杯", "冰"),
+    "大熱": ("大杯", "熱"),
+    "中熱": ("中杯", "熱"),
+    "小熱": ("中杯", "熱"),
+    "大溫": ("大杯", "溫"),
+    "中溫": ("中杯", "溫"),
+    "小溫": ("中杯", "溫"),
 }
 
 
@@ -72,14 +112,17 @@ class DrinkTool:
             "size": size,
             "temp": temp,
             "sugar": sugar,
-            "rawtext": text
+            "rawtext": text,
         }
 
         # 4. missing slots
         missing = []
-        if not drink: missing.append("drink")
-        if not temp: missing.append("temp")
-        if not size: missing.append("size")
+        if not drink:
+            missing.append("drink")
+        if not temp:
+            missing.append("temp")
+        if not size:
+            missing.append("size")
 
         frame["missing_slots"] = missing
         return frame
@@ -105,11 +148,14 @@ class DrinkTool:
                 full_drink_name_long = f"{drink_name}({size})"
                 base_price = menu_price_service.get_price("飲品", full_drink_name_long)
             except KeyError:
-                return {"status": "error", "message": f"找不到飲品品項：{drink_name}{size}，無法計價。"}
+                return {
+                    "status": "error",
+                    "message": f"找不到飲品品項：{drink_name}{size}，無法計價。",
+                }
             except RuntimeError as e:
-                raise e # Let the DM catch menu loading errors
+                raise e  # Let the DM catch menu loading errors
         except RuntimeError as e:
-            raise e # Let the DM catch menu loading errors
+            raise e  # Let the DM catch menu loading errors
 
         total_price = base_price * quantity
 
@@ -149,24 +195,30 @@ class DrinkTool:
 
     def parse_size(self, text: str) -> Optional[str]:
         for k, v in SIZE_MAP.items():
-            if k in text: return v
+            if k in text:
+                return v
         return None
 
     def parse_temp(self, text: str) -> Optional[str]:
         for k, v in TEMP_MAP.items():
-            if k in text: return v
+            if k in text:
+                return v
         return None
 
     def parse_sugar(self, text: str) -> Optional[str]:
         for k, v in SUGAR_MAP.items():
-            if k in text: return v
+            if k in text:
+                return v
         return None
 
     def parse_quantity(self, text: str) -> int:
-        m = re.search(r'(\d+)\s*杯?', text) # Matches digits and optional "杯"
-        if m: return int(m.group(1)) if int(m.group(1)) > 0 else 1
+        m = re.search(r"(\d+)\s*杯?", text)  # Matches digits and optional "杯"
+        if m:
+            return int(m.group(1)) if int(m.group(1)) > 0 else 1
 
-        m_cn = re.search(r'([一二兩三四五六七八九十]{1,3})\s*杯?', text) # Matches Chinese numbers and optional "杯"
+        m_cn = re.search(
+            r"([一二兩三四五六七八九十]{1,3})\s*杯?", text
+        )  # Matches Chinese numbers and optional "杯"
         if m_cn:
             val = _chinese_number_to_int(m_cn.group(1))
             if val is not None and val > 0:
@@ -176,6 +228,7 @@ class DrinkTool:
 
     def load_menu(self) -> List[Dict[str, Any]]:
         return menu_price_service.get_raw_menu()
+
 
 # 全域實例
 drink_tool = DrinkTool()

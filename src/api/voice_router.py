@@ -418,6 +418,7 @@ class StreamingDMAdapter:
 
                     # ── [ADD:品項名|key=value|...] 攔截 ──
                     if "[ADD:" in full_text:
+                        add_results: list[dict] = []
                         for add_content in _ADD_RE.findall(full_text):
                             parts = add_content.split("|")
                             item_name = parts[0].strip()
@@ -437,6 +438,7 @@ class StreamingDMAdapter:
                                     elif key in ("spicy", "extra_egg"):
                                         kwargs[key] = value.lower() == "true"
                             add_result = _tool_registry.add_item(**kwargs)
+                            add_results.append(add_result)
                             if not add_result.get("ok"):
                                 logger.warning(
                                     "[ADD tag] 執行失敗: {} → {}",
@@ -444,6 +446,31 @@ class StreamingDMAdapter:
                                     add_result.get("message"),
                                 )
                         full_text = _ADD_RE.sub("", full_text).strip()
+
+                        # add_item 失敗 → 用後端訊息取代 LLM 回覆
+                        failed = [r for r in add_results if not r.get("ok")]
+                        if failed:
+                            parts_msg = [
+                                r.get("message", "")
+                                for r in add_results
+                                if r.get("ok") and r.get("message")
+                            ]
+                            parts_msg.extend(
+                                r.get("message", "") for r in failed if r.get("message")
+                            )
+                            full_text = "，".join(parts_msg) if parts_msg else full_text
+
+                        # 全成功但 LLM 原文只有 tag（清除後為空）→ 用後端訊息
+                        if not full_text and add_results and not failed:
+                            ok_msgs = [
+                                r.get("message", "") for r in add_results if r.get("message")
+                            ]
+                            full_text = (
+                                "，".join(ok_msgs) + "～還需要什麼？"
+                                if ok_msgs
+                                else "好的～還需要什麼？"
+                            )
+
                         self._patch_last_assistant(session["llm_history"], full_text)
 
                     # ── [QUERY:分類] 攔截 ──

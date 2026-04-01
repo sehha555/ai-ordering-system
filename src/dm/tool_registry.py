@@ -21,6 +21,8 @@ from src.tools.drink_tool import (
     DRINK_ALIASES,
     SIZE_MAP as DRINK_SIZE_MAP,
     TEMP_MAP as DRINK_TEMP_MAP,
+    SUGAR_MAP as _DRINK_SUGAR_MAP,
+    TEMP_SIZE_SHORTCUTS as _DRINK_TEMP_SIZE_SHORTCUTS,
 )
 from src.tools.egg_pancake_tool import EggPancakeTool
 from src.tools.snack_tool import SNACK_ALIASES
@@ -32,6 +34,23 @@ from src.repository.order_repository import order_repo
 
 # 蛋餅別名
 EGG_PANCAKE_ALIASES = EggPancakeTool.FLAVOR_ALIASES
+
+# 飲料已知前綴（用於 _is_valid_drink_input 驗證，長字優先，從 drink_tool 來源組合）
+_DRINK_MODIFIER_PREFIXES = tuple(
+    sorted(
+        set(
+            list(_DRINK_TEMP_SIZE_SHORTCUTS.keys())
+            + list(DRINK_SIZE_MAP.keys())
+            + list(DRINK_TEMP_MAP.keys())
+            + list(_DRINK_SUGAR_MAP.keys())
+        ),
+        key=len,
+        reverse=True,
+    )
+)
+
+# 子字串匹配最低長度比例（step 8 fallback）
+_SUBSTRING_MATCH_MIN_RATIO = 0.6
 
 # 預排序別名 keys（避免每次 _resolve_alias 重新排序）
 _RICEBALL_ALIASES_SORTED = tuple(sorted(RICEBALL_ALIASES.keys(), key=len, reverse=True))
@@ -178,6 +197,20 @@ class ToolRegistry:
         """將蛋餅口味別名轉換為標準名稱"""
         return self._resolve_alias(flavor, EGG_PANCAKE_ALIASES, _EGG_PANCAKE_ALIASES_SORTED)
 
+    @staticmethod
+    def _is_valid_drink_input(name: str) -> bool:
+        """驗證 name 是合法的飲料輸入，避免「珍珠奶茶」透過子字串「奶茶」誤匹配。
+        規則：name 本身是 DRINK_ALIASES key，或去掉已知 temp/size 前綴後是 key。
+        """
+        if name in DRINK_ALIASES:
+            return True
+        for prefix in _DRINK_MODIFIER_PREFIXES:
+            if name.startswith(prefix):
+                remainder = name[len(prefix) :]
+                if remainder and remainder in DRINK_ALIASES:
+                    return True
+        return False
+
     def _resolve_snack_flavor(self, flavor: Optional[str]) -> Optional[str]:
         """將點心別名轉換為標準名稱（已是完整菜單名則跳過，避免子串誤匹配）
         只做完全匹配或 name 結尾是 ≥2 字元的 alias，
@@ -241,9 +274,9 @@ class ToolRegistry:
             return self._resolve_item_name(resolved_combo)
 
         # 4. 飲料別名解析（得到標準名，不含杯型；杯型由 add_item 外層提供）
+        # 驗證：name 必須是已知別名或 [temp/size 前綴]+別名，避免「珍珠奶茶」誤匹配
         resolved_drink = self._resolve_drink_flavor(name)
-        if resolved_drink and resolved_drink != name:
-            # 檢查標準名 + (中) 是否存在（代表是飲料）
+        if resolved_drink and resolved_drink != name and self._is_valid_drink_input(name):
             probe = f"{resolved_drink}(中)"
             if probe in _MENU_INDEX:
                 return {
@@ -287,10 +320,14 @@ class ToolRegistry:
         if resolved_snack and resolved_snack != name and resolved_snack in _MENU_INDEX:
             return {**_MENU_INDEX[resolved_snack], "resolved_name": resolved_snack}
 
-        # 8. 子字串匹配（最後的補漏）
+        # 8. 子字串匹配（去掉規格括號後比較，要求 ≥ 60% 長度比例）
         for full_name, info in _MENU_INDEX.items():
-            if name in full_name or full_name in name:
-                return {**info, "resolved_name": full_name}
+            base = full_name.split("(")[0] if "(" in full_name else full_name
+            if name in base or base in name:
+                shorter = min(len(name), len(base))
+                longer = max(len(name), len(base))
+                if shorter >= longer * _SUBSTRING_MATCH_MIN_RATIO:
+                    return {**info, "resolved_name": full_name}
 
         return None
 
@@ -336,21 +373,12 @@ class ToolRegistry:
                 flavor=resolved_name, rice=rice, spicy=spicy, extra_egg=extra_egg, quantity=quantity
             )
 
-        # ── 飲品 ──
+        # ── 飲品（先問溫度，答了再問杯型）──
         if category == "飲品":
-            missing = []
-            if not size:
-                missing.append("size")
             if not temp:
-                missing.append("temp")
-            if missing:
-                if "size" in missing and "temp" in missing:
-                    msg = "要中杯還是大杯？冰的還是溫的？"
-                elif "size" in missing:
-                    msg = "要中杯還是大杯？"
-                else:
-                    msg = "飲料要冰的還是溫的？"
-                return {"ok": False, "missing": missing, "message": msg}
+                return {"ok": False, "missing": ["temp"], "message": "冰的還是溫的？"}
+            if not size:
+                return {"ok": False, "missing": ["size"], "message": "要中杯還是大杯？"}
             return self.add_drink(flavor=resolved_name, size=size, temp=temp, quantity=quantity)
 
         # ── 吐司 / 漢堡 / 饅頭（載體） ──
