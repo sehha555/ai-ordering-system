@@ -202,7 +202,9 @@ export function useSSE({
           break;
         case 'transcription': {
           const transcriptionData = JSON.parse(dataStr);
-          setTranscript(transcriptionData.text || '');
+          const transcriptionText = transcriptionData.text || '';
+          setTranscript(transcriptionText);
+          if (transcriptionText) useStore.getState().addMessage('user', transcriptionText);
           break;
         }
         case 'cart_update': {
@@ -229,7 +231,9 @@ export function useSSE({
           break;
         case 'tts_text': {
           const ttsData = JSON.parse(dataStr);
-          setAiReply(ttsData.text || '');
+          const ttsText = ttsData.text || '';
+          setAiReply(ttsText);
+          if (ttsText) useStore.getState().addMessage('assistant', ttsText);
           break;
         }
         case 'audio_chunk': {

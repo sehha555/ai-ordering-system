@@ -7,6 +7,13 @@ export interface CartItem {
   quantity: number;
 }
 
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
+}
+
 export type AppStatus = 'idle' | 'listening' | 'processing' | 'speaking';
 
 export type CheckoutStep = 0 | 1 | 2;
@@ -57,6 +64,9 @@ export interface AppState {
   // AI 回覆文字（用於橫幅顯示）
   aiReply: string;
 
+  // 對話歷史
+  messages: ChatMessage[];
+
   // 麥克風音量（0-1，供 AudioVisualizer 使用）
   volume: number;
 
@@ -76,6 +86,9 @@ export interface AppState {
   resetSession: () => void;
   setVadEnabled: (enabled: boolean) => void;
   setVolume: (volume: number) => void;
+
+  // Actions - 對話歷史
+  addMessage: (role: 'user' | 'assistant', content: string) => void;
 
   // Actions - 網路連線
   setConnectionError: (error: string | null) => void;

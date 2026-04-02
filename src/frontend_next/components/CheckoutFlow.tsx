@@ -48,16 +48,17 @@ export default function CheckoutFlow() {
     if (checkoutStep !== 2) return;
     setCountdown(10);
     const timer = setInterval(() => {
-      setCountdown(prev => {
-        if (prev <= 1) {
-          resetSession();
-          return 0;
-        }
-        return prev - 1;
-      });
+      setCountdown(prev => prev - 1);
     }, 1000);
     return () => clearInterval(timer);
-  }, [checkoutStep, resetSession]);
+  }, [checkoutStep]);
+
+  // 倒數歸零時重置（避免在 setState callback 中呼叫 resetSession）
+  useEffect(() => {
+    if (countdown <= 0 && checkoutStep === 2) {
+      resetSession();
+    }
+  }, [countdown, checkoutStep, resetSession]);
 
   // 手動結帳 — 送出訂單到後端
   const handleManualSubmit = async () => {

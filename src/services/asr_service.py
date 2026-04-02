@@ -23,11 +23,10 @@ def _wav_bytes_to_ndarray(wav_bytes: bytes) -> tuple[np.ndarray, int]:
 class ASRService:
     """使用 Qwen3-ASR 的語音辨識服務"""
 
-    # Qwen3-ASR 模型對應
+    # Qwen3-ASR 模型對應（官方只有 0.6B 和 1.7B）
     MODELS = {
-        "small": "Qwen/Qwen3-ASR-Small",
-        "turbo": "Qwen/Qwen3-ASR-Turbo",
-        "large": "Qwen/Qwen3-ASR",
+        "0.6b": "Qwen/Qwen3-ASR-0.6B",
+        "1.7b": "Qwen/Qwen3-ASR-1.7B",
     }
 
     # 語言代碼對應 (Qwen3 使用完整語言名稱)
@@ -38,17 +37,17 @@ class ASRService:
         "ko": "Korean",
     }
 
-    def __init__(self, model_size: str = "turbo", language: str = "zh"):
+    def __init__(self, model_size: str = "0.6b", language: str = "zh"):
         """
         初始化 ASR 服務
 
         Args:
-            model_size: 模型大小 ("small", "turbo", "large")
+            model_size: 模型大小 ("0.6b", "1.7b")
             language: 預設語言 (zh, en, ja, ko)
         """
         self.model = None
         self.language = language
-        self.model_name = self.MODELS.get(model_size, self.MODELS["turbo"])
+        self.model_name = self.MODELS.get(model_size, self.MODELS["0.6b"])
 
         try:
             from qwen_asr.inference.qwen3_asr import Qwen3ASRModel
@@ -312,4 +311,6 @@ def create_asr_service(backend: str = "sensevoice", **kwargs):
 
         return SenseVoiceService(model_id=SENSEVOICE_MODEL, hub=SENSEVOICE_HUB, **kwargs)
     else:
-        return ASRService(**kwargs)
+        from src.config.models import QWEN3ASR_MODEL_SIZE
+
+        return ASRService(model_size=QWEN3ASR_MODEL_SIZE, **kwargs)

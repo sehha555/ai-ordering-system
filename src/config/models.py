@@ -1,5 +1,6 @@
 # src/config/models.py
 """模型配置 — 修改此檔案切換後端"""
+
 from src.config.settings import settings
 
 # 後端選擇（統一從 Settings 讀取）
@@ -9,6 +10,9 @@ TTS_BACKEND = settings.TTS_BACKEND
 # SenseVoice 設定（必須用 modelscope hub，HuggingFace 版權重解碼異常）
 SENSEVOICE_MODEL = settings.SENSEVOICE_MODEL
 SENSEVOICE_HUB = settings.SENSEVOICE_HUB
+
+# Qwen3-ASR 設定
+QWEN3ASR_MODEL_SIZE = settings.QWEN3ASR_MODEL_SIZE
 
 # Qwen3-TTS 設定
 QWEN3TTS_MODEL = settings.QWEN3TTS_MODEL

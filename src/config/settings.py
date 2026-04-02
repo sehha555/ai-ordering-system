@@ -6,22 +6,23 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", ".env.dev"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
 
     # --- 環境分層 ---
-    ENVIRONMENT: str = "dev"              # "dev" | "prod"
+    ENVIRONMENT: str = "dev"  # "dev" | "prod"
     CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
-    REDIS_URL: str = ""                   # 空字串 = InMemory fallback
+    REDIS_URL: str = ""  # 空字串 = InMemory fallback
     SESSION_TTL_MINUTES: int = 30
 
     # --- 模型配置 ---
-    ASR_BACKEND: str = "sensevoice"       # "sensevoice" | "qwen3asr"
-    TTS_BACKEND: str = "edgetts"          # "edgetts" | "qwen3tts"
+    ASR_BACKEND: str = "sensevoice"  # "sensevoice" | "qwen3asr"
+    TTS_BACKEND: str = "edgetts"  # "edgetts" | "qwen3tts"
+    QWEN3ASR_MODEL_SIZE: str = "0.6b"  # "0.6b" | "1.7b"
     SENSEVOICE_MODEL: str = "iic/SenseVoiceSmall"
-    SENSEVOICE_HUB: str = "ms"            # "ms" = ModelScope
+    SENSEVOICE_HUB: str = "ms"  # "ms" = ModelScope
     QWEN3TTS_MODEL: str = "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice"
     QWEN3TTS_SPEAKER: str = "Vivian"
 
@@ -38,8 +39,8 @@ class Settings(BaseSettings):
 
     # --- 日誌與效能 ---
     LOG_LEVEL: str = "INFO"
-    LOG_FORMAT: str = "color"             # "color" | "json"
-    LOG_RETENTION_DAYS: int = 7           # dev 7 天、prod 建議 30 天
+    LOG_FORMAT: str = "color"  # "color" | "json"
+    LOG_RETENTION_DAYS: int = 7  # dev 7 天、prod 建議 30 天
     PERF_SLOW_THRESHOLD: float = 5.0
 
     # --- 上傳限制 ---

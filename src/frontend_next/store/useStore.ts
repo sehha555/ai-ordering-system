@@ -27,6 +27,9 @@ export const useStore = create<AppState>((set) => ({
   // AI 回覆文字
   aiReply: '',
 
+  // 對話歷史
+  messages: [],
+
   // 麥克風音量
   volume: 0,
 
@@ -60,6 +63,7 @@ export const useStore = create<AppState>((set) => ({
     checkoutPreview: null,
     connectionError: null,
     aiReply: '',
+    messages: [],
     volume: 0,
   }),
   setVadEnabled: (vadEnabled: boolean) => set({ vadEnabled }),
@@ -67,6 +71,16 @@ export const useStore = create<AppState>((set) => ({
 
   // Actions - AI 回覆文字
   setAiReply: (aiReply: string) => set({ aiReply }),
+
+  // Actions - 對話歷史
+  addMessage: (role, content) => set((state) => ({
+    messages: [...state.messages, {
+      id: crypto.randomUUID(),
+      role,
+      content,
+      timestamp: Date.now(),
+    }],
+  })),
 
   // Actions - 網路連線
   setConnectionError: (error: string | null) => set({ connectionError: error }),
