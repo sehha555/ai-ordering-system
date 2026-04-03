@@ -128,6 +128,9 @@ class LLMToolCaller:
             payload["max_tokens"] = max_tokens
         return payload
 
+    # 超過 _MAX_HISTORY_TURNS 輪（一輪 = user + assistant = 2 條）時壓縮舊對話
+    _MAX_HISTORY_TURNS = 6  # 保留最近 6 輪 = 12 條 messages
+
     def _build_messages(
         self,
         system_prompt: str,
@@ -135,14 +138,27 @@ class LLMToolCaller:
         history: List[Dict[str, Any]],
         context: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """組裝 LLM 訊息列表（/no_think + system + priming + history + context + user）"""
+        """組裝 LLM 訊息列表（/no_think + system + priming + history + context + user）
+
+        超過 6 輪時，舊對話用 cart context 取代（購物車就是最好的摘要）。
+        """
         messages: List[Dict[str, Any]] = [
             {"role": "system", "content": _NO_THINK_PREFIX + system_prompt}
         ]
         messages.extend(_PRIMING_MESSAGES)
-        messages.extend(history)
-        if context is not None:
-            messages.append({"role": "system", "content": context})
+
+        max_msgs = self._MAX_HISTORY_TURNS * 2
+        if len(history) > max_msgs:
+            if context:
+                summary = f"（先前對話已省略。{context}）"
+            else:
+                summary = "（先前對話已省略。）"
+            messages.append({"role": "system", "content": summary})
+            messages.extend(history[-max_msgs:])
+        else:
+            messages.extend(history)
+            if context:
+                messages.append({"role": "system", "content": context})
         messages.append({"role": "user", "content": user_text})
         return messages
 
