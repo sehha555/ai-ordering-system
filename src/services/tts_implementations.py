@@ -3,6 +3,7 @@ import asyncio
 import io
 from typing import AsyncIterator
 import edge_tts
+import httpx
 from loguru import logger
 from src.services.tts_interface import TTSModel
 
@@ -99,11 +100,41 @@ class Qwen3TTSModel(TTSModel):
                 yield chunk
 
 
+class OmniVoiceTTSModel(TTSModel):
+    """OmniVoice TTS — 透過 HTTP 呼叫獨立微服務（避免 transformers 版本衝突）
+
+    微服務啟動：python src/services/omnivoice_server.py --port 8100
+    """
+
+    def __init__(self, base_url: str = "http://127.0.0.1:8100"):
+        self._base_url = base_url
+        self._client = httpx.AsyncClient(base_url=base_url, timeout=30.0)
+        self._fallback = EdgeTTSModel()
+        logger.info("[TTS] OmniVoice client 初始化 ({})", base_url)
+
+    async def run_stream(self, text: str) -> AsyncIterator[bytes]:
+        try:
+            r = await self._client.post("/synthesize", json={"text": text})
+            if r.status_code == 200:
+                yield r.content
+                return
+            logger.warning("[TTS] OmniVoice 合成失敗 ({}), fallback Edge TTS", r.status_code)
+        except Exception as e:
+            logger.warning("[TTS] OmniVoice 請求失敗: {}，fallback Edge TTS", e)
+
+        async for chunk in self._fallback.run_stream(text):
+            yield chunk
+
+
 def create_tts_model(backend: str = "edgetts") -> TTSModel:
     """工廠函式：依 backend 建立 TTS 模型"""
     if backend == "qwen3tts":
         from src.config.models import QWEN3TTS_MODEL, QWEN3TTS_SPEAKER
 
         return Qwen3TTSModel(model_id=QWEN3TTS_MODEL, speaker=QWEN3TTS_SPEAKER)
+    elif backend == "omnivoice":
+        from src.config.models import OMNIVOICE_BASE_URL
+
+        return OmniVoiceTTSModel(base_url=OMNIVOICE_BASE_URL)
     else:
         return EdgeTTSModel()

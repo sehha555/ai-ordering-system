@@ -63,6 +63,7 @@ llm:
         min_p: 0.01
         repeat_penalty: 1.0
         force_no_think: true   # 跳過 thinking block，直接輸出 tags
+    # gemma4-e4b: 65% 通過率，中文品項理解差，不採用（2026-04-03 測試）
     # reasoning distilled 已驗證：延遲增加 + tool calling 準確度下降，移除
     # - id: qwen3.5-9b-reasoning-distilled（停用）
   metrics: [tool_call_accuracy, response_latency, scenario_pass_rate]
