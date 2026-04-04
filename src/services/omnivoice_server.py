@@ -23,7 +23,7 @@ import threading
 
 _model = None
 _voice_prompt = None
-_instruct = "female, young adult, chinese accent, moderate pitch"
+_instruct = "female, young adult, Taiwanese Mandarin accent, warm and friendly tone, moderate pitch"
 _inference_lock = threading.Lock()
 
 
@@ -140,7 +140,10 @@ def main():
     parser = argparse.ArgumentParser(description="OmniVoice TTS 微服務")
     parser.add_argument("--port", type=int, default=8100)
     parser.add_argument("--model", default="k2-fsa/OmniVoice")
-    parser.add_argument("--instruct", default="female, young adult, chinese accent, moderate pitch")
+    parser.add_argument(
+        "--instruct",
+        default="female, young adult, Taiwanese Mandarin accent, warm and friendly tone, moderate pitch",
+    )
     parser.add_argument("--ref-audio", default="")
     parser.add_argument("--ref-text", default="")
     args = parser.parse_args()

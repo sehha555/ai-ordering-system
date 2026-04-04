@@ -19,7 +19,7 @@ export default function Home() {
 
   return (
     <div className="h-screen w-screen flex items-center justify-center" style={{ backgroundColor: '#e4ecef' }}>
-    <div className="flex flex-col overflow-hidden" style={{ backgroundColor: '#f0f5f7', width: '85vw', height: '90vh', maxWidth: '1400px', maxHeight: '900px', borderRadius: '1.5rem', boxShadow: '0 8px 40px rgba(114, 157, 173, 0.18)' }}>
+    <div className="flex flex-col overflow-hidden" style={{ backgroundColor: '#f0f5f7', width: '85vw', height: '90vh', maxWidth: '98vw', maxHeight: '98vh', minWidth: '600px', minHeight: '500px', borderRadius: '1.5rem', boxShadow: '0 8px 40px rgba(114, 157, 173, 0.18)', resize: 'both' }}>
       <Toast />
 
       {/* Header */}

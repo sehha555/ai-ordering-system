@@ -124,14 +124,14 @@ export default function AudioVisualizer({ status, volume = 0, size = 'large' }: 
         rimAlpha = 0.4;
         break;
       case 'speaking':
-        noiseAmp = (8 + Math.sin(t * 2.5) * 6) * scale;
-        breathAmp = (10 + Math.sin(t * 1.8) * 5) * scale;
+        noiseAmp = (5 + vol * 22 + Math.sin(t * 2.5) * 3) * scale;
+        breathAmp = (6 + vol * 14) * scale;
         breathSpeed = 1.5;
         waveCount = 6;
-        waveSpeed = 2;
-        glowAlpha = 0.15;
-        scaleFactor = 1.08 + Math.sin(t * 2) * 0.06;
-        rimAlpha = 0.35;
+        waveSpeed = 1.5 + vol * 2.5;
+        glowAlpha = 0.12 + vol * 0.15;
+        scaleFactor = 1.05 + vol * 0.15;
+        rimAlpha = 0.3 + vol * 0.3;
         break;
     }
 
