@@ -14,6 +14,10 @@ from src.api.auth import get_api_key
 from src.dm.tool_priming import CHECKOUT_TAG
 
 import re
+from datetime import datetime
+from pathlib import Path
+
+_AUDIO_LOG_DIR = Path(__file__).resolve().parents[2] / "logs" / "audio"
 
 # 結帳狀態機常數
 _CK_DINE = "CHECKOUT_DINE"
@@ -594,6 +598,19 @@ async def voice_chat(
 
     if len(audio_bytes) > settings.MAX_AUDIO_SIZE_BYTES:
         raise HTTPException(status_code=413, detail="音訊檔案超過 10MB 上限")
+
+    # 非同步存原始音訊（不阻塞 event loop）
+    try:
+        now = datetime.now()
+        audio_dir = _AUDIO_LOG_DIR / now.strftime("%Y-%m-%d")
+        audio_dir.mkdir(parents=True, exist_ok=True)
+        ts = now.strftime("%H%M%S") + f"_{now.microsecond // 1000:03d}"
+        audio_path = audio_dir / f"{session_id}_{ts}.webm"
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, audio_path.write_bytes, audio_bytes)
+        logger.debug("[VOICE] 音訊已存: {}", audio_path)
+    except Exception as e:
+        logger.warning("[VOICE] 存音訊失敗: {}", e)
 
     # 估算時長：webm/opus 通常 ~32kbps，過短視為空白音訊跳過 ASR
     estimated_duration_ms = len(audio_bytes) / (32 * 1024 / 8) * 1000

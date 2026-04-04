@@ -30,6 +30,9 @@ export const useStore = create<AppState>((set) => ({
   // 對話歷史
   messages: [],
 
+  // Streaming 文字
+  streamingText: '',
+
   // 麥克風音量
   volume: 0,
 
@@ -64,6 +67,7 @@ export const useStore = create<AppState>((set) => ({
     connectionError: null,
     aiReply: '',
     messages: [],
+    streamingText: '',
     volume: 0,
   }),
   setVadEnabled: (vadEnabled: boolean) => set({ vadEnabled }),
@@ -81,6 +85,12 @@ export const useStore = create<AppState>((set) => ({
       timestamp: Date.now(),
     }],
   })),
+
+  // Actions - Streaming 文字
+  appendStreamingText: (chunk) => set((state) => ({
+    streamingText: state.streamingText + chunk,
+  })),
+  clearStreamingText: () => set({ streamingText: '' }),
 
   // Actions - 網路連線
   setConnectionError: (error: string | null) => set({ connectionError: error }),

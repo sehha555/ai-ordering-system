@@ -4,13 +4,22 @@ import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../store/useStore';
 
+const ASSISTANT_BUBBLE_STYLE = {
+  backgroundColor: 'rgba(114, 157, 173, 0.12)',
+  color: '#3a5560',
+  borderRadius: '1rem 1rem 1rem 0.25rem',
+  borderLeft: '3px solid #729DAD',
+} as const;
+
 export default function ChatPanel() {
   const messages = useStore((state) => state.messages);
+  const streamingText = useStore((state) => state.streamingText);
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // 新訊息或 streaming 開始/結束時滾動（!!streamingText 避免每 token 觸發）
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length]);
+  }, [messages.length, !!streamingText]);
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4">
@@ -44,12 +53,7 @@ export default function ChatPanel() {
                           color: 'white',
                           borderRadius: '1rem 1rem 0.25rem 1rem',
                         }
-                      : {
-                          backgroundColor: 'rgba(114, 157, 173, 0.12)',
-                          color: '#3a5560',
-                          borderRadius: '1rem 1rem 1rem 0.25rem',
-                          borderLeft: '3px solid #729DAD',
-                        }
+                      : ASSISTANT_BUBBLE_STYLE
                   }
                 >
                   {msg.content}
@@ -57,6 +61,26 @@ export default function ChatPanel() {
               </motion.div>
             ))}
           </AnimatePresence>
+          {streamingText && (
+            <motion.div
+              key="streaming"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2 }}
+              className="flex justify-start"
+            >
+              <div
+                className="max-w-[80%] px-4 py-3 text-base"
+                style={ASSISTANT_BUBBLE_STYLE}
+              >
+                {streamingText}
+                <span
+                  className="inline-block w-[2px] h-[1em] ml-0.5 align-middle animate-pulse"
+                  style={{ backgroundColor: '#729DAD' }}
+                />
+              </div>
+            </motion.div>
+          )}
           <div ref={bottomRef} />
         </div>
       )}

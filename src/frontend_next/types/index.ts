@@ -67,6 +67,9 @@ export interface AppState {
   // 對話歷史
   messages: ChatMessage[];
 
+  // Streaming 文字（LLM 逐 token 累積中）
+  streamingText: string;
+
   // 麥克風音量（0-1，供 AudioVisualizer 使用）
   volume: number;
 
@@ -89,6 +92,10 @@ export interface AppState {
 
   // Actions - 對話歷史
   addMessage: (role: 'user' | 'assistant', content: string) => void;
+
+  // Actions - Streaming 文字
+  appendStreamingText: (chunk: string) => void;
+  clearStreamingText: () => void;
 
   // Actions - 網路連線
   setConnectionError: (error: string | null) => void;

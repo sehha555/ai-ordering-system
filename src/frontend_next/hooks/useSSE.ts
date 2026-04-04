@@ -100,6 +100,7 @@ export function useSSE({
       }
 
       streamDoneRef.current = true;
+      useStore.getState().clearStreamingText();
       if (audioQueueRef.current.length === 0 && !isPlayingRef.current) {
         setStatus('idle');
         if (vadEnabled && isListeningRef.current) {
@@ -110,6 +111,7 @@ export function useSSE({
       clearTimeout(timeoutId);
       console.error('[自動追問] 文字傳送失敗:', error);
       streamDoneRef.current = true;
+      useStore.getState().clearStreamingText();
       const isTimeout = (error as Error).name === 'AbortError';
       useStore.getState().setConnectionError(
         isTimeout ? '回應超時，請再試一次' : '自動追問傳送失敗，請稍後再試'
@@ -170,6 +172,7 @@ export function useSSE({
       }
 
       streamDoneRef.current = true;
+      useStore.getState().clearStreamingText();
       if (audioQueueRef.current.length === 0 && !isPlayingRef.current) {
         setStatus('idle');
         if (vadEnabled && isListeningRef.current) {
@@ -180,6 +183,7 @@ export function useSSE({
       clearTimeout(timeoutId);
       console.error('[VoiceController] 音訊傳送失敗:', error);
       streamDoneRef.current = true;
+      useStore.getState().clearStreamingText();
       const isTimeout = (error as Error).name === 'AbortError';
       useStore.getState().setConnectionError(
         isTimeout ? '回應超時，請再試一次' : '連線失敗，請稍後再試'
@@ -229,11 +233,18 @@ export function useSSE({
         case 'status':
           setStatus('processing');
           break;
+        case 'text_delta': {
+          const deltaData = JSON.parse(dataStr);
+          const chunk = deltaData.text || '';
+          if (chunk) useStore.getState().appendStreamingText(chunk);
+          break;
+        }
         case 'tts_text': {
           const ttsData = JSON.parse(dataStr);
           const ttsText = ttsData.text || '';
           setAiReply(ttsText);
           if (ttsText) useStore.getState().addMessage('assistant', ttsText);
+          useStore.getState().clearStreamingText();
           break;
         }
         case 'audio_chunk': {
@@ -254,6 +265,7 @@ export function useSSE({
             msg = dataStr || msg;
           }
           useStore.getState().setConnectionError(msg);
+          useStore.getState().clearStreamingText();
           setAiReply('');
           break;
         }

@@ -172,6 +172,10 @@ class StreamingOrchestrator:
                 buffer += content
                 full_text += content
 
+                # 即時轉發 text_delta 到前端（streaming 顯示）
+                if content:
+                    yield {"event": "text_delta", "data": {"text": content}}
+
                 # 自適應分句：標點切分 + MIN/MAX 字數閾值
                 while buffer:
                     if len(buffer) >= _MAX_SENTENCE_CHARS:
