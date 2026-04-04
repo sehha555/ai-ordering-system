@@ -28,7 +28,7 @@ export default function Home() {
         style={{ backgroundColor: '#ffffff', borderBottom: '1px solid #d0dce0' }}
       >
         <div className="flex items-center gap-3">
-          <img src="/logo.svg" alt="源飯糰" style={{ width: 36, height: 36 }} />
+          <img src="/logo.png" alt="源飯糰" style={{ width: 36, height: 36 }} />
           <h1 className="text-2xl font-black tracking-wide" style={{ color: '#2c3e42' }}>
             源飯糰
           </h1>
