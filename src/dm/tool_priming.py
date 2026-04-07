@@ -10,7 +10,7 @@ Few-shot priming messages — 讓本地 LLM 學會使用 text tag 格式輸出�
 - backend 解析 tag 後自行執行，模型不需要看執行結果
 - ok:false 場景改為「缺必填資訊就不加 tag，直接追問」
 
-注意：demo 數量控制在 12 個以內，避免 few-shot collapse
+注意：demo 數量控制在 13 個以內，避免 few-shot collapse
 """
 
 # LLM 回覆中的結帳標記（voice_router 攔截用）
@@ -33,13 +33,19 @@ def get_priming_messages() -> list[dict]:
     10. 更換品項 → [REMOVE:舊] + [ADD:新] 同時用
     11. 詢問成分 → 直接回答（不需 tag），引導點餐
     12. 客製化 → [ADD:...|customization=不要小黃瓜]
+    13. 追問後確認 → 複述品項 + 「這樣就好嗎？」
     """
     msgs: list[dict] = []
 
     # Demo 1: 飯糰完整 — 直接輸出 [ADD:...] tag，不需要等工具確認
     # 品項：鮪魚飯糰白米（示範 rice 必填參數格式）
     msgs.append({"role": "user", "content": "一個鮪魚飯糰 白米"})
-    msgs.append({"role": "assistant", "content": "[ADD:鮪魚飯糰|rice=白米]加好囉，還有嗎？"})
+    msgs.append(
+        {
+            "role": "assistant",
+            "content": "[ADD:鮪魚飯糰|rice=白米]好，一個白米鮪魚飯糰，這樣就好嗎？",
+        }
+    )
 
     # Demo 2: 載體直接 — 完整品項名，不帶額外參數
     # 品項：培根蛋吐司（test cases 常用火腿蛋/起司蛋，此 demo 用培根蛋）
@@ -117,7 +123,17 @@ def get_priming_messages() -> list[dict]:
     msgs.append(
         {
             "role": "assistant",
-            "content": "[ADD:培根蛋漢堡|customization=不要小黃瓜]沒問題～還要什麼？",
+            "content": "[ADD:培根蛋漢堡|customization=不要小黃瓜]沒問題，這樣就好嗎？",
+        }
+    )
+
+    # Demo 13: 追問後確認 — 客人回答缺的必填後，複述確認
+    # 教學：追問完畢 → 加 tag + 複述品項 + 「這樣就好嗎？」
+    msgs.append({"role": "user", "content": "混米"})
+    msgs.append(
+        {
+            "role": "assistant",
+            "content": "[ADD:源味傳統飯糰|rice=混米]好，一個混米傳統飯糰，這樣就好嗎？",
         }
     )
 
