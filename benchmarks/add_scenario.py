@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 # 預設目標檔案
-DEFAULT_FILE = Path(__file__).parent / "test_data" / "llm" / "test_scenarios_unified.json"
+DEFAULT_FILE = Path(__file__).parent / "test_data" / "llm" / "test_scenarios.json"
 
 
 def parse_expect_arg(raw: str) -> dict:
@@ -62,7 +62,7 @@ def build_scenario(args: argparse.Namespace) -> dict:
         args: argparse 解析結果
 
     Returns:
-        符合 test_scenarios_unified.json 格式的場景 dict
+        符合 test_scenarios.json 格式的場景 dict
     """
     # 組建訊息列表：先放前置對話，再放本次使用者輸入
     messages: list[dict] = []
@@ -123,9 +123,7 @@ def save_scenarios(path: Path, scenarios: list[dict]) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="快速新增 benchmark 場景到 test_scenarios_unified.json"
-    )
+    parser = argparse.ArgumentParser(description="快速新增 benchmark 場景到 test_scenarios.json")
     parser.add_argument("--id", required=True, help="場景 ID（唯一）")
     parser.add_argument("--desc", default="", help="場景描述")
     parser.add_argument("--category", default="edge_case", help="分類（預設 edge_case）")
@@ -162,7 +160,7 @@ def main() -> None:
     parser.add_argument(
         "--file",
         default=str(DEFAULT_FILE),
-        help="目標 JSON 檔（預設 test_scenarios_unified.json）",
+        help="目標 JSON 檔（預設 test_scenarios.json）",
     )
     parser.add_argument(
         "--dry-run",

@@ -490,7 +490,7 @@ def run_prompt_search(
     timeout = config["benchmark"]["timeout"]
 
     # 載入測試資料
-    data_path = Path(__file__).parent / "test_data" / "llm" / "test_scenarios_unified.json"
+    data_path = Path(__file__).parent / "test_data" / "llm" / "test_scenarios.json"
     with open(data_path, encoding="utf-8") as f:
         test_data: list[dict] = json.load(f)
 

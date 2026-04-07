@@ -2,6 +2,7 @@
 模型 Benchmark Runner
 用法: python -m benchmarks.run_benchmark --type asr|tts|llm|e2e|all [--model MODEL_ID]
 """
+
 import argparse
 import json
 import threading
@@ -23,12 +24,15 @@ def load_config(config_path: Path = None) -> dict:
 def get_adapter(adapter_type: str, adapter_name: str, params: dict):
     if adapter_type == "asr":
         from benchmarks.adapters.asr_adapters import create_asr_adapter
+
         return create_asr_adapter(adapter_name, params)
     elif adapter_type == "tts":
         from benchmarks.adapters.tts_adapters import create_tts_adapter
+
         return create_tts_adapter(adapter_name, params)
     elif adapter_type == "llm":
         from benchmarks.adapters.llm_adapters import create_llm_adapter
+
         return create_llm_adapter(adapter_name, params)
     else:
         raise ValueError(f"不支援的 adapter 類型: {adapter_type}")
@@ -46,8 +50,7 @@ def load_test_data(benchmark_type: str, scenarios: str | None = None) -> list[di
         with open(data_dir / "test_sentences.json", "r", encoding="utf-8") as f:
             return json.load(f)
     elif benchmark_type == "llm":
-        # --scenarios unified → test_scenarios_unified.json
-        # 未指定 → test_scenarios.json（原始版本）
+        # --scenarios <name> → test_scenarios_<name>.json，未指定 → test_scenarios.json
         filename = f"test_scenarios_{scenarios}.json" if scenarios else "test_scenarios.json"
         with open(data_dir / filename, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -68,16 +71,22 @@ def _run_single_case(adapter, case: dict, repeat: int, timeout: int) -> dict:
             case_results.append(result)
         except Exception as e:
             elapsed = time.perf_counter() - start
-            case_results.append({
-                "success": False,
-                "error": str(e),
-                "latency": elapsed,
-            })
+            case_results.append(
+                {
+                    "success": False,
+                    "error": str(e),
+                    "latency": elapsed,
+                }
+            )
     return {"case_id": case_id, "runs": case_results}
 
 
 def run_single_benchmark(
-    benchmark_type: str, model_config: dict, test_data: list, config: dict, workers: int = 1,
+    benchmark_type: str,
+    model_config: dict,
+    test_data: list,
+    config: dict,
+    workers: int = 1,
 ) -> dict:
     adapter = get_adapter(benchmark_type, model_config["adapter"], model_config.get("params", {}))
     repeat = config["benchmark"]["repeat"]
@@ -126,7 +135,9 @@ def run_single_benchmark(
                 runs = case_result["runs"]
                 avg_lat = sum(r["latency"] for r in runs) / len(runs)
                 status = "✓" if all(r["success"] for r in runs) else "✗"
-                print(f"    [{done_count}/{total}] {case_result['case_id']}... {status} {avg_lat:.1f}s")
+                print(
+                    f"    [{done_count}/{total}] {case_result['case_id']}... {status} {avg_lat:.1f}s"
+                )
 
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {
@@ -149,12 +160,15 @@ def run_single_benchmark(
     # 計算 metrics
     if benchmark_type == "asr":
         from benchmarks.metrics.asr_metrics import compute_asr_metrics
+
         results["summary"] = compute_asr_metrics(results["test_cases"], test_data)
     elif benchmark_type == "tts":
         from benchmarks.metrics.tts_metrics import compute_tts_metrics
+
         results["summary"] = compute_tts_metrics(results["test_cases"], test_data)
     elif benchmark_type == "llm":
         from benchmarks.metrics.llm_metrics import compute_llm_metrics
+
         results["summary"] = compute_llm_metrics(results["test_cases"], test_data)
 
     return results
@@ -163,12 +177,17 @@ def run_single_benchmark(
 def _collect_env_info() -> dict:
     """收集執行環境資訊（GPU、模型載入狀態等）"""
     import subprocess
+
     env = {}
     try:
         out = subprocess.check_output(
-            ["nvidia-smi", "--query-gpu=name,memory.total,memory.used,memory.free",
-             "--format=csv,noheader,nounits"],
-            text=True, timeout=5,
+            [
+                "nvidia-smi",
+                "--query-gpu=name,memory.total,memory.used,memory.free",
+                "--format=csv,noheader,nounits",
+            ],
+            text=True,
+            timeout=5,
         ).strip()
         parts = [p.strip() for p in out.split(",")]
         if len(parts) >= 4:
@@ -230,19 +249,21 @@ def print_comparison(report: dict):
     env = report.get("environment", {})
     if env.get("gpu"):
         gpu = env["gpu"]
-        print(f"\n  GPU: {gpu['name']} | VRAM: {gpu['vram_used_mb']}/{gpu['vram_total_mb']} MB ({gpu['vram_free_mb']} MB free)")
+        print(
+            f"\n  GPU: {gpu['name']} | VRAM: {gpu['vram_used_mb']}/{gpu['vram_total_mb']} MB ({gpu['vram_free_mb']} MB free)"
+        )
     if env.get("ollama_ps"):
         for line in env["ollama_ps"].split("\n")[1:]:  # 跳過 header
             if line.strip():
                 print(f"  Ollama: {line.strip()}")
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"  {report['benchmark_type'].upper()} Benchmark 結果")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
     for model_id, metrics in comp.items():
         print(f"\n  模型: {model_id}")
-        print(f"  {'─'*50}")
+        print(f"  {'─' * 50}")
 
         # 通過率 + 成功率
         pass_rate = metrics.get("scenario_pass_rate", 0)
@@ -254,13 +275,19 @@ def print_comparison(report: dict):
         print(f"  成功率:  {success}/{total} | Timeout: {timeouts} | Error: {errors}")
 
         # 延遲
-        print(f"  延遲:    avg={metrics.get('avg_latency', 0):.1f}s | p50={metrics.get('latency_p50', 0):.1f}s | p90={metrics.get('latency_p90', 0):.1f}s | min={metrics.get('latency_min', 0):.1f}s | max={metrics.get('latency_max', 0):.1f}s")
+        print(
+            f"  延遲:    avg={metrics.get('avg_latency', 0):.1f}s | p50={metrics.get('latency_p50', 0):.1f}s | p90={metrics.get('latency_p90', 0):.1f}s | min={metrics.get('latency_min', 0):.1f}s | max={metrics.get('latency_max', 0):.1f}s"
+        )
 
         # Token
-        print(f"  Token:   prompt={metrics.get('avg_prompt_tokens', 0):.0f} | completion={metrics.get('avg_completion_tokens', 0):.0f} | total={metrics.get('avg_tokens', 0):.0f} | {metrics.get('tokens_per_sec', 0):.1f} tok/s")
+        print(
+            f"  Token:   prompt={metrics.get('avg_prompt_tokens', 0):.0f} | completion={metrics.get('avg_completion_tokens', 0):.0f} | total={metrics.get('avg_tokens', 0):.0f} | {metrics.get('tokens_per_sec', 0):.1f} tok/s"
+        )
 
         # 準確率
-        print(f"  Tool F1: {metrics.get('tool_call_f1', 0):.2f} (P={metrics.get('tool_call_precision', 0):.2f} R={metrics.get('tool_call_recall', 0):.2f})")
+        print(
+            f"  Tool F1: {metrics.get('tool_call_f1', 0):.2f} (P={metrics.get('tool_call_precision', 0):.2f} R={metrics.get('tool_call_recall', 0):.2f})"
+        )
 
         # 每案判定
         verdicts = metrics.get("case_verdicts", [])
@@ -280,12 +307,14 @@ def main():
     parser.add_argument("--config", type=str, default=None)
     parser.add_argument("--limit", type=int, default=None, help="只跑前 N 個測試案例")
     parser.add_argument("--fast", action="store_true", help="快速模式：repeat=1 + limit=20")
-    parser.add_argument("--workers", type=int, default=None, help="平行 workers 數（預設讀 config）")
+    parser.add_argument(
+        "--workers", type=int, default=None, help="平行 workers 數（預設讀 config）"
+    )
     parser.add_argument(
         "--scenarios",
         type=str,
         default=None,
-        help="指定 scenario 檔案名後綴（不含路徑和 .json），如 'unified' → test_scenarios_unified.json",
+        help="指定 scenario 檔案名後綴（不含路徑和 .json），如 'v2' → test_scenarios_v2.json",
     )
     args = parser.parse_args()
 
@@ -321,11 +350,13 @@ def main():
             continue
 
         if args.limit and args.limit < len(test_data):
-            test_data = test_data[:args.limit]
+            test_data = test_data[: args.limit]
 
         mode_tag = " ⚡快速" if args.fast else ""
         worker_tag = f", {workers} workers" if workers > 1 else ""
-        print(f"\n🚀 開始 {btype.upper()} benchmark ({len(models)} 個模型, {len(test_data)} 個測試案例{worker_tag}){mode_tag}")
+        print(
+            f"\n🚀 開始 {btype.upper()} benchmark ({len(models)} 個模型, {len(test_data)} 個測試案例{worker_tag}){mode_tag}"
+        )
 
         all_results = []
         for model in models:
