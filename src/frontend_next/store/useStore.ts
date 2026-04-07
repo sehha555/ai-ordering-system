@@ -84,6 +84,8 @@ export const useStore = create<AppState>((set) => ({
       content,
       timestamp: Date.now(),
     }],
+    // assistant 訊息送達時，若與 streaming 內容相同則自動清除，避免重複顯示
+    ...(role === 'assistant' && state.streamingText === content ? { streamingText: '' } : {}),
   })),
 
   // Actions - Streaming 文字

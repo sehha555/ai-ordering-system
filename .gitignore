@@ -26,6 +26,8 @@ Thumbs.db
 
 # Database
 *.db
+*.db-shm
+*.db-wal
 
 # Conversation logs
 logs/
@@ -38,6 +40,17 @@ backups/
 .claude/
 nul
 
+
+# Playwright MCP / 測試產物
+.playwright-mcp/
+**/playwright-report/
+**/test-results/
+
+# 測試/除錯截圖
+speaking-state.png
+
+# Voice clone 參考音檔（個人）
+ref_voice.wav
 
 # Benchmark 報告（跑測試產生的結果）
 benchmarks/reports/

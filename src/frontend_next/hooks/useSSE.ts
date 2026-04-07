@@ -244,7 +244,6 @@ export function useSSE({
           const ttsText = ttsData.text || '';
           setAiReply(ttsText);
           if (ttsText) useStore.getState().addMessage('assistant', ttsText);
-          useStore.getState().clearStreamingText();
           break;
         }
         case 'audio_chunk': {
