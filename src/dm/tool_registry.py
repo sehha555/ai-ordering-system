@@ -1305,8 +1305,7 @@ class ToolRegistry:
         - add_item：統一點餐入口，後端依 name 自動路由
         - query_menu：菜單查詢
 
-        舊的 add_riceball/add_drink/add_carrier/add_egg_pancake/add_snack/add_combo
-        保留在 tool_map 供 backward compat，但不再暴露給 LLM。
+        其餘工具（remove_from_cart 等）由 voice_router 直接呼叫，不暴露給 LLM。
         """
         return [
             {
@@ -1367,8 +1366,7 @@ class ToolRegistry:
                     },
                 },
             },
-            # update_draft / modify_cart_item / remove_from_cart 從 schema 移除
-            # 方法保留在 tool_map 供 voice_router 直接呼叫
+            # remove_from_cart / finalize_order 等由 voice_router 直接呼叫，不暴露給 LLM
             {
                 "type": "function",
                 "function": {
@@ -1395,25 +1393,12 @@ class ToolRegistry:
             工具映射字典
         """
         return {
-            # 統一入口（LLM 使用）
             "add_item": self.add_item,
-            # 品項專屬工具（backward compat，LLM 不再直接呼叫）
-            "add_riceball": self.add_riceball,
-            "add_drink": self.add_drink,
-            "add_carrier": self.add_carrier,
-            "add_egg_pancake": self.add_egg_pancake,
-            "add_snack": self.add_snack,
-            "add_combo": self.add_combo,
-            "update_draft": self.update_draft,
-            "modify_cart_item": self.modify_cart_item,
-            # 共用工具
             "remove_from_cart": self.remove_from_cart,
             "get_cart_summary": self.get_cart_summary,
             "query_menu": self.query_menu,
             "finalize_order": self.finalize_order,
             "preview_checkout": self.preview_checkout,
-            # backward compat（已廢棄，保留避免舊呼叫崩潰）
-            "add_to_cart": self.add_to_cart,
         }
 
     def get_allowed_args(self) -> Dict[str, Set[str]]:
@@ -1424,7 +1409,6 @@ class ToolRegistry:
             參數映射字典
         """
         return {
-            # 統一入口（LLM 使用）
             "add_item": {
                 "name",
                 "quantity",
@@ -1436,42 +1420,9 @@ class ToolRegistry:
                 "extra_egg",
                 "customization",
             },
-            # 品項專屬工具（backward compat）
-            "add_riceball": {
-                "flavor",
-                "rice",
-                "large",
-                "extra_egg",
-                "spicy",
-                "quantity",
-                "customization",
-            },
-            "add_drink": {"flavor", "size", "temp", "quantity", "customization"},
-            "add_carrier": {"carrier", "flavor", "quantity", "customization"},
-            "add_egg_pancake": {"flavor", "quantity", "customization"},
-            "add_snack": {"flavor", "quantity", "customization"},
-            "add_combo": {"combo_name", "rice", "temp", "flavor", "quantity", "customization"},
-            "update_draft": {"items"},
-            "modify_cart_item": {"item_id", "field", "new_value"},
-            # 共用工具
             "remove_from_cart": {"index", "item_id", "last", "all"},
             "get_cart_summary": set(),
             "query_menu": {"category"},
             "finalize_order": {"dine_type", "payment_method"},
             "preview_checkout": {"dine_type", "payment_method"},
-            # backward compat
-            "add_to_cart": {
-                "item_type",
-                "flavor",
-                "rice",
-                "size",
-                "temp",
-                "carrier",
-                "combo_name",
-                "quantity",
-                "large",
-                "extra_egg",
-                "spicy",
-                "customization",
-            },
         }

@@ -39,7 +39,7 @@ def tool_call_match(
 
     Args:
         actual_calls: 實際 tool calls [{"name": str, "arguments": dict}, ...]
-        expected_tools: 預期 tool 名稱列表 ["add_to_cart", ...]
+        expected_tools: 預期 tool 名稱列表 ["add_item", ...]
         expected_args: 預期參數列表 [{"name": str, "args": dict}, ...]
             若提供，會額外驗證參數正確率，最終 f1 = name_f1 * args_score
 
@@ -51,7 +51,7 @@ def tool_call_match(
             return {"precision": 1.0, "recall": 1.0, "f1": 1.0, "args_score": 1.0}
         return {"precision": 0.0, "recall": 1.0, "f1": 0.0, "args_score": 1.0}
 
-    # 用 Counter（multiset）計數，避免 set 去重導致 3 次 add_to_cart 被算成 1 次
+    # 用 Counter（multiset）計數，避免 set 去重導致 3 次 add_item 被算成 1 次
     actual_counter = Counter(tc["name"] for tc in actual_calls)
     expected_counter = Counter(expected_tools)
     matched_count = sum((actual_counter & expected_counter).values())

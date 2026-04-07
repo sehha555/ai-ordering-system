@@ -343,8 +343,8 @@ class StreamingDMAdapter:
                 user_text=text,
                 history=session["llm_history"],
                 tools_schema=[],  # text tag mode：不送 tools，tag 由 done 事件攔截
-                tool_map=_tool_registry.get_tool_map(),
-                allowed_args=_tool_registry.get_allowed_args(),
+                tool_map={},  # text tag mode 不走 tool_calls，不需要 tool_map
+                allowed_args={},
                 context=ctx,
             ):
                 evt_type = event.get("type")

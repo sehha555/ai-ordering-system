@@ -118,7 +118,7 @@ class TestTextChatSSE:
         dm_events = [
             {
                 "type": "tool_call",
-                "tool_call": {"function": {"name": "add_to_cart", "arguments": "{}"}},
+                "tool_call": {"function": {"name": "add_item", "arguments": "{}"}},
                 "tool_result": {"ok": True},
             },
             {"type": "early_tts", "content": "好，一個薯餅～還要什麼？"},
@@ -140,7 +140,7 @@ class TestTextChatSSE:
 
         assert "status" in types
         status = find_event(events, "status")
-        assert status["data"]["message"] == _TOOL_STATUS_MAP["add_to_cart"]
+        assert status["data"]["message"] == _TOOL_STATUS_MAP["add_item"]
 
         assert "audio_chunk" in types
 
@@ -251,7 +251,7 @@ class TestVoiceChatSSE:
         async def _mock_stream(self, audio_bytes, session_id=None):
             yield {"event": "thinking", "data": {}}
             yield {"event": "transcription", "data": {"text": "我要一個飯糰"}}
-            yield {"event": "status", "data": {"message": _TOOL_STATUS_MAP["add_to_cart"]}}
+            yield {"event": "status", "data": {"message": _TOOL_STATUS_MAP["add_item"]}}
             yield {"event": "audio_chunk", "data": b64_audio}
             yield {"event": "tts_text", "data": {"text": "好，一個飯糰～"}}
             yield {

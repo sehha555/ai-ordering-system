@@ -165,11 +165,10 @@ function parseEvents(events: SSEEvent[]): CaptureResult {
 
   // 從 status 事件推斷呼叫了哪些工具
   const TOOL_STATUS_MAP: Record<string, string> = {
-    '正在加入購物車': 'add_to_cart',
+    '正在加入購物車': 'add_item',
     '正在確認訂單': 'finalize_order',
     '正在準備結帳預覽': 'preview_checkout',
     '正在查詢菜單': 'query_menu',
-    '正在查詢價格': 'get_price',
     '正在移除品項': 'remove_from_cart',
     '正在整理購物車': 'get_cart_summary',
   }

@@ -140,23 +140,15 @@ def _clean_content(content: str, parsed_objs: list[dict] | None = None) -> str:
 
 
 def _execute_tool(tool_map: dict, allowed_args: dict, name: str, arguments: dict) -> dict:
-    """執行工具並回傳結果（參考 llm_tool_caller.py:152-181）
+    """執行工具並回傳結果
 
-    add_to_cart / add_item 會先經過 pre-execution 驗證器：
+    add_item 會先經過 pre-execution 驗證器：
     參數值不合法時直接回傳錯誤訊息 + 合法選項，讓模型在 tool loop 中自修正。
-    舊版 add_to_cart 使用 tool_validator，新版 add_item 使用 tool_validator_unified。
     """
     if name not in tool_map:
         return {"ok": False, "error": f"tool_not_allowed:{name}"}
 
-    if name == "add_to_cart":
-        from benchmarks.adapters.tool_validator import validate_add_to_cart
-
-        validation_error = validate_add_to_cart(arguments)
-        if validation_error is not None:
-            logger.debug("tool_validator 攔截 add_to_cart：%s", validation_error["message"])
-            return validation_error
-    elif name == "add_item":
+    if name == "add_item":
         from benchmarks.adapters.tool_validator_unified import validate_add_item
 
         validation_error = validate_add_item(arguments)

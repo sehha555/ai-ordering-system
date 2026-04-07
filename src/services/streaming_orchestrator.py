@@ -37,11 +37,10 @@ _MAX_SENTENCE_CHARS = 40  # 超長強制切（不等標點）
 
 # tool call 中間狀態訊息
 _TOOL_STATUS_MAP = {
-    "add_to_cart": "正在加入購物車...",
+    "add_item": "正在加入購物車...",
     "finalize_order": "正在確認訂單...",
     "preview_checkout": "正在準備結帳預覽...",
     "query_menu": "正在查詢菜單...",
-    "get_price": "正在查詢價格...",
     "remove_from_cart": "正在移除品項...",
     "get_cart_summary": "正在整理購物車...",
 }
