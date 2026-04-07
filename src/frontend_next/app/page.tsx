@@ -22,20 +22,30 @@ export default function Home() {
   const dragging = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const onDragStart = useCallback((e: React.PointerEvent) => {
-    e.preventDefault();
-    dragging.current = true;
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }, []);
-
-  const onDragMove = useCallback((e: React.PointerEvent) => {
-    if (!dragging.current || !containerRef.current) return;
+  const onDragMove = useCallback((e: PointerEvent) => {
+    if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     const newRight = rect.right - e.clientX;
     setRightWidth(Math.max(260, Math.min(600, newRight)));
   }, []);
 
-  const onDragEnd = useCallback(() => { dragging.current = false; }, []);
+  const onDragEnd = useCallback((e: PointerEvent) => {
+    dragging.current = false;
+    const el = e.currentTarget as HTMLElement;
+    el.removeEventListener('pointermove', onDragMove);
+    el.removeEventListener('pointerup', onDragEnd);
+  }, [onDragMove]);
+
+  const onDragStart = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    const el = e.currentTarget as HTMLElement;
+    try {
+      el.setPointerCapture(e.pointerId);
+    } catch { return; }
+    dragging.current = true;
+    el.addEventListener('pointermove', onDragMove);
+    el.addEventListener('pointerup', onDragEnd);
+  }, [onDragMove, onDragEnd]);
 
   return (
     <div className="h-screen w-screen flex items-center justify-center" style={{ backgroundColor: '#e4ecef' }}>
@@ -63,8 +73,6 @@ export default function Home() {
       <div
         ref={containerRef}
         className="flex-1 overflow-hidden flex p-4"
-        onPointerMove={onDragMove}
-        onPointerUp={onDragEnd}
       >
         {/* 左邊：對話記錄 + 球體 */}
         <div
@@ -152,7 +160,7 @@ function VoiceHint({ status, vadEnabled }: { status: string; vadEnabled: boolean
       <motion.p
         key={text}
         className="text-sm mt-2"
-        style={{ color: status === 'listening' ? 'var(--success)' : status === 'processing' ? 'var(--warning)' : '#8a9a9f' }}
+        style={{ color: status === 'listening' ? 'var(--success)' : status === 'processing' ? 'var(--warning)' : 'var(--text-dim)' }}
         initial={{ opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -4 }}
