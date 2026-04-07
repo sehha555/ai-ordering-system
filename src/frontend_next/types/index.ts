@@ -1,5 +1,19 @@
 // src/frontend_next/types/index.ts
 
+export const SSE_EVENTS = {
+  THINKING: 'thinking',
+  TRANSCRIPTION: 'transcription',
+  CART_UPDATE: 'cart_update',
+  ORDER_COMPLETE: 'order_complete',
+  CHECKOUT_PREVIEW: 'checkout_preview',
+  STATUS: 'status',
+  TEXT_DELTA: 'text_delta',
+  TTS_TEXT: 'tts_text',
+  AUDIO_CHUNK: 'audio_chunk',
+  ERROR: 'error',
+  DONE: 'done',
+} as const;
+
 export interface CartItem {
   name: string;
   details: string;

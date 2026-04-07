@@ -15,23 +15,23 @@ export default function OrderTicket({ items, total, onCheckout }: OrderTicketPro
       className="rounded-2xl overflow-hidden"
       style={{
         backgroundColor: 'white',
-        border: '1px solid #d0dce0',
-        borderLeft: '5px solid #729DAD',
+        border: '1px solid var(--border-color)',
+        borderLeft: '5px solid var(--accent)',
         boxShadow: '0 2px 16px rgba(114, 157, 173, 0.12)',
       }}
     >
       {/* 標題 */}
       <div
         className="px-6 py-5 flex items-center justify-between"
-        style={{ borderBottom: '1px solid #e8eef0' }}
+        style={{ borderBottom: '1px solid var(--background-tertiary)' }}
       >
         <div className="flex items-center gap-3">
-          <span className="text-3xl font-black" style={{ color: '#2c3e42' }}>
+          <span className="text-3xl font-black" style={{ color: 'var(--text-color)' }}>
             點餐中
           </span>
           <span
             className="text-sm font-semibold px-3 py-1 rounded-full"
-            style={{ backgroundColor: '#e8f7ee', color: '#4a9d68' }}
+            style={{ backgroundColor: '#e8f7ee', color: 'var(--success)' }}
           >
             {items.reduce((sum, i) => sum + i.quantity, 0)} 品項
           </span>
@@ -51,11 +51,11 @@ export default function OrderTicket({ items, total, onCheckout }: OrderTicketPro
             >
               <div className="flex justify-between items-center py-4">
                 <div className="flex-1 pr-4">
-                  <p className="text-xl font-semibold" style={{ color: '#2c3e42' }}>
+                  <p className="text-xl font-semibold" style={{ color: 'var(--text-color)' }}>
                     {item.name}
                   </p>
                   {item.details && (
-                    <p className="text-base mt-1" style={{ color: '#5a6b70' }}>
+                    <p className="text-base mt-1" style={{ color: 'var(--text-muted)' }}>
                       {item.details}
                     </p>
                   )}
@@ -64,13 +64,13 @@ export default function OrderTicket({ items, total, onCheckout }: OrderTicketPro
                   <span className="text-base font-medium" style={{ color: '#8a9a9f' }}>
                     x{item.quantity}
                   </span>
-                  <span className="text-xl font-bold" style={{ color: '#2c3e42' }}>
+                  <span className="text-xl font-bold" style={{ color: 'var(--text-color)' }}>
                     ${item.price}
                   </span>
                 </div>
               </div>
               {index < items.length - 1 && (
-                <div style={{ borderBottom: '1px solid #e8eef0' }} />
+                <div style={{ borderBottom: '1px solid var(--background-tertiary)' }} />
               )}
             </motion.div>
           ))}
@@ -80,16 +80,16 @@ export default function OrderTicket({ items, total, onCheckout }: OrderTicketPro
       {/* 總計 + 結帳 */}
       <div
         className="px-6 py-5"
-        style={{ borderTop: '1px solid #d0dce0', background: 'linear-gradient(180deg, #f8fafb 0%, #f0f5f7 100%)' }}
+        style={{ borderTop: '1px solid var(--border-color)', background: 'linear-gradient(180deg, #f8fafb 0%, #f0f5f7 100%)' }}
       >
         <div className="flex justify-between items-center mb-5">
-          <span className="text-lg font-semibold" style={{ color: '#5a6b70' }}>合計</span>
-          <span className="font-black" style={{ fontSize: '2rem', color: '#729DAD' }}>${total}</span>
+          <span className="text-lg font-semibold" style={{ color: 'var(--text-muted)' }}>合計</span>
+          <span className="font-black" style={{ fontSize: '2rem', color: 'var(--accent)' }}>${total}</span>
         </div>
         <button
           onClick={onCheckout}
           className="w-full py-4 rounded-xl text-lg font-semibold text-white transition-opacity hover:opacity-90 active:opacity-80"
-          style={{ backgroundColor: '#729DAD' }}
+          style={{ backgroundColor: 'var(--accent)' }}
         >
           結帳
         </button>

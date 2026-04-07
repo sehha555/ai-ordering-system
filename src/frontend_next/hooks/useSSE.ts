@@ -1,6 +1,7 @@
 import { useRef, useCallback, RefObject } from 'react';
 import { useStore } from '../store/useStore';
 import type { AppStatus, CartItem } from '../types';
+import { SSE_EVENTS } from '../types';
 
 const SSE_TIMEOUT = 90000; // 90s — 後端 LLM 每步最多 25s，多步 tool call 需更長等待
 const AUTO_PROMPT_DELAY = 3000;
@@ -201,28 +202,28 @@ export function useSSE({
   const handleSSEEvent = useCallback((event: string, dataStr: string) => {
     try {
       switch (event) {
-        case 'thinking':
+        case SSE_EVENTS.THINKING:
           setStatus('processing');
           break;
-        case 'transcription': {
+        case SSE_EVENTS.TRANSCRIPTION: {
           const transcriptionData = JSON.parse(dataStr);
           const transcriptionText = transcriptionData.text || '';
           setTranscript(transcriptionText);
           if (transcriptionText) useStore.getState().addMessage('user', transcriptionText);
           break;
         }
-        case 'cart_update': {
+        case SSE_EVENTS.CART_UPDATE: {
           const cartData = JSON.parse(dataStr);
           setCart(cartData.items || [], cartData.total || 0);
           break;
         }
-        case 'order_complete': {
+        case SSE_EVENTS.ORDER_COMPLETE: {
           const result = JSON.parse(dataStr);
           useStore.getState().setOrderResult(result);
           useStore.getState().clearCart();
           break;
         }
-        case 'checkout_preview': {
+        case SSE_EVENTS.CHECKOUT_PREVIEW: {
           const { dine_type, payment_method } = JSON.parse(dataStr) as { dine_type: string; payment_method: string };
           useStore.getState().setCheckoutPreview({
             dineType: dine_type as 'dine-in' | 'take-out',
@@ -230,23 +231,23 @@ export function useSSE({
           });
           break;
         }
-        case 'status':
+        case SSE_EVENTS.STATUS:
           setStatus('processing');
           break;
-        case 'text_delta': {
+        case SSE_EVENTS.TEXT_DELTA: {
           const deltaData = JSON.parse(dataStr);
           const chunk = deltaData.text || '';
           if (chunk) useStore.getState().appendStreamingText(chunk);
           break;
         }
-        case 'tts_text': {
+        case SSE_EVENTS.TTS_TEXT: {
           const ttsData = JSON.parse(dataStr);
           const ttsText = ttsData.text || '';
           setAiReply(ttsText);
           if (ttsText) useStore.getState().addMessage('assistant', ttsText);
           break;
         }
-        case 'audio_chunk': {
+        case SSE_EVENTS.AUDIO_CHUNK: {
           const audioData = JSON.parse(dataStr);
           audioQueueRef.current.push(audioData);
           if (!isPlayingRef.current) {
@@ -255,7 +256,7 @@ export function useSSE({
           }
           break;
         }
-        case 'error': {
+        case SSE_EVENTS.ERROR: {
           let msg = '處理失敗，請再試一次';
           try {
             const errData = JSON.parse(dataStr);

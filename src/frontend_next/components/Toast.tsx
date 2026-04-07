@@ -19,7 +19,7 @@ export default function Toast() {
   return (
     <div
       className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-xl px-5 py-3 shadow-lg text-white text-sm"
-      style={{ backgroundColor: '#c45c5c', maxWidth: '90vw' }}
+      style={{ backgroundColor: 'var(--error)', maxWidth: '90vw' }}
       role="alert"
     >
       <span>⚠️ {connectionError}</span>

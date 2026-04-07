@@ -8,7 +8,7 @@ const ASSISTANT_BUBBLE_STYLE = {
   backgroundColor: 'rgba(114, 157, 173, 0.12)',
   color: '#3a5560',
   borderRadius: '1rem 1rem 1rem 0.25rem',
-  borderLeft: '3px solid #729DAD',
+  borderLeft: '3px solid var(--accent)',
 } as const;
 
 export default function ChatPanel() {
@@ -49,7 +49,7 @@ export default function ChatPanel() {
                   style={
                     msg.role === 'user'
                       ? {
-                          backgroundColor: '#729DAD',
+                          backgroundColor: 'var(--accent)',
                           color: 'white',
                           borderRadius: '1rem 1rem 0.25rem 1rem',
                         }
@@ -76,7 +76,7 @@ export default function ChatPanel() {
                 {streamingText}
                 <span
                   className="inline-block w-[2px] h-[1em] ml-0.5 align-middle animate-pulse"
-                  style={{ backgroundColor: '#729DAD' }}
+                  style={{ backgroundColor: 'var(--accent)' }}
                 />
               </div>
             </motion.div>

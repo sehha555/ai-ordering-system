@@ -75,7 +75,7 @@ export default function MicSelector() {
       <button
         onClick={() => setOpen(!open)}
         className="p-1.5 rounded-lg transition-colors"
-        style={{ color: '#5a6b70', backgroundColor: open ? '#e8eef0' : 'transparent' }}
+        style={{ color: 'var(--text-muted)', backgroundColor: open ? 'var(--background-tertiary)' : 'transparent' }}
         title="切換麥克風"
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -89,7 +89,7 @@ export default function MicSelector() {
       {open && devices.length > 0 && (
         <div
           className="absolute right-0 top-full mt-1 py-1 rounded-lg shadow-lg z-50 min-w-[200px]"
-          style={{ backgroundColor: 'white', border: '1px solid #d0dce0' }}
+          style={{ backgroundColor: 'white', border: '1px solid var(--border-color)' }}
         >
           {devices.map(d => (
             <button
@@ -97,7 +97,7 @@ export default function MicSelector() {
               onClick={() => handleChange(d.deviceId)}
               className="w-full text-left px-3 py-2 text-sm transition-colors hover:bg-gray-50"
               style={{
-                color: d.deviceId === selectedId ? '#729DAD' : '#2c3e42',
+                color: d.deviceId === selectedId ? 'var(--accent)' : 'var(--text-color)',
                 fontWeight: d.deviceId === selectedId ? 600 : 400,
               }}
             >

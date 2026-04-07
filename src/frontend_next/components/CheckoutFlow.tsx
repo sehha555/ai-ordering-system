@@ -137,7 +137,7 @@ export default function CheckoutFlow() {
             transition={{ duration: 0.25 }}
             className="flex-1 flex flex-col"
           >
-            <h2 className="text-2xl font-semibold text-center mb-8" style={{ color: '#2c3e42' }}>
+            <h2 className="text-2xl font-semibold text-center mb-8" style={{ color: 'var(--text-color)' }}>
               結帳
             </h2>
 
@@ -158,7 +158,7 @@ export default function CheckoutFlow() {
 
             {/* 用餐方式 */}
             <div className="mb-6">
-              <p className="text-sm font-medium mb-3" style={{ color: '#5a6b70' }}>用餐方式</p>
+              <p className="text-sm font-medium mb-3" style={{ color: 'var(--text-muted)' }}>用餐方式</p>
               <div className="flex gap-3">
                 {([['dine-in', '內用'], ['take-out', '外帶']] as const).map(([value, label]) => (
                   <button
@@ -166,9 +166,9 @@ export default function CheckoutFlow() {
                     onClick={() => setSelectedDine(value)}
                     className="flex-1 py-3 rounded-xl font-medium transition-all"
                     style={{
-                      backgroundColor: selectedDine === value ? '#729DAD' : 'white',
-                      color: selectedDine === value ? 'white' : '#2c3e42',
-                      border: `2px solid ${selectedDine === value ? '#729DAD' : '#d0dce0'}`,
+                      backgroundColor: selectedDine === value ? 'var(--accent)' : 'white',
+                      color: selectedDine === value ? 'white' : 'var(--text-color)',
+                      border: `2px solid ${selectedDine === value ? 'var(--accent)' : 'var(--border-color)'}`,
                     }}
                   >
                     {label}
@@ -179,7 +179,7 @@ export default function CheckoutFlow() {
 
             {/* 付款方式 */}
             <div className="mb-6">
-              <p className="text-sm font-medium mb-3" style={{ color: '#5a6b70' }}>付款方式</p>
+              <p className="text-sm font-medium mb-3" style={{ color: 'var(--text-muted)' }}>付款方式</p>
               <div className="flex gap-3">
                 {([['cash', '現金'], ['line_pay', 'Line Pay']] as const).map(([value, label]) => (
                   <button
@@ -187,9 +187,9 @@ export default function CheckoutFlow() {
                     onClick={() => setSelectedPayment(value)}
                     className="flex-1 py-3 rounded-xl font-medium transition-all"
                     style={{
-                      backgroundColor: selectedPayment === value ? '#729DAD' : 'white',
-                      color: selectedPayment === value ? 'white' : '#2c3e42',
-                      border: `2px solid ${selectedPayment === value ? '#729DAD' : '#d0dce0'}`,
+                      backgroundColor: selectedPayment === value ? 'var(--accent)' : 'white',
+                      color: selectedPayment === value ? 'white' : 'var(--text-color)',
+                      border: `2px solid ${selectedPayment === value ? 'var(--accent)' : 'var(--border-color)'}`,
                     }}
                   >
                     {label}
@@ -201,24 +201,24 @@ export default function CheckoutFlow() {
             {/* 訂單摘要 */}
             <div
               className="rounded-xl p-4 mb-4 max-h-40 overflow-y-auto"
-              style={{ backgroundColor: '#f4f7f8' }}
+              style={{ backgroundColor: 'var(--background)' }}
             >
               {cart.map((item, i) => (
                 <div
                   key={i}
                   className="flex justify-between py-2"
-                  style={{ borderBottom: i < cart.length - 1 ? '1px solid #d0dce0' : 'none' }}
+                  style={{ borderBottom: i < cart.length - 1 ? '1px solid var(--border-color)' : 'none' }}
                 >
-                  <span style={{ color: '#2c3e42' }}>{item.name} x{item.quantity}</span>
-                  <span className="font-medium" style={{ color: '#729DAD' }}>${item.price}</span>
+                  <span style={{ color: 'var(--text-color)' }}>{item.name} x{item.quantity}</span>
+                  <span className="font-medium" style={{ color: 'var(--accent)' }}>${item.price}</span>
                 </div>
               ))}
             </div>
 
             {/* 總計 */}
             <div className="flex justify-between items-center mb-6 px-1">
-              <span className="text-lg font-medium" style={{ color: '#5a6b70' }}>總計</span>
-              <span className="text-2xl font-bold" style={{ color: '#729DAD' }}>${total}</span>
+              <span className="text-lg font-medium" style={{ color: 'var(--text-muted)' }}>總計</span>
+              <span className="text-2xl font-bold" style={{ color: 'var(--accent)' }}>${total}</span>
             </div>
 
             {/* 按鈕區 */}
@@ -228,7 +228,7 @@ export default function CheckoutFlow() {
                 disabled={isSubmitting || cart.length === 0 || !selectedDine || !selectedPayment}
                 className="w-full py-4 rounded-xl font-semibold text-lg text-white transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
-                  background: 'linear-gradient(135deg, #729DAD 0%, #5a8494 100%)',
+                  background: 'linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%)',
                 }}
               >
                 {isSubmitting ? '處理中...' : '確認送出'}
@@ -237,17 +237,17 @@ export default function CheckoutFlow() {
                 onClick={handleBack}
                 className="w-full py-2.5 rounded-lg text-sm text-center transition-colors"
                 style={{
-                  border: '1px solid #d0dce0',
-                  color: '#5a6b70',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--text-muted)',
                   backgroundColor: 'transparent',
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = '#729DAD';
-                  e.currentTarget.style.color = '#729DAD';
+                  e.currentTarget.style.borderColor = 'var(--accent)';
+                  e.currentTarget.style.color = 'var(--accent)';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = '#d0dce0';
-                  e.currentTarget.style.color = '#5a6b70';
+                  e.currentTarget.style.borderColor = 'var(--border-color)';
+                  e.currentTarget.style.color = 'var(--text-muted)';
                 }}
               >
                 返回
@@ -268,7 +268,7 @@ export default function CheckoutFlow() {
             className="flex-1 flex flex-col items-center justify-center text-center"
           >
             <div className="text-5xl mb-4">✅</div>
-            <h2 className="text-2xl font-semibold mb-6" style={{ color: '#2c3e42' }}>
+            <h2 className="text-2xl font-semibold mb-6" style={{ color: 'var(--text-color)' }}>
               訂單完成
             </h2>
 
@@ -276,15 +276,15 @@ export default function CheckoutFlow() {
             <div
               className="rounded-2xl px-12 py-6 mb-6"
               style={{
-                backgroundColor: '#f4f7f8',
+                backgroundColor: 'var(--background)',
                 boxShadow: '0 4px 16px rgba(114, 157, 173, 0.1)',
               }}
             >
-              <p className="text-sm mb-2" style={{ color: '#5a6b70' }}>取餐號碼</p>
+              <p className="text-sm mb-2" style={{ color: 'var(--text-muted)' }}>取餐號碼</p>
               <p
                 className="text-5xl font-bold"
                 style={{
-                  color: '#729DAD',
+                  color: 'var(--accent)',
                   textShadow: '0 0 30px rgba(114, 157, 173, 0.25)',
                 }}
               >
@@ -296,39 +296,39 @@ export default function CheckoutFlow() {
             {orderResult.items_display.length > 0 && (
               <div
                 className="w-full max-w-sm rounded-xl p-4 mb-4 text-left"
-                style={{ backgroundColor: '#f4f7f8' }}
+                style={{ backgroundColor: 'var(--background)' }}
               >
                 {orderResult.items_display.map((item, i) => (
                   <div
                     key={i}
                     className="flex justify-between py-2"
-                    style={{ borderBottom: i < orderResult.items_display.length - 1 ? '1px solid #d0dce0' : 'none' }}
+                    style={{ borderBottom: i < orderResult.items_display.length - 1 ? '1px solid var(--border-color)' : 'none' }}
                   >
-                    <span style={{ color: '#2c3e42' }}>
+                    <span style={{ color: 'var(--text-color)' }}>
                       {item.name} {item.quantity > 1 ? `x${item.quantity}` : ''}
                     </span>
-                    <span className="font-medium" style={{ color: '#729DAD' }}>${item.subtotal}</span>
+                    <span className="font-medium" style={{ color: 'var(--accent)' }}>${item.subtotal}</span>
                   </div>
                 ))}
-                <div className="flex justify-between pt-3 mt-2 font-semibold text-lg" style={{ borderTop: '2px solid #d0dce0' }}>
-                  <span style={{ color: '#2c3e42' }}>總計</span>
-                  <span style={{ color: '#729DAD' }}>${orderResult.total}</span>
+                <div className="flex justify-between pt-3 mt-2 font-semibold text-lg" style={{ borderTop: '2px solid var(--border-color)' }}>
+                  <span style={{ color: 'var(--text-color)' }}>總計</span>
+                  <span style={{ color: 'var(--accent)' }}>${orderResult.total}</span>
                 </div>
               </div>
             )}
 
             {/* 用餐/付款資訊 */}
-            <p className="mb-4 text-sm" style={{ color: '#5a6b70' }}>
+            <p className="mb-4 text-sm" style={{ color: 'var(--text-muted)' }}>
               {orderResult.dine_type === 'dine-in' ? '內用' : '外帶'} / {orderResult.payment_method === 'cash' ? '現金' : 'Line Pay'}
             </p>
 
             {/* Line Pay QR Code */}
             {(orderResult.payment_method === 'line_pay' || orderResult.payment_method === 'mobile') && (
               <div className="mb-6 flex flex-col items-center">
-                <p className="text-sm mb-2" style={{ color: '#5a6b70' }}>Line Pay 掃碼付款</p>
+                <p className="text-sm mb-2" style={{ color: 'var(--text-muted)' }}>Line Pay 掃碼付款</p>
                 <div
                   className="w-40 h-40 rounded-xl flex items-center justify-center"
-                  style={{ backgroundColor: '#f4f7f8', border: '2px dashed #d0dce0' }}
+                  style={{ backgroundColor: 'var(--background)', border: '2px dashed var(--border-color)' }}
                 >
                   <span className="text-4xl">📱</span>
                 </div>
@@ -340,17 +340,17 @@ export default function CheckoutFlow() {
               onClick={handleNewOrder}
               className="px-10 py-3 rounded-xl font-semibold text-lg transition-all hover:shadow-md"
               style={{
-                border: '2px solid #729DAD',
-                color: '#729DAD',
+                border: '2px solid var(--accent)',
+                color: 'var(--accent)',
                 backgroundColor: 'transparent',
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#729DAD';
+                e.currentTarget.style.backgroundColor = 'var(--accent)';
                 e.currentTarget.style.color = 'white';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.backgroundColor = 'transparent';
-                e.currentTarget.style.color = '#729DAD';
+                e.currentTarget.style.color = 'var(--accent)';
               }}
             >
               開始新訂單（{countdown}s）

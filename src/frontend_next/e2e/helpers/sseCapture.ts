@@ -3,6 +3,7 @@
  * 透過 page.evaluate() 在瀏覽器上下文執行 fetch，串流讀取所有 SSE 事件。
  */
 import type { Page } from '@playwright/test'
+import { SSE_EVENTS } from '../../types'
 
 export interface SSEEvent {
   event: string
@@ -158,10 +159,10 @@ export async function captureTextSSE(
 }
 
 function parseEvents(events: SSEEvent[]): CaptureResult {
-  const cartUpdate = events.findLast(e => e.event === 'cart_update')
-  const ttsTextEvent = events.find(e => e.event === 'tts_text')
-  const errorEvent = events.find(e => e.event === 'error')
-  const transcriptionEvent = events.find(e => e.event === 'transcription')
+  const cartUpdate = events.findLast(e => e.event === SSE_EVENTS.CART_UPDATE)
+  const ttsTextEvent = events.find(e => e.event === SSE_EVENTS.TTS_TEXT)
+  const errorEvent = events.find(e => e.event === SSE_EVENTS.ERROR)
+  const transcriptionEvent = events.find(e => e.event === SSE_EVENTS.TRANSCRIPTION)
 
   // 從 status 事件推斷呼叫了哪些工具
   const TOOL_STATUS_MAP: Record<string, string> = {
@@ -174,7 +175,7 @@ function parseEvents(events: SSEEvent[]): CaptureResult {
   }
   const toolsInvoked: string[] = []
   for (const e of events) {
-    if (e.event === 'status') {
+    if (e.event === SSE_EVENTS.STATUS) {
       const msg = (e.data.message as string) ?? ''
       for (const [kw, tool] of Object.entries(TOOL_STATUS_MAP)) {
         if (msg.includes(kw) && !toolsInvoked.includes(tool)) {
@@ -185,7 +186,7 @@ function parseEvents(events: SSEEvent[]): CaptureResult {
   }
 
   const ttsChunks = events
-    .filter(e => e.event === 'audio_chunk')
+    .filter(e => e.event === SSE_EVENTS.AUDIO_CHUNK)
     .map(e => e.data.data as string ?? '')
 
   return {

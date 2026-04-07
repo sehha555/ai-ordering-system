@@ -142,7 +142,7 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
         <AudioVisualizer status={status} />
       </div>
 
-      <p className="mt-4 text-sm" style={{ color: '#5a6b70' }}>
+      <p className="mt-4 text-sm" style={{ color: 'var(--text-muted)' }}>
         {vadEnabled
           ? status === 'idle'
             ? '語音自動偵測已啟用，請直接說話'
@@ -163,7 +163,7 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.25 }}
               className="text-xs text-center px-2"
-              style={{ color: '#729DAD' }}
+              style={{ color: 'var(--accent)' }}
             >
               「{transcript}」
             </motion.p>

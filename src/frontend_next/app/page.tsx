@@ -45,17 +45,17 @@ export default function Home() {
       {/* Header */}
       <header
         className="flex items-center justify-between px-5 py-3 shrink-0"
-        style={{ backgroundColor: '#ffffff', borderBottom: '1px solid #d0dce0' }}
+        style={{ backgroundColor: '#ffffff', borderBottom: '1px solid var(--border-color)' }}
       >
         <div className="flex items-center gap-3">
           <img src="/logo.png" alt="源飯糰" style={{ width: 36, height: 36 }} />
-          <h1 className="text-2xl font-black tracking-wide" style={{ color: '#2c3e42' }}>
+          <h1 className="text-2xl font-black tracking-wide" style={{ color: 'var(--text-color)' }}>
             源飯糰
           </h1>
         </div>
         <div className="flex items-center gap-2">
           <MicSelector />
-          <p className="text-sm" style={{ color: '#5a6b70' }}>語音點餐系統</p>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>語音點餐系統</p>
         </div>
       </header>
 
@@ -78,7 +78,7 @@ export default function Home() {
             className="shrink-0 flex flex-col items-center justify-center cursor-pointer select-none py-4"
             onClick={handleVisualizerClick}
             whileTap={{ scale: 0.92 }}
-            style={{ borderTop: '1px solid #e8eef0' }}
+            style={{ borderTop: '1px solid var(--background-tertiary)' }}
           >
             <div style={{ width: 160, height: 160 }}>
               <BallVisualizer status={status} />
@@ -88,9 +88,9 @@ export default function Home() {
               onClick={(e) => { e.stopPropagation(); setVadEnabled(!vadEnabled); }}
               className="mt-2 px-4 py-1.5 rounded-full text-xs font-medium transition-colors"
               style={{
-                backgroundColor: vadEnabled ? '#729DAD' : '#e8eef0',
-                color: vadEnabled ? 'white' : '#5a6b70',
-                border: `1px solid ${vadEnabled ? '#5a8494' : '#d0dce0'}`,
+                backgroundColor: vadEnabled ? 'var(--accent)' : 'var(--background-tertiary)',
+                color: vadEnabled ? 'white' : 'var(--text-muted)',
+                border: `1px solid ${vadEnabled ? 'var(--accent-dark)' : 'var(--border-color)'}`,
               }}
             >
               {vadEnabled ? '自動偵測模式' : '按鍵說話模式'}
@@ -106,7 +106,7 @@ export default function Home() {
         >
           <div
             className="rounded-full transition-colors"
-            style={{ width: 4, height: 40, backgroundColor: '#d0dce0' }}
+            style={{ width: 4, height: 40, backgroundColor: 'var(--border-color)' }}
           />
         </div>
 
@@ -152,7 +152,7 @@ function VoiceHint({ status, vadEnabled }: { status: string; vadEnabled: boolean
       <motion.p
         key={text}
         className="text-sm mt-2"
-        style={{ color: status === 'listening' ? '#4a9d68' : status === 'processing' ? '#c49a30' : '#8a9a9f' }}
+        style={{ color: status === 'listening' ? 'var(--success)' : status === 'processing' ? 'var(--warning)' : '#8a9a9f' }}
         initial={{ opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -4 }}
