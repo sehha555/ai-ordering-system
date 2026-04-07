@@ -3,49 +3,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from src.tools.menu import menu_price_service
 from src.tools.riceball_tool import INGREDIENT_SYNONYMS, menu_tool as riceball_menu_tool
+from src.tools.text_utils import chinese_number_to_int, dedupe_keep_order
 
 CARRIERS = ("吐司", "漢堡", "饅頭")
-
-QUANTITY_MAP = {
-    "零": 0,
-    "一": 1,
-    "二": 2,
-    "兩": 2,
-    "三": 3,
-    "四": 4,
-    "五": 5,
-    "六": 6,
-    "七": 7,
-    "八": 8,
-    "九": 9,
-    "十": 10,
-}
-
-
-def _dedupe_keep_order(xs: List[str]) -> List[str]:
-    return list(dict.fromkeys(xs or []))
-
-
-def _chinese_number_to_int(token: str) -> Optional[int]:
-    t = (token or "").strip()
-    if not t:
-        return None
-    if t in QUANTITY_MAP and t != "十":
-        return QUANTITY_MAP[t]
-    if "十" in t:
-        if t == "十":
-            return 10
-        parts = t.split("十")
-        left = parts[0].strip()
-        right = parts[1].strip() if len(parts) > 1 else ""
-        tens = 1 if left == "" else QUANTITY_MAP.get(left)
-        if tens is None:
-            return None
-        ones = 0 if right == "" else QUANTITY_MAP.get(right)
-        if ones is None:
-            return None
-        return tens * 10 + ones
-    return None
 
 
 class CarrierTool:
@@ -168,7 +128,7 @@ class CarrierTool:
         adds = [self._normalize_ingredient(x) for x in (frame.get("ingredients_add") or [])]
         base = base + [x for x in adds if x]
 
-        frame["ingredients"] = _dedupe_keep_order(base)
+        frame["ingredients"] = dedupe_keep_order(base)
         return frame
 
     def quote_carrier_price(self, frame: Dict[str, Any]) -> Dict[str, Any]:
@@ -288,7 +248,7 @@ class CarrierTool:
             return q if q > 0 else 1
         m2 = re.search(r"([零一二兩三四五六七八九十]{1,3})\s*(顆|個)", t)
         if m2:
-            v = _chinese_number_to_int(m2.group(1))
+            v = chinese_number_to_int(m2.group(1))
             return v if isinstance(v, int) and v > 0 else 1
         return 1
 
@@ -315,7 +275,7 @@ class CarrierTool:
         for c in sorted(candidates, key=len, reverse=True):
             if c and c in only_part:
                 only_ings.append(self._normalize_ingredient(c))
-        return "only", _dedupe_keep_order(only_ings)
+        return "only", dedupe_keep_order(only_ings)
 
     def _parse_add_remove(self, text: str) -> Tuple[List[str], List[str]]:
         t = text
@@ -342,8 +302,8 @@ class CarrierTool:
             if ("不要" + syn) in t or ("去掉" + syn) in t or ("拿掉" + syn) in t or ("不加" + syn) in t:
                 removes.append(self._normalize_ingredient(syn))
 
-        adds = _dedupe_keep_order([self._normalize_ingredient(x) for x in adds if x])
-        removes = _dedupe_keep_order([self._normalize_ingredient(x) for x in removes if x])
+        adds = dedupe_keep_order([self._normalize_ingredient(x) for x in adds if x])
+        removes = dedupe_keep_order([self._normalize_ingredient(x) for x in removes if x])
         return adds, removes
 
     def _infer_mantou_flavor(self, text: str, add_ingredients: List[str]) -> Optional[str]:

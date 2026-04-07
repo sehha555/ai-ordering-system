@@ -1,10 +1,9 @@
 """飲料解析工具 - 完整簡寫 + 大冰規範 + size/temp 分離"""
 
-import re
 from typing import Dict, List, Optional, Any
 
 from src.tools.menu import menu_price_service
-from src.tools.riceball_tool import _chinese_number_to_int  # Import Chinese number parser
+from src.tools.text_utils import parse_quantity as _parse_quantity_util
 
 # 完整簡寫 + 大冰規範（長字優先）
 DRINK_ALIASES = {
@@ -212,19 +211,7 @@ class DrinkTool:
         return None
 
     def parse_quantity(self, text: str) -> int:
-        m = re.search(r"(\d+)\s*杯?", text)  # Matches digits and optional "杯"
-        if m:
-            return int(m.group(1)) if int(m.group(1)) > 0 else 1
-
-        m_cn = re.search(
-            r"([一二兩三四五六七八九十]{1,3})\s*杯?", text
-        )  # Matches Chinese numbers and optional "杯"
-        if m_cn:
-            val = _chinese_number_to_int(m_cn.group(1))
-            if val is not None and val > 0:
-                return val
-
-        return 1
+        return _parse_quantity_util(text, units=("杯",))
 
     def load_menu(self) -> List[Dict[str, Any]]:
         return menu_price_service.get_raw_menu()

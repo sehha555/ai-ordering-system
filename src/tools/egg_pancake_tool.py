@@ -2,6 +2,7 @@ import re
 from typing import Dict, Any, List, Tuple
 
 from src.tools.menu import menu_price_service
+from src.tools.text_utils import dedupe_keep_order, parse_quantity as _parse_quantity_util
 
 
 class EggPancakeTool:
@@ -121,7 +122,7 @@ class EggPancakeTool:
         sauces = [self.SAUCE_DEFAULT]
         if "加辣" in text or "辣" in text:
             sauces.append("辣")
-        sauces = self._dedupe_keep_order(sauces)
+        sauces = dedupe_keep_order(sauces)
 
         ingredients_add = self._expand_counts(charge_counts)
 
@@ -174,33 +175,7 @@ class EggPancakeTool:
         return "原味蛋餅"
 
     def _parse_quantity(self, text: str) -> int:
-        zh_map = {
-            "一": 1,
-            "二": 2,
-            "兩": 2,
-            "三": 3,
-            "四": 4,
-            "五": 5,
-            "六": 6,
-            "七": 7,
-            "八": 8,
-            "九": 9,
-            "十": 10,
-        }
-
-        m = re.search(r"(\d+)\s*個?", text)
-        if m:
-            return int(m.group(1))
-
-        m2 = re.search(r"([一二兩三四五六七八九十])\s*個?", text)
-        if m2:
-            return zh_map.get(m2.group(1), 1)
-
-        for k, v in [("兩個", 2), ("三個", 3), ("四個", 4), ("五個", 5)]:
-            if k in text:
-                return v
-
-        return 1
+        return _parse_quantity_util(text, units=("個",))
 
     def _detect_removals(self, text: str) -> List[str]:
         if "不加蔥" in text or "去蔥" in text:
@@ -273,7 +248,7 @@ class EggPancakeTool:
                     candidates.append(carrier)
                 except KeyError:
                     continue
-        return self._dedupe_keep_order(candidates)
+        return dedupe_keep_order(candidates)
 
     def _choose_cheapest_carrier(
         self,
@@ -343,16 +318,6 @@ class EggPancakeTool:
         for ing, cnt in counts.items():
             out.extend([ing] * cnt)
         return out
-
-    def _dedupe_keep_order(self, items: List[str]) -> List[str]:
-        seen = set()
-        out = []
-        for x in items:
-            if x not in seen:
-                seen.add(x)
-                out.append(x)
-        return out
-
 
 egg_pancake_tool = EggPancakeTool()
 

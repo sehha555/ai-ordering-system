@@ -2,13 +2,21 @@ import re
 from collections import OrderedDict
 from typing import Dict, Any, List, Optional
 
-from src.tools.riceball_tool import menu_tool, _chinese_number_to_int
+from src.tools.riceball_tool import menu_tool
+from src.tools.text_utils import chinese_number_to_int
 from src.tools.carrier_tool import carrier_tool
 from src.tools.drink_tool import drink_tool
 from src.tools.snack_tool import snack_tool
 from src.tools.jam_toast_tool import jam_toast_tool
 from src.tools.egg_pancake_tool import egg_pancake_tool
 from src.tools.combo_tool import combo_tool
+
+
+def _safe_quantity(item: Dict[str, Any]) -> int:
+    """數量正規化：None 或空字串轉為 1，最小值為 1"""
+    raw_qty = item.get("quantity", 1)
+    qty = int(raw_qty) if raw_qty is not None and str(raw_qty) != "" else 1
+    return max(1, qty)
 
 
 def format_item(frame: Dict[str, Any]) -> str:
@@ -105,9 +113,7 @@ def build_cart_summary(cart: List[Dict[str, Any]], price_format: str = "dollar")
     total_price = 0
 
     for i, item in enumerate(cart, 1):
-        raw_qty = item.get("quantity", 1)
-        qty = int(raw_qty) if raw_qty is not None and str(raw_qty) != "" else 1
-        qty = max(1, qty)
+        qty = _safe_quantity(item)
         name = format_item(item)
         pi = get_price_info(item)
         if pi and pi.get("ok"):
@@ -136,9 +142,7 @@ def calculate_cart_total(cart: List[Dict[str, Any]]) -> int:
     """計算購物車總價"""
     total = 0
     for item in cart:
-        raw_qty = item.get("quantity", 1)
-        qty = int(raw_qty) if raw_qty is not None and str(raw_qty) != "" else 1
-        qty = max(1, qty)
+        qty = _safe_quantity(item)
         pi = get_price_info(item)
         if pi and pi.get("ok"):
             total += extract_total(pi, qty)
@@ -252,5 +256,5 @@ def parse_index(text: str) -> Optional[int]:
         m = re.search(p, text)
         if m:
             token = m.group(1)
-            return int(token) if token.isdigit() else _chinese_number_to_int(token)
+            return int(token) if token.isdigit() else chinese_number_to_int(token)
     return None

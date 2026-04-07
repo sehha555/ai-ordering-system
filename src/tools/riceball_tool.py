@@ -10,6 +10,7 @@ from pathlib import Path
 
 from src.config.config_loader import load_json_config
 from src.tools.menu import menu_price_service
+from src.tools.text_utils import chinese_number_to_int, dedupe_keep_order
 
 MENU_TOOL_VERSION = "2025-12-27-config-v6"
 
@@ -84,9 +85,6 @@ RICE_KEYWORDS = {
     "白米": "白米",
 }
 
-# 數量（支援到 99：阿拉伯數字 + 中文數字）
-QUANTITY_MAP = {"零": 0, "一": 1, "二": 2, "兩": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
-
 # 配料同義詞（normalize）
 INGREDIENT_SYNONYMS = {
     "蛋": "蛋",
@@ -116,41 +114,9 @@ SPECIAL_ONLY_PATTERNS = [
 ORAL_RICEBALL_KEYWORDS = ["飯糰", "飯團"]
 
 
-def _dedupe_keep_order(xs: List[str]) -> List[str]:
-    return list(dict.fromkeys(xs or []))
-
-
-def _chinese_number_to_int(token: str) -> Optional[int]:
-    """
-    支援 0~99 的中文數字（含：十、十五、二十、二十五、兩…）
-    """
-    t = (token or "").strip()
-    if not t:
-        return None
-
-    # 常見：單字
-    if t in QUANTITY_MAP and t != "十":
-        return QUANTITY_MAP[t]
-
-    # 十 / 十五 / 二十 / 二十五
-    if "十" in t:
-        if t == "十":
-            return 10
-
-        parts = t.split("十")
-        left = parts[0].strip()
-        right = parts[1].strip() if len(parts) > 1 else ""
-
-        tens = 1 if left == "" else QUANTITY_MAP.get(left)
-        if tens is None:
-            return None
-        ones = 0 if right == "" else QUANTITY_MAP.get(right)
-        if ones is None:
-            return None
-        return tens * 10 + ones
-
-    # 其他（例如「二三」這種不規範，直接不認）
-    return None
+# 向下相容別名（其他模組曾 import _chinese_number_to_int from riceball_tool）
+_chinese_number_to_int = chinese_number_to_int
+_dedupe_keep_order = dedupe_keep_order
 
 
 class MenuTool:

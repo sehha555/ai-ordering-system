@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
-import re
 from typing import Dict, Optional, Any
 
 from src.tools.menu import menu_price_service
-from src.tools.riceball_tool import _chinese_number_to_int
+from src.tools.text_utils import parse_quantity as _parse_quantity_util
 
 JAM_TOAST_FLAVORS = ["草莓", "花生", "蒜香", "奶酥", "巧克力"]
 SIZE_MAP = {"薄片": "薄片", "厚片": "厚片", "吐司": "薄片"}
@@ -112,17 +111,7 @@ class JamToastTool:
 
     def _parse_quantity(self, text: str) -> int:
         """Parses quantity from the utterance."""
-        if "一份" in text or "來一份" in text:
-            return 1
-        m = re.search(r'(\d+)\s*(份|個)', text)
-        if m:
-            return int(m.group(1))
-        m_cn = re.search(r'([一二兩三四五六七八九十]{1,3})\s*(份|個)', text)
-        if m_cn:
-            val = _chinese_number_to_int(m_cn.group(1))
-            if val is not None:
-                return val
-        return 1
+        return _parse_quantity_util(text, units=("份", "個"))
 
 # Global instance
 jam_toast_tool = JamToastTool()
