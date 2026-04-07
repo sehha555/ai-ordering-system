@@ -26,11 +26,11 @@
       }
     ],
     "expected_tools": [
-      "add_egg_pancake"
+      "add_item"
     ],
     "expected_args": [
       {
-        "name": "add_egg_pancake",
+        "name": "add_item",
         "args": {
           "flavor": "玉米"
         }
@@ -68,11 +68,11 @@
       }
     ],
     "expected_tools": [
-      "add_drink"
+      "add_item"
     ],
     "expected_args": [
       {
-        "name": "add_drink",
+        "name": "add_item",
         "args": {
           "flavor": "紅茶",
           "size": "大杯",
@@ -113,11 +113,11 @@
       }
     ],
     "expected_tools": [
-      "add_snack"
+      "add_item"
     ],
     "expected_args": [
       {
-        "name": "add_snack",
+        "name": "add_item",
         "args": {
           "flavor": "蘿蔔糕加蛋"
         }
@@ -139,11 +139,11 @@
       }
     ],
     "expected_tools": [
-      "add_snack"
+      "add_item"
     ],
     "expected_args": [
       {
-        "name": "add_snack",
+        "name": "add_item",
         "args": {
           "flavor": "薯餅"
         }
@@ -191,11 +191,11 @@
       }
     ],
     "expected_tools": [
-      "add_riceball"
+      "add_item"
     ],
     "expected_args": [
       {
-        "name": "add_riceball",
+        "name": "add_item",
         "args": {
           "flavor": "鮪魚",
           "rice": "紫米",
@@ -244,7 +244,7 @@
       }
     ],
     "expected_tools": [
-      "add_riceball"
+      "add_item"
     ],
     "expected_response_contains": [
       "傳統"
@@ -252,7 +252,7 @@
     "expected_behavior": "米種補齊後，預設不加辣，應 call add_riceball 或追問辣菜脯",
     "expected_args": [
       {
-        "name": "add_riceball",
+        "name": "add_item",
         "args": {
           "flavor": "源味傳統",
           "rice": "紫米"
@@ -287,11 +287,11 @@
       }
     ],
     "expected_tools": [
-      "add_riceball"
+      "add_item"
     ],
     "expected_args": [
       {
-        "name": "add_riceball",
+        "name": "add_item",
         "args": {
           "flavor": "源味傳統",
           "rice": "紫米",
@@ -340,11 +340,11 @@
       }
     ],
     "expected_tools": [
-      "add_carrier"
+      "add_item"
     ],
     "expected_args": [
       {
-        "name": "add_carrier",
+        "name": "add_item",
         "args": {
           "carrier": "吐司",
           "flavor": "起司蛋"
@@ -367,11 +367,11 @@
       }
     ],
     "expected_tools": [
-      "add_carrier"
+      "add_item"
     ],
     "expected_args": [
       {
-        "name": "add_carrier",
+        "name": "add_item",
         "args": {
           "carrier": "漢堡",
           "flavor": "火腿蛋"
@@ -394,11 +394,11 @@
       }
     ],
     "expected_tools": [
-      "add_snack"
+      "add_item"
     ],
     "expected_args": [
       {
-        "name": "add_snack",
+        "name": "add_item",
         "args": {
           "flavor": "蘑菇"
         }
@@ -420,11 +420,11 @@
       }
     ],
     "expected_tools": [
-      "add_snack"
+      "add_item"
     ],
     "expected_args": [
       {
-        "name": "add_snack",
+        "name": "add_item",
         "args": {
           "flavor": "韭菜餡餅"
         }
@@ -464,11 +464,11 @@
       }
     ],
     "expected_tools": [
-      "add_drink"
+      "add_item"
     ],
     "expected_args": [
       {
-        "name": "add_drink",
+        "name": "add_item",
         "args": {
           "flavor": "純鮮奶茶",
           "size": "大杯",
@@ -492,11 +492,11 @@
       }
     ],
     "expected_tools": [
-      "add_drink"
+      "add_item"
     ],
     "expected_args": [
       {
-        "name": "add_drink",
+        "name": "add_item",
         "args": {
           "flavor": "豆漿",
           "size": "中杯",
@@ -544,11 +544,11 @@
       }
     ],
     "expected_tools": [
-      "add_carrier"
+      "add_item"
     ],
     "expected_args": [
       {
-        "name": "add_carrier",
+        "name": "add_item",
         "args": {
           "carrier": "饅頭"
         }
@@ -595,13 +595,13 @@
       }
     ],
     "expected_tools": [
-      "add_drink",
-      "add_drink",
-      "add_drink"
+      "add_item",
+      "add_item",
+      "add_item"
     ],
     "expected_args": [
       {
-        "name": "add_drink",
+        "name": "add_item",
         "args": {
           "flavor": "豆漿",
           "size": "大杯",
@@ -609,7 +609,7 @@
         }
       },
       {
-        "name": "add_drink",
+        "name": "add_item",
         "args": {
           "flavor": "豆漿",
           "size": "大杯",
@@ -617,7 +617,7 @@
         }
       },
       {
-        "name": "add_drink",
+        "name": "add_item",
         "args": {
           "flavor": "奶茶",
           "size": "大杯",
@@ -649,12 +649,12 @@
       }
     ],
     "expected_tools": [
-      "add_drink",
-      "add_drink"
+      "add_item",
+      "add_item"
     ],
     "expected_args": [
       {
-        "name": "add_drink",
+        "name": "add_item",
         "args": {
           "flavor": "豆漿",
           "size": "大杯",
@@ -662,7 +662,7 @@
         }
       },
       {
-        "name": "add_drink",
+        "name": "add_item",
         "args": {
           "flavor": "豆漿",
           "size": "中杯",
@@ -686,7 +686,7 @@
       }
     ],
     "expected_tools": [
-      "add_combo"
+      "add_item"
     ],
     "expected_response_contains": [
       "冰",
@@ -695,7 +695,7 @@
     "expected_behavior": "模型 call add_combo，系統回 ok:false 追問飲料溫度",
     "expected_args": [
       {
-        "name": "add_combo",
+        "name": "add_item",
         "args": {
           "combo_name": "套餐一"
         }
@@ -713,11 +713,11 @@
       }
     ],
     "expected_tools": [
-      "add_combo"
+      "add_item"
     ],
     "expected_args": [
       {
-        "name": "add_combo",
+        "name": "add_item",
         "args": {
           "combo_name": "套餐四"
         }
@@ -748,11 +748,11 @@
       }
     ],
     "expected_tools": [
-      "add_combo"
+      "add_item"
     ],
     "expected_args": [
       {
-        "name": "add_combo",
+        "name": "add_item",
         "args": {
           "combo_name": "套餐B"
         }
@@ -782,11 +782,11 @@
       }
     ],
     "expected_tools": [
-      "add_combo"
+      "add_item"
     ],
     "expected_args": [
       {
-        "name": "add_combo",
+        "name": "add_item",
         "args": {
           "combo_name": "套餐二"
         }
@@ -808,11 +808,11 @@
       }
     ],
     "expected_tools": [
-      "add_combo"
+      "add_item"
     ],
     "expected_args": [
       {
-        "name": "add_combo",
+        "name": "add_item",
         "args": {
           "combo_name": "套餐三"
         }
@@ -1042,18 +1042,18 @@
       }
     ],
     "expected_tools": [
-      "add_egg_pancake",
-      "add_snack"
+      "add_item",
+      "add_item"
     ],
     "expected_args": [
       {
-        "name": "add_egg_pancake",
+        "name": "add_item",
         "args": {
           "flavor": "玉米"
         }
       },
       {
-        "name": "add_snack",
+        "name": "add_item",
         "args": {
           "flavor": "抓餅"
         }
@@ -1075,14 +1075,14 @@
       }
     ],
     "expected_tools": [
-      "add_egg_pancake",
-      "add_egg_pancake",
-      "add_snack",
-      "add_snack",
-      "add_snack",
-      "add_snack",
-      "add_snack",
-      "add_snack"
+      "add_item",
+      "add_item",
+      "add_item",
+      "add_item",
+      "add_item",
+      "add_item",
+      "add_item",
+      "add_item"
     ],
     "expected_response_contains": [
       "米"
@@ -1213,11 +1213,11 @@
       }
     ],
     "expected_tools": [
-      "add_drink"
+      "add_item"
     ],
     "expected_args": [
       {
-        "name": "add_drink",
+        "name": "add_item",
         "args": {
           "flavor": "豆漿",
           "size": "大杯",
