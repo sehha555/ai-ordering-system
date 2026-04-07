@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../store/useStore';
 import { AppStatus } from '../types';
@@ -16,6 +16,26 @@ export default function Home() {
 
   const triggerRef = useRef<(() => void) | null>(null);
   const handleVisualizerClick = () => { triggerRef.current?.(); };
+
+  // 拖曳分隔條調整右側面板寬度
+  const [rightWidth, setRightWidth] = useState(380);
+  const dragging = useRef(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const onDragStart = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    dragging.current = true;
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }, []);
+
+  const onDragMove = useCallback((e: React.PointerEvent) => {
+    if (!dragging.current || !containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const newRight = rect.right - e.clientX;
+    setRightWidth(Math.max(260, Math.min(600, newRight)));
+  }, []);
+
+  const onDragEnd = useCallback(() => { dragging.current = false; }, []);
 
   return (
     <div className="h-screen w-screen flex items-center justify-center" style={{ backgroundColor: '#e4ecef' }}>
@@ -40,7 +60,12 @@ export default function Home() {
       </header>
 
       {/* 主內容區：左右分欄 */}
-      <div className="flex-1 overflow-hidden flex gap-4 p-4">
+      <div
+        ref={containerRef}
+        className="flex-1 overflow-hidden flex p-4"
+        onPointerMove={onDragMove}
+        onPointerUp={onDragEnd}
+      >
         {/* 左邊：對話記錄 + 球體 */}
         <div
           className="flex-1 min-w-0 flex flex-col rounded-2xl overflow-hidden"
@@ -73,10 +98,22 @@ export default function Home() {
           </motion.div>
         </div>
 
+        {/* 拖曳分隔條 */}
+        <div
+          onPointerDown={onDragStart}
+          className="shrink-0 flex items-center justify-center cursor-col-resize select-none"
+          style={{ width: 12 }}
+        >
+          <div
+            className="rounded-full transition-colors"
+            style={{ width: 4, height: 40, backgroundColor: '#d0dce0' }}
+          />
+        </div>
+
         {/* 右邊：點餐單 */}
         <div
-          className="w-[380px] shrink-0 flex flex-col rounded-2xl overflow-hidden"
-          style={{ backgroundColor: '#ffffff' }}
+          className="shrink-0 flex flex-col rounded-2xl overflow-hidden"
+          style={{ backgroundColor: '#ffffff', width: rightWidth }}
         >
           <OrderPanel />
         </div>
