@@ -99,7 +99,7 @@ class SnackTool:
         quantity = frame.get("quantity", 1)
 
         if not snack_name:
-            return {"status": "error", "message": "缺少點心名稱，無法計價。"}
+            return {"ok": False, "message": "缺少點心名稱，無法計價。"}
 
         try:
             base_price = menu_price_service.get_price("點心", snack_name)
@@ -108,7 +108,7 @@ class SnackTool:
             message = f"{quantity}份{snack_name}，共 {total_price}元"
 
             return {
-                "status": "success",
+                "ok": True,
                 "snack": snack_name,
                 "quantity": quantity,
                 "single_price": base_price,
@@ -116,7 +116,7 @@ class SnackTool:
                 "message": message,
             }
         except KeyError:
-            return {"status": "error", "message": f"找不到點心品項：{snack_name}，無法計價。"}
+            return {"ok": False, "message": f"找不到點心品項：{snack_name}，無法計價。"}
         except RuntimeError as e:
             raise e
 

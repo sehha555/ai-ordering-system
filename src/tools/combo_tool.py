@@ -149,32 +149,32 @@ class ComboTool:
 
     def quote_combo_price(self, frame: Dict[str, Any]) -> Dict[str, Any]:
         short = frame.get("combo_name")
-        if not short or short not in self.combo_index: return {"status": "error", "message": f"找不到套餐：{short}"}
+        if not short or short not in self.combo_index: return {"ok": False, "message": f"找不到套餐：{short}"}
         data = self.combo_index[short]
 
         try:
             base = menu_price_service.get_price("套餐", data["full_name"])
         except KeyError:
-            return {"status": "error", "message": f"無法取得套餐價格：{short}"}
+            return {"ok": False, "message": f"無法取得套餐價格：{short}"}
 
         delta = 0
         swap = frame.get("swap_drink")
         if swap:
             old_can = data.get("default_drink_canonical")
-            if not old_can: return {"status": "error", "message": f"{short} 沒有預設飲料，無法進行替換。"}
+            if not old_can: return {"ok": False, "message": f"{short} 沒有預設飲料，無法進行替換。"}
             try:
                 old_p = menu_price_service.get_price("飲品", old_can)
                 new_can = self.find_canonical_drink_name(swap.get("drink"), swap.get("size"))
-                if not new_can: return {"status": "error", "message": f"菜單上找不到該飲品：{swap.get('drink')} {swap.get('size') or ''}"}
+                if not new_can: return {"ok": False, "message": f"菜單上找不到該飲品：{swap.get('drink')} {swap.get('size') or ''}"}
                 new_p = menu_price_service.get_price("飲品", new_can)
                 delta = max(0, new_p - old_p)
-            except KeyError: return {"status": "error", "message": "計價時找不到品項價格。"}
+            except KeyError: return {"ok": False, "message": "計價時找不到品項價格。"}
 
         qty = frame.get("quantity", 1)
         total = (base + delta) * qty
         msg = f"{short} 價格為 {total}元"
         if delta > 0: msg += f" (含換飲料補差價 {delta}元)"
-        return {"status": "success", "combo_name": short, "total_price": total, "message": msg}
+        return {"ok": True, "combo_name": short, "total_price": total, "message": msg}
 
     def _simplify_part(self, part: str) -> List[str]:
         clean = re.sub(r'\*\d+', '', part).strip()

@@ -1016,7 +1016,7 @@ class ToolRegistry:
             unpriceable_items = []
             for item in cart:
                 pi = cart_manager.get_price_info(item)
-                if not pi or pi.get("status") != "success":
+                if not pi or not pi.get("ok"):
                     unpriceable_items.append(cart_manager.format_item(item))
             if unpriceable_items:
                 return {

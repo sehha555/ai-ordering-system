@@ -49,7 +49,7 @@ def format_item(frame: Dict[str, Any]) -> str:
 
 def _item_key(frame: Dict[str, Any]) -> str:
     """提取品項唯一身份（品項類型+格式化名稱），用於合併判斷"""
-    rtype = frame.get("recognized_type", frame.get("itemtype", ""))
+    rtype = frame.get("itemtype", "")
     name = format_item(frame)
     return f"{rtype}:{name}"
 
@@ -84,12 +84,9 @@ def extract_total(pi: Dict[str, Any], qty: int) -> int:
     """從價格資訊和數量計算總價"""
     if not pi:
         return 0
-    if "total_price" in pi and pi["total_price"] is not None:
-        return pi["total_price"]
-    if "single_total" in pi:
-        return pi["single_total"] * qty
-    if "single_price" in pi:
-        return pi["single_price"] * qty
+    total = pi.get("total_price")
+    if total is not None:
+        return total
     return 0
 
 
@@ -113,7 +110,7 @@ def build_cart_summary(cart: List[Dict[str, Any]], price_format: str = "dollar")
         qty = max(1, qty)
         name = format_item(item)
         pi = get_price_info(item)
-        if pi and pi.get("status") == "success":
+        if pi and pi.get("ok"):
             item_total = extract_total(pi, qty)
             total_price += item_total
             price_str = f"${item_total}" if price_format == "dollar" else f"{item_total}元"
@@ -143,7 +140,7 @@ def calculate_cart_total(cart: List[Dict[str, Any]]) -> int:
         qty = int(raw_qty) if raw_qty is not None and str(raw_qty) != "" else 1
         qty = max(1, qty)
         pi = get_price_info(item)
-        if pi and pi.get("status") == "success":
+        if pi and pi.get("ok"):
             total += extract_total(pi, qty)
     return total
 
@@ -157,7 +154,7 @@ def get_order_summary(cart: List[Dict[str, Any]]) -> str:
     price_cache: Dict[int, Dict[str, Any]] = {}
     for item in cart:
         pi = get_price_info(item)
-        if not pi or pi.get("status") != "success":
+        if not pi or not pi.get("ok"):
             return f"品項「{format_item(item)}」無法計價：{pi.get('message', '計價失敗') if pi else '計價失敗'}。請洽服務人員再結帳。"
         price_cache[id(item)] = pi
 

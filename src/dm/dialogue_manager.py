@@ -382,7 +382,7 @@ class DialogueManager:
                 res = snack_tool.parse_snack_utterance(text)
             elif rtype == "jam_toast":
                 tmp = jam_toast_tool.parse_jam_toast_utterance(text)
-                if tmp.get("status") == "error":
+                if not tmp.get("ok"):
                     return {"frame": None, "error": tmp.get("message")}
                 res = tmp
             elif rtype == "egg_pancake":

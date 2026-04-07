@@ -66,7 +66,7 @@ async def get_cart_summary(request: Request, session_id: str, api_key: str = Dep
 
     except Exception:
         logger.exception("[CART] get_cart_summary 異常")
-        return {"ok": False, "error": "內部錯誤", "items": [], "total_price": 0}
+        return {"ok": False, "message": "內部錯誤", "items": [], "total_price": 0}
 
 
 @router.post("/api/checkout")

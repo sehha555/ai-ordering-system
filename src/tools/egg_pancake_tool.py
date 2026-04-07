@@ -148,14 +148,14 @@ class EggPancakeTool:
         try:
             base_price = menu_price_service.get_price("蛋餅", price_key)
         except KeyError:
-            return {"status": "error", "total_price": None, "message": f"找不到品項：{flavor}"}
+            return {"ok": False, "total_price": None, "message": f"找不到品項：{flavor}"}
 
         addon_total = sum(self.ADDON_PRICES.get(a, 0) for a in addons_list)
         single = base_price + addon_total
         total = single * qty
 
         return {
-            "status": "success",
+            "ok": True,
             "quantity": qty,
             "flavor": flavor,
             "addons": addons_list,

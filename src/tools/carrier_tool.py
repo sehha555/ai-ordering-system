@@ -176,11 +176,11 @@ class CarrierTool:
         flavor = frame.get("flavor")
 
         if not carrier or not flavor:
-            return {"status": "error", "message": "缺少 carrier 或 flavor，無法計價。"}
+            return {"ok": False, "message": "缺少 carrier 或 flavor，無法計價。"}
 
         base_price = self.price_index.get((carrier, flavor))
         if base_price is None:
-            return {"status": "error", "message": f"找不到菜單品項：{flavor}{carrier}"}
+            return {"ok": False, "message": f"找不到菜單品項：{flavor}{carrier}"}
 
         # 加料價表沿用飯糰 ADDON_PRICE_TABLE
         addon_total = 0
@@ -196,18 +196,18 @@ class CarrierTool:
             else:
                 unknown_add.append(key)
 
-        single_total = int(base_price) + int(addon_total)
+        total_price = int(base_price) + int(addon_total)
 
         return {
-            "status": "success",
+            "ok": True,
             "carrier": carrier,
             "flavor": flavor,
             "base_price": int(base_price),
             "addon_total": int(addon_total),
             "unknown_add": unknown_add,
             "needs_store_confirm": len(unknown_add) > 0,
-            "single_total": single_total,
-            "message": f"{flavor}{carrier} 基礎{base_price} + 加料{addon_total} = {single_total}元",
+            "total_price": total_price,
+            "message": f"{flavor}{carrier} 基礎{base_price} + 加料{addon_total} = {total_price}元",
         }
 
     # ---------- internal ----------

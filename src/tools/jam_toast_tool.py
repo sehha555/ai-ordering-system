@@ -23,7 +23,7 @@ class JamToastTool:
         # Business rule: cut_edge is only for 厚片
         if cut_edge and size != "厚片":
             return {
-                "status": "error",
+                "ok": False,
                 "message": "不好意思，只有厚片才能切邊喔！",
                 "itemtype": "jam_toast",
                 "jam_toast": None,
@@ -56,7 +56,7 @@ class JamToastTool:
             "cut_edge": cut_edge,
             "raw_text": text,
             "missing_slots": missing_slots,
-            "status": "success"
+            "ok": True
         }
 
         # If a valid item was constructed, check if it exists in the menu
@@ -77,14 +77,14 @@ class JamToastTool:
         quantity = frame.get("quantity", 1)
 
         if not jam_toast_name:
-            return {"status": "error", "message": "缺少果醬吐司品名，無法計價。"}
+            return {"ok": False, "message": "缺少果醬吐司品名，無法計價。"}
 
         try:
             base_price = menu_price_service.get_price("果醬吐司", jam_toast_name)
             total_price = base_price * quantity
 
             return {
-                "status": "success",
+                "ok": True,
                 "jam_toast": jam_toast_name,
                 "quantity": quantity,
                 "single_price": base_price,
@@ -92,7 +92,7 @@ class JamToastTool:
                 "message": f"{quantity}份{jam_toast_name}，共 {total_price}元",
             }
         except KeyError:
-            return {"status": "error", "message": f"找不到品項：{jam_toast_name}，無法計價。"}
+            return {"ok": False, "message": f"找不到品項：{jam_toast_name}，無法計價。"}
         except RuntimeError as e:
             raise e
 

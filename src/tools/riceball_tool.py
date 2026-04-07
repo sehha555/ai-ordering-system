@@ -243,7 +243,7 @@ class MenuTool:
     def get_riceball_recipe(self, flavor: str) -> Dict[str, Any]:
         recipe = self.recipes_data.get(flavor, {})
         return {
-            "status": "success" if recipe else "not_found",
+            "ok": bool(recipe),
             "flavor": flavor,
             "ingredients": recipe.get("ingredients", []),
             "available": bool(recipe),
@@ -265,7 +265,7 @@ class MenuTool:
                 break
 
         if not base_item:
-            return {"status": "error", "message": f"找不到 '{flavor}'", "needs_confirm": True}
+            return {"ok": False, "message": f"找不到 '{flavor}'", "needs_confirm": True}
 
         base_price = int(base_item.get("price", 0))
         total = base_price
@@ -282,7 +282,7 @@ class MenuTool:
             heavy_price = HEAVY_RICEBALL_PRICES.get(flavor)
             if heavy_price is None:
                 return {
-                    "status": "warning",
+                    "ok": False,
                     "flavor": flavor,
                     "total_price": None,
                     "needs_confirm": True,
@@ -297,7 +297,7 @@ class MenuTool:
             total += 10
 
         return {
-            "status": "success",
+            "ok": True,
             "flavor": flavor,
             "base_price": base_price,
             "large": is_large,
@@ -353,7 +353,7 @@ class MenuTool:
             step = 5
             suggested_prices = list(range(min_price, 105, step))  # 35~100
             return {
-                "status": "needs_price_confirm",
+                "ok": False,
                 "flavor": flavor,
                 "addon_total": None,
                 "normalized_add": normalized_add,
@@ -366,7 +366,7 @@ class MenuTool:
             }
 
         return {
-            "status": "success",
+            "ok": True,
             "flavor": flavor,
             "addon_total": addon_total,
             "normalized_add": normalized_add,

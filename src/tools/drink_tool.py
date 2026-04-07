@@ -133,9 +133,9 @@ class DrinkTool:
         quantity = frame.get("quantity", 1)
 
         if not drink_name:
-            return {"status": "error", "message": "缺少飲料名稱，無法計價。"}
+            return {"ok": False, "message": "缺少飲料名稱，無法計價。"}
         if not size:
-            return {"status": "error", "message": f"{drink_name}缺少杯型，無法計價。"}
+            return {"ok": False, "message": f"{drink_name}缺少杯型，無法計價。"}
 
         base_price = None
         # Try "飲品名稱(杯型縮寫)" e.g. "有糖豆漿(中)"
@@ -149,7 +149,7 @@ class DrinkTool:
                 base_price = menu_price_service.get_price("飲品", full_drink_name_long)
             except KeyError:
                 return {
-                    "status": "error",
+                    "ok": False,
                     "message": f"找不到飲品品項：{drink_name}{size}，無法計價。",
                 }
             except RuntimeError as e:
@@ -160,7 +160,7 @@ class DrinkTool:
         total_price = base_price * quantity
 
         return {
-            "status": "success",
+            "ok": True,
             "drink": drink_name,
             "size": size,
             "quantity": quantity,

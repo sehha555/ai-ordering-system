@@ -53,7 +53,7 @@ def _format_cart_items(cart: list) -> list:
         qty = int(item.get("quantity", 1) or 1)
         name = cart_manager.format_item(item)
         pi = cart_manager.get_price_info(item)
-        if pi and pi.get("status") == "success":
+        if pi and pi.get("ok"):
             price = cart_manager.extract_total(pi, qty)
         else:
             price = 0
