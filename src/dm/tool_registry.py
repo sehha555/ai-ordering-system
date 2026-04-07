@@ -785,38 +785,6 @@ class ToolRegistry:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
-    def update_draft(self, items: list) -> Dict[str, Any]:
-        """直接覆蓋 session draft（待確認品項，不分配 item_id）。"""
-        try:
-            session = self.get_current_session()
-            session["draft"] = list(items)
-            return {
-                "ok": True,
-                "draft_count": len(items),
-                "message": f"已記錄 {len(items)} 項待確認品項",
-            }
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
-
-    _MODIFIABLE_FIELDS = {"flavor", "size", "temp", "quantity", "rice", "note"}
-
-    def modify_cart_item(self, item_id: str, field: str, new_value: Any) -> Dict[str, Any]:
-        """直接修改購物車中某品項的欄位值。需要 item_id（從 get_cart_summary 取得）。"""
-        if field not in self._MODIFIABLE_FIELDS:
-            return {"ok": False, "message": f"不允許修改欄位: {field}"}
-        try:
-            session = self.get_current_session()
-            cart = session.get("cart", [])
-
-            for item in cart:
-                if item.get("item_id") == item_id:
-                    item[field] = new_value
-                    return {"ok": True, "message": f"已修改 {item_id}.{field} = {new_value}"}
-
-            return {"ok": False, "message": f"找不到 item_id={item_id}"}
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
-
     # ============ 共用工具 ============
 
     def remove_from_cart(
@@ -1218,6 +1186,10 @@ class ToolRegistry:
                                 "type": "boolean",
                                 "default": False,
                                 "description": "加蛋（飯糰）",
+                            },
+                            "customization": {
+                                "type": "string",
+                                "description": "客製化備註（如「不要小黃瓜」「不要沙拉醬」）",
                             },
                         },
                         "required": ["name"],

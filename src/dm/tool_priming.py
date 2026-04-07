@@ -92,11 +92,12 @@ def get_priming_messages() -> list[dict]:
     msgs.append({"role": "assistant", "content": "[REMOVE:奶茶]購物車裡沒有奶茶喔～還有要改的嗎？"})
 
     # Demo 10: 更換品項 → [REMOVE] + [ADD] 同時使用
-    msgs.append({"role": "user", "content": "甜飯糰換源味飯糰"})
+    # 飯糰換非飯糰品項，不需要 rice 參數（避免教模型自動猜米種）
+    msgs.append({"role": "user", "content": "甜飯糰換培根蛋吐司"})
     msgs.append(
         {
             "role": "assistant",
-            "content": "[REMOVE:甜飯糰][ADD:源味傳統飯糰|rice=白米]換好了，白米源味傳統飯糰～還有嗎？",
+            "content": "[REMOVE:甜飯糰][ADD:培根蛋吐司]換好了～還有嗎？",
         }
     )
 

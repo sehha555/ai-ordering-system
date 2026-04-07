@@ -1,7 +1,7 @@
 """
 Unified Tool Call Pre-Execution Validator
 
-為 add_item tool 建立的驗證器，與舊版 tool_validator.py 並存。
+為 add_item tool 建立的驗證器。
 add_item 使用單一 name 參數取代各 tool 的 flavor/carrier/combo_name 等欄位。
 
 設計原則：
