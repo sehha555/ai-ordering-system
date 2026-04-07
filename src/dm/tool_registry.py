@@ -341,6 +341,7 @@ class ToolRegistry:
         flavor: Optional[str] = None,
         spicy: bool = False,
         extra_egg: bool = False,
+        customization: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         統一點餐入口。LLM 只需傳 name（品項名稱），後端自動路由到正確分類。
@@ -370,7 +371,12 @@ class ToolRegistry:
             if not rice:
                 return {"ok": False, "missing": ["rice"], "message": "飯糰要白米紫米還是混米？"}
             return self.add_riceball(
-                flavor=resolved_name, rice=rice, spicy=spicy, extra_egg=extra_egg, quantity=quantity
+                flavor=resolved_name,
+                rice=rice,
+                spicy=spicy,
+                extra_egg=extra_egg,
+                quantity=quantity,
+                customization=customization,
             )
 
         # ── 飲品（先問溫度，答了再問杯型）──
@@ -379,7 +385,13 @@ class ToolRegistry:
                 return {"ok": False, "missing": ["temp"], "message": "冰的還是溫的？"}
             if not size:
                 return {"ok": False, "missing": ["size"], "message": "要中杯還是大杯？"}
-            return self.add_drink(flavor=resolved_name, size=size, temp=temp, quantity=quantity)
+            return self.add_drink(
+                flavor=resolved_name,
+                size=size,
+                temp=temp,
+                quantity=quantity,
+                customization=customization,
+            )
 
         # ── 吐司 / 漢堡 / 饅頭（載體） ──
         if category in _CARRIER_CATEGORY_MAP:
@@ -399,14 +411,23 @@ class ToolRegistry:
                 rebuilt = f"{rice}{resolved_name}"
                 rebuilt_info = self._resolve_item_name(rebuilt)
                 if rebuilt_info is not None and rebuilt_info.get("category") == "饅頭":
-                    return self.add_item(name=rebuilt, quantity=quantity)
+                    return self.add_item(
+                        name=rebuilt, quantity=quantity, customization=customization
+                    )
                 # 再試 {rice}饅頭（如 黑糖饅頭）
                 rebuilt_base = f"{rice}饅頭"
                 rebuilt_base_info = self._resolve_item_name(rebuilt_base)
                 if rebuilt_base_info is not None and rebuilt_base_info.get("category") == "饅頭":
-                    return self.add_item(name=rebuilt_base, quantity=quantity)
+                    return self.add_item(
+                        name=rebuilt_base, quantity=quantity, customization=customization
+                    )
 
-            return self.add_carrier(carrier=carrier, flavor=extracted_flavor, quantity=quantity)
+            return self.add_carrier(
+                carrier=carrier,
+                flavor=extracted_flavor,
+                quantity=quantity,
+                customization=customization,
+            )
 
         # ── 蛋餅 ──
         if category == "蛋餅":
@@ -415,12 +436,16 @@ class ToolRegistry:
                 return {"ok": False, "missing": ["flavor"], "message": "蛋餅要什麼口味？"}
             # 有 flavor 參數時直接使用（如 add_item(name='蛋餅', flavor='玉米')）
             if name == "蛋餅" and flavor:
-                return self.add_item(name=f"{flavor}蛋餅", quantity=quantity)
+                return self.add_item(
+                    name=f"{flavor}蛋餅", quantity=quantity, customization=customization
+                )
             # 去掉「蛋餅」後綴取得口味
             ep_flavor = resolved_name
             if ep_flavor.endswith("蛋餅"):
                 ep_flavor = ep_flavor[:-2]
-            return self.add_egg_pancake(flavor=ep_flavor, quantity=quantity)
+            return self.add_egg_pancake(
+                flavor=ep_flavor, quantity=quantity, customization=customization
+            )
 
         # ── 果醬吐司 ──
         if category == "果醬吐司":
@@ -448,6 +473,8 @@ class ToolRegistry:
                 "jam_toast": jam_name,
                 "quantity": max(1, quantity),
             }
+            if customization:
+                item["customization"] = customization
             session["cart"].append(item)
             return {
                 "ok": True,
@@ -458,12 +485,19 @@ class ToolRegistry:
 
         # ── 點心 / 蔥抓餅 / 鐵板麵 ──
         if category in ("點心", "蔥抓餅", "鐵板麵"):
-            return self.add_snack(flavor=resolved_name, quantity=quantity)
+            return self.add_snack(
+                flavor=resolved_name, quantity=quantity, customization=customization
+            )
 
         # ── 套餐 ──
         if category == "套餐":
             return self.add_combo(
-                combo_name=resolved_name, temp=temp, rice=rice, flavor=flavor, quantity=quantity
+                combo_name=resolved_name,
+                temp=temp,
+                rice=rice,
+                flavor=flavor,
+                quantity=quantity,
+                customization=customization,
             )
 
         # 未知分類 — 回傳錯誤
@@ -1400,6 +1434,7 @@ class ToolRegistry:
                 "flavor",
                 "spicy",
                 "extra_egg",
+                "customization",
             },
             # 品項專屬工具（backward compat）
             "add_riceball": {

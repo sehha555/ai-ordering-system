@@ -10,7 +10,7 @@ Few-shot priming messages — 讓本地 LLM 學會使用 text tag 格式輸出�
 - backend 解析 tag 後自行執行，模型不需要看執行結果
 - ok:false 場景改為「缺必填資訊就不加 tag，直接追問」
 
-注意：超過 9 demo 可能觸發 few-shot collapse（riceball/carrier/combo 退化）
+注意：demo 數量控制在 12 個以內，避免 few-shot collapse
 """
 
 # LLM 回覆中的結帳標記（voice_router 攔截用）
@@ -20,7 +20,7 @@ CHECKOUT_TAG = "[CHECKOUT]"
 def get_priming_messages() -> list[dict]:
     """精選 priming 示範，教模型用 text tag 格式輸出點餐行動。
 
-    9 個高質量 demo，品項全部與 test_scenarios.json 不重疊（防記憶化）：
+    12 個 demo，品項全部與 test_scenarios.json 不重疊（防記憶化）：
     1. 飯糰完整 → [ADD:鮪魚飯糰|rice=白米]
     2. 載體直接 → [ADD:培根蛋吐司]
     3. 套餐帶溫度 → [ADD:套餐一|temp=冰]
@@ -31,23 +31,25 @@ def get_priming_messages() -> list[dict]:
     8. 套餐缺溫度 → 不加 tag，直接追問（關鍵：缺必填時不輸出 [ADD:...]）
     9. 取消品項 → [REMOVE:奶茶] tag
     10. 更換品項 → [REMOVE:舊] + [ADD:新] 同時用
+    11. 詢問成分 → 直接回答（不需 tag），引導點餐
+    12. 客製化 → [ADD:...|customization=不要小黃瓜]
     """
     msgs: list[dict] = []
 
     # Demo 1: 飯糰完整 — 直接輸出 [ADD:...] tag，不需要等工具確認
     # 品項：鮪魚飯糰白米（示範 rice 必填參數格式）
     msgs.append({"role": "user", "content": "一個鮪魚飯糰 白米"})
-    msgs.append({"role": "assistant", "content": "[ADD:鮪魚飯糰|rice=白米]好～還要什麼？"})
+    msgs.append({"role": "assistant", "content": "[ADD:鮪魚飯糰|rice=白米]加好囉，還有嗎？"})
 
     # Demo 2: 載體直接 — 完整品項名，不帶額外參數
     # 品項：培根蛋吐司（test cases 常用火腿蛋/起司蛋，此 demo 用培根蛋）
     msgs.append({"role": "user", "content": "一個培根蛋吐司"})
-    msgs.append({"role": "assistant", "content": "[ADD:培根蛋吐司]好～還要什麼？"})
+    msgs.append({"role": "assistant", "content": "[ADD:培根蛋吐司]沒問題～還需要什麼嗎？"})
 
     # Demo 3: 套餐帶溫度 — 示範「明確給溫度 → 直接加 tag」
     # 品項：套餐一冰的（test cases 用套餐一缺溫度，此 demo 示範完整版）
     msgs.append({"role": "user", "content": "套餐一 冰的"})
-    msgs.append({"role": "assistant", "content": "[ADD:套餐一|temp=冰]好～還要什麼？"})
+    msgs.append({"role": "assistant", "content": "[ADD:套餐一|temp=冰]OK～還要點別的嗎？"})
 
     # Demo 4: 俗稱大冰奶 → 正規化為完整規格再輸出 tag
     # 大冰奶 = 大杯冰純鮮奶茶，size 必須用「大杯」
@@ -60,13 +62,13 @@ def get_priming_messages() -> list[dict]:
     msgs.append(
         {
             "role": "assistant",
-            "content": "[ADD:花生吐司][ADD:十穀漿|size=大杯|temp=冰]好，奶茶要中冰還是中溫？",
+            "content": "[ADD:花生吐司][ADD:十穀漿|size=大杯|temp=冰]好，奶茶要冰的還是溫的？",
         }
     )
 
     # Demo 6: 結帳流程 → [CHECKOUT] tag（系統攔截處理，不需要額外 tag）
     msgs.append({"role": "user", "content": "好了 買單"})
-    msgs.append({"role": "assistant", "content": f"{CHECKOUT_TAG}內用還是外帶？"})
+    msgs.append({"role": "assistant", "content": f"{CHECKOUT_TAG}好的～內用還是外帶？"})
 
     # Demo 7: 查菜單 → [QUERY:飲品] tag，再列舉回覆
     # 重要：[QUERY:...] tag 由 backend 解析，模型自行列舉結果
@@ -74,7 +76,7 @@ def get_priming_messages() -> list[dict]:
     msgs.append(
         {
             "role": "assistant",
-            "content": "[QUERY:飲品]我們有：有糖豆漿、精選紅茶、純鮮奶茶、十穀漿、黑糖純鮮奶茶，要點哪個？",
+            "content": "[QUERY:飲品]我們的飲料有豆漿、紅茶、鮮奶茶、十穀漿跟黑糖鮮奶茶，想喝哪個？",
         }
     )
 
@@ -87,16 +89,34 @@ def get_priming_messages() -> list[dict]:
     # Demo 9: 取消品項用 [REMOVE] tag（系統攔截處理）
     # 購物車沒有奶茶的情境，覆蓋 cancel_nonexistent
     msgs.append({"role": "user", "content": "幫我把奶茶取消"})
-    msgs.append(
-        {"role": "assistant", "content": "[REMOVE:奶茶]購物車裡沒有奶茶喔，不用取消～還需要什麼？"}
-    )
+    msgs.append({"role": "assistant", "content": "[REMOVE:奶茶]購物車裡沒有奶茶喔～還有要改的嗎？"})
 
     # Demo 10: 更換品項 → [REMOVE] + [ADD] 同時使用
     msgs.append({"role": "user", "content": "甜飯糰換源味飯糰"})
     msgs.append(
         {
             "role": "assistant",
-            "content": "[REMOVE:甜飯糰][ADD:源味傳統飯糰|rice=白米]好，已換成白米源味傳統飯糰～還要什麼？",
+            "content": "[REMOVE:甜飯糰][ADD:源味傳統飯糰|rice=白米]換好了，白米源味傳統飯糰～還有嗎？",
+        }
+    )
+
+    # Demo 11: 詢問成分 — 直接從菜單指南回答，不需要 tag
+    # 教學：回答成分問題後引導點餐，不需要加任何 tag
+    msgs.append({"role": "user", "content": "鮪魚飯糰裡面有什麼"})
+    msgs.append(
+        {
+            "role": "assistant",
+            "content": "鮪魚飯糰裡有肉鬆、酸菜、鮪魚沙拉和油條喔，要來一個嗎？",
+        }
+    )
+
+    # Demo 12: 客製化 — 用 customization 參數記錄特殊要求
+    # 教學：客人要求去掉或增加配料時，用 customization=... 記錄
+    msgs.append({"role": "user", "content": "一個培根蛋漢堡 不要小黃瓜"})
+    msgs.append(
+        {
+            "role": "assistant",
+            "content": "[ADD:培根蛋漢堡|customization=不要小黃瓜]沒問題～還要什麼？",
         }
     )
 

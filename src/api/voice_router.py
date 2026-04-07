@@ -437,7 +437,7 @@ class StreamingDMAdapter:
                                             kwargs["quantity"] = int(value)
                                         except ValueError:
                                             pass
-                                    elif key in ("rice", "size", "temp", "flavor"):
+                                    elif key in ("rice", "size", "temp", "flavor", "customization"):
                                         kwargs[key] = value
                                     elif key in ("spicy", "extra_egg"):
                                         kwargs[key] = value.lower() == "true"
