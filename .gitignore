@@ -1,4 +1,7 @@
-﻿# Python
+﻿# llama-server 二進位（大檔不進 git）
+tools/llama-server/
+
+# Python
 __pycache__/
 *.py[cod]
 *.pyo

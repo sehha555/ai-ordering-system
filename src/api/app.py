@@ -123,17 +123,40 @@ async def lifespan(app):
 
     asyncio.create_task(_warmup_llm())
 
+    # startup: LLM 定期 keepalive（每 5 分鐘 ping，防止 LM Studio 卸載模型）
+    async def _llm_keepalive_loop():
+        from src.dm.tool_priming import get_priming_messages
+
+        system_prompt = SystemPromptBuilder().build()
+        priming = get_priming_messages()
+        messages = [
+            {"role": "system", "content": system_prompt},
+            *priming,
+            {"role": "user", "content": "你好"},
+        ]
+        while True:
+            await asyncio.sleep(300)  # 5 分鐘
+            try:
+                await _llm_caller.ping(messages=messages)
+                logger.debug("[KEEPALIVE] LLM ping 完成")
+            except Exception as e:
+                logger.warning("[KEEPALIVE] LLM ping 失敗: {}", e)
+
+    keepalive_task = asyncio.create_task(_llm_keepalive_loop())
+
     # startup: Session 背景清理任務（每 5 分鐘）
     cleanup_task = asyncio.create_task(_session_cleanup_loop())
 
     yield
 
     # shutdown: 取消背景任務、關閉 httpx client
+    keepalive_task.cancel()
     cleanup_task.cancel()
-    try:
-        await cleanup_task
-    except asyncio.CancelledError:
-        pass
+    for task in (keepalive_task, cleanup_task):
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
     if _container.llm_caller:
         try:
             await _container.llm_caller.aclose()

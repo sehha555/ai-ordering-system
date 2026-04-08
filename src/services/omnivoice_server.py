@@ -110,7 +110,8 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         length = int(self.headers.get("Content-Length", 0))
-        body = json.loads(self.rfile.read(length)) if length else {}
+        raw = self.rfile.read(length) if length else b""
+        body = json.loads(raw.decode("utf-8", errors="replace")) if raw else {}
         text = body.get("text", "")
 
         if not text or len(text) > 500:

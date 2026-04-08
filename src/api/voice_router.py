@@ -451,18 +451,14 @@ class StreamingDMAdapter:
                                 )
                         full_text = _ADD_RE.sub("", full_text).strip()
 
-                        # add_item 失敗 → 用後端訊息取代 LLM 回覆
+                        # add_item 失敗 → 補發 text_delta 讓使用者聽到追問
                         failed = [r for r in add_results if not r.get("ok")]
                         if failed:
-                            parts_msg = [
-                                r.get("message", "")
-                                for r in add_results
-                                if r.get("ok") and r.get("message")
-                            ]
-                            parts_msg.extend(
-                                r.get("message", "") for r in failed if r.get("message")
-                            )
-                            full_text = "，".join(parts_msg) if parts_msg else full_text
+                            failed_msgs = [r.get("message", "") for r in failed if r.get("message")]
+                            if failed_msgs:
+                                followup = "，".join(failed_msgs)
+                                yield {"type": "text_delta", "content": followup}
+                                full_text = (full_text + "，" + followup) if full_text else followup
 
                         # 全成功但 LLM 原文只有 tag（清除後為空）→ 用後端訊息
                         if not full_text and add_results and not failed:

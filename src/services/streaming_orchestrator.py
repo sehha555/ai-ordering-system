@@ -80,6 +80,10 @@ class StreamingOrchestrator:
     ) -> AsyncIterator[tuple]:
         """TTS 音訊產生：查快取 → 命中直送 / miss 則串流。
         每個 yield 回傳 (sse_event, updated_first_audio, ttfa_or_None)"""
+        # 清除 markdown 格式符號，避免 TTS 朗讀 * 等字元
+        text = text.replace("*", "").replace("#", "").strip()
+        if not text:
+            return
         cached = tts_cache.get(text)
         if cached:
             b64 = base64.b64encode(cached).decode("utf-8")
