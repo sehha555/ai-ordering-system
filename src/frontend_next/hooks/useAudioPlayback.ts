@@ -33,12 +33,12 @@ export function useAudioPlayback(
 
   const playNextAudio = useCallback(() => {
     if (audioQueueRef.current.length === 0) {
+      // queue 空 → 標記未播放，讓新 AUDIO_CHUNK 能重啟播放鏈
+      isPlayingRef.current = false;
       if (streamDoneRef.current) {
-        // SSE 已結束且 queue 空 → 真正完成
-        isPlayingRef.current = false;
+        // SSE 也結束 → 真正完成
         onPlaybackCompleteRef.current?.();
       }
-      // SSE 還在送 → 等外部 push 新 chunk 後再呼叫 playNextAudio
       return;
     }
 

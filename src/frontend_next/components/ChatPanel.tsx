@@ -1,8 +1,23 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../store/useStore';
+
+/** 逐字顯示 hook — 新 chunk 到達時從已顯示位置繼續打字 */
+function useTypewriter(text: string, speed = 35): string {
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    if (!text) { setIndex(0); return; }
+    if (index >= text.length) return;
+
+    const timer = setTimeout(() => setIndex((i) => i + 1), speed);
+    return () => clearTimeout(timer);
+  }, [text, index, speed]);
+
+  return text.slice(0, index);
+}
 
 const ASSISTANT_BUBBLE_STYLE = {
   backgroundColor: 'rgba(114, 157, 173, 0.12)',
@@ -14,6 +29,7 @@ const ASSISTANT_BUBBLE_STYLE = {
 export default function ChatPanel() {
   const messages = useStore((state) => state.messages);
   const streamingText = useStore((state) => state.streamingText);
+  const displayedText = useTypewriter(streamingText);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // 新訊息或 streaming 開始/結束時滾動（!!streamingText 避免每 token 觸發）
@@ -73,7 +89,7 @@ export default function ChatPanel() {
                 className="max-w-[80%] px-4 py-3 text-base"
                 style={ASSISTANT_BUBBLE_STYLE}
               >
-                {streamingText}
+                {displayedText}
                 <span
                   className="inline-block w-[2px] h-[1em] ml-0.5 align-middle animate-pulse"
                   style={{ backgroundColor: 'var(--accent)' }}

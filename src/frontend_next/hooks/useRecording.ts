@@ -25,7 +25,6 @@ interface UseRecordingProps {
   setVolume: (v: number) => void;
   setVadEnabled: (v: boolean) => void;
   sendAudioRef: RefObject<((blob: Blob) => Promise<void>) | undefined>;
-  autoPromptTimerRef: RefObject<ReturnType<typeof setTimeout> | null>;
   cleanupPlayback: () => void;
 }
 
@@ -35,7 +34,6 @@ export function useRecording({
   setVolume,
   setVadEnabled,
   sendAudioRef,
-  autoPromptTimerRef,
   cleanupPlayback,
 }: UseRecordingProps) {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -56,10 +54,6 @@ export function useRecording({
       clearTimeout(recordingTimerRef.current);
       recordingTimerRef.current = null;
     }
-    if (autoPromptTimerRef.current) {
-      clearTimeout(autoPromptTimerRef.current);
-      autoPromptTimerRef.current = null;
-    }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current = null;
@@ -74,7 +68,7 @@ export function useRecording({
       audioContextRef.current = null;
     }
     analyserRef.current = null;
-  }, [autoPromptTimerRef, cleanupPlayback]);
+  }, [cleanupPlayback]);
 
   const initMicrophone = useCallback(async () => {
     try {
@@ -120,12 +114,6 @@ export function useRecording({
     isRecordingRef.current = true;
     setStatus('listening');
 
-    if (autoPromptTimerRef.current) {
-      console.log('[自動追問] 偵測到語音輸入，取消計時器');
-      clearTimeout(autoPromptTimerRef.current);
-      autoPromptTimerRef.current = null;
-    }
-
     const mimeType = getSupportedMimeType();
     const recorderOpts = mimeType ? { mimeType } : undefined;
     const recorder = new MediaRecorder(streamRef.current, recorderOpts);
@@ -144,7 +132,7 @@ export function useRecording({
       console.log('[VAD] 達到最大錄音時長，自動停止');
       stopRecordingVAD();
     }, MAX_RECORDING_DURATION);
-  }, [setStatus, makeOnStopHandler, autoPromptTimerRef]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [setStatus, makeOnStopHandler]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const stopRecordingVAD = useCallback(() => {
     if (recordingTimerRef.current) {
@@ -160,12 +148,6 @@ export function useRecording({
   }, [setStatus, setVolume]);
 
   const startRecording = useCallback(async () => {
-    if (autoPromptTimerRef.current) {
-      console.log('[自動追問] 偵測到語音輸入（PTT），取消計時器');
-      clearTimeout(autoPromptTimerRef.current);
-      autoPromptTimerRef.current = null;
-    }
-
     try {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(t => t.stop());
@@ -212,7 +194,7 @@ export function useRecording({
       console.error('Failed to start recording:', error);
       setStatus('idle');
     }
-  }, [setStatus, setVolume, makeOnStopHandler, autoPromptTimerRef]);
+  }, [setStatus, setVolume, makeOnStopHandler]);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {

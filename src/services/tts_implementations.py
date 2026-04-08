@@ -106,6 +106,10 @@ class OmniVoiceTTSModel(TTSModel):
     微服務啟動：python src/services/omnivoice_server.py --port 8100
     """
 
+    # Circuit breaker: 連線失敗後跳過 OmniVoice 一段時間，避免每句都 timeout
+    _circuit_open_until: float = 0.0  # class-level，所有 instance 共享
+    _CIRCUIT_COOLDOWN = 60.0  # 失敗後 60 秒內直接走 fallback
+
     def __init__(self, base_url: str = "http://127.0.0.1:8100"):
         self._base_url = base_url
         self._client = httpx.AsyncClient(base_url=base_url, timeout=30.0)
@@ -113,6 +117,14 @@ class OmniVoiceTTSModel(TTSModel):
         logger.info("[TTS] OmniVoice client 初始化 ({})", base_url)
 
     async def run_stream(self, text: str) -> AsyncIterator[bytes]:
+        import time
+
+        now = time.monotonic()
+        if now < OmniVoiceTTSModel._circuit_open_until:
+            async for chunk in self._fallback.run_stream(text):
+                yield chunk
+            return
+
         try:
             r = await self._client.post("/synthesize", json={"text": text})
             if r.status_code == 200:
@@ -120,7 +132,10 @@ class OmniVoiceTTSModel(TTSModel):
                 return
             logger.warning("[TTS] OmniVoice 合成失敗 ({}), fallback Edge TTS", r.status_code)
         except Exception as e:
-            logger.warning("[TTS] OmniVoice 請求失敗: {}，fallback Edge TTS", e)
+            logger.warning(
+                "[TTS] OmniVoice 請求失敗: {}，circuit breaker 啟動 {}s", e, self._CIRCUIT_COOLDOWN
+            )
+            OmniVoiceTTSModel._circuit_open_until = time.monotonic() + self._CIRCUIT_COOLDOWN
 
         async for chunk in self._fallback.run_stream(text):
             yield chunk

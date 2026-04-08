@@ -21,7 +21,6 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
 
   // Bridge refs（跨 hook 的循環依賴橋接）
   const sendAudioRef = useRef<((blob: Blob) => Promise<void>) | undefined>(undefined);
-  const autoPromptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // audioContextRef 在 component 宣告，同時傳給 useAudioPlayback 與 useRecording
   const audioContextRef = useRef<AudioContext | null>(null);
 
@@ -37,7 +36,7 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
     startRecording, stopRecording,
   } = useRecording({
     audioContextRef, setStatus, setVolume, setVadEnabled,
-    sendAudioRef, autoPromptTimerRef, cleanupPlayback,
+    sendAudioRef, cleanupPlayback,
   });
 
   const { startVADLoop, calibrateVAD, vadLoopRef } = useVAD({
@@ -48,13 +47,13 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
   });
 
   const {
-    sendAudioToServer, sendTextToServer, handleSSEEvent,
-    handleSSEEventRef, triggerAutoPromptIfNeeded,
+    sendAudioToServer, handleSSEEvent,
+    handleSSEEventRef,
   } = useSSE({
     sessionId, vadEnabled, isListeningRef,
     setStatus, setTranscript, setCart, setAiReply,
     startVADLoop, playNextAudio,
-    audioQueueRef, isPlayingRef, streamDoneRef, autoPromptTimerRef,
+    audioQueueRef, isPlayingRef, streamDoneRef,
   });
 
   // 接上 bridge refs
@@ -69,15 +68,6 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
     }
   }, [setStatus, setAiReply, vadEnabled, isListeningRef, startVADLoop]);
   onPlaybackCompleteRef.current = handlePlaybackComplete;
-
-  // 偵測 speaking → idle，觸發自動追問
-  const prevStatusRef = useRef<string>('idle');
-  useEffect(() => {
-    if (prevStatusRef.current === 'speaking' && status === 'idle') {
-      triggerAutoPromptIfNeeded();
-    }
-    prevStatusRef.current = status;
-  }, [status, triggerAutoPromptIfNeeded]);
 
   // 點擊處理
   const handleClick = useCallback(() => {

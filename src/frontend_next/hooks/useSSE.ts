@@ -4,8 +4,6 @@ import type { AppStatus, CartItem } from '../types';
 import { SSE_EVENTS } from '../types';
 
 const SSE_TIMEOUT = 90000; // 90s — 後端 LLM 每步最多 25s，多步 tool call 需更長等待
-const AUTO_PROMPT_DELAY = 3000;
-const AUTO_PROMPT_TEXT = '這樣就好嗎？';
 
 // SSE 行解析：回傳 currentEvent 供下次呼叫繼承，避免跨 chunk 時 event 被重置
 export function parseSSELines(
@@ -36,7 +34,6 @@ interface UseSSEProps {
   audioQueueRef: RefObject<unknown[]>;
   isPlayingRef: RefObject<boolean>;
   streamDoneRef: RefObject<boolean>;
-  autoPromptTimerRef: RefObject<ReturnType<typeof setTimeout> | null>;
 }
 
 export function useSSE({
@@ -52,12 +49,9 @@ export function useSSE({
   audioQueueRef,
   isPlayingRef,
   streamDoneRef,
-  autoPromptTimerRef,
 }: UseSSEProps) {
   // ref 存放 handleSSEEvent，讓 sendAudioToServer/sendTextToServer 不受宣告順序限制
   const handleSSEEventRef = useRef<((event: string, dataStr: string) => void) | undefined>(undefined);
-  // ref 存放 sendTextToServer，讓 autoPrompt timer 永遠呼叫最新版本
-  const sendTextRef = useRef<((text: string) => Promise<void>) | undefined>(undefined);
 
   // 共用 SSE stream 讀取邏輯：接受 fetchFn 建立 request，errorLabel 用於 console.error
   const streamSSE = useCallback(async (
@@ -137,7 +131,6 @@ export function useSSE({
       '自動追問',
     );
   }, [streamSSE, sessionId]);
-  sendTextRef.current = sendTextToServer;
 
   // 送音訊到後端（/api/voice-chat）
   const sendAudioToServer = useCallback(async (audioBlob: Blob) => {
@@ -233,27 +226,10 @@ export function useSSE({
   }, [setStatus, setTranscript, setCart, setAiReply, playNextAudio, audioQueueRef, isPlayingRef]);
   handleSSEEventRef.current = handleSSEEvent;
 
-  // 自動追問：speaking → idle 後，若購物車有品項則觸發
-  const triggerAutoPromptIfNeeded = useCallback(() => {
-    const { cart: currentCart } = useStore.getState();
-    if (currentCart.length > 0) {
-      console.log('[自動追問] speaking → idle，購物車有品項，啟動 3 秒計時');
-      autoPromptTimerRef.current = setTimeout(() => {
-        autoPromptTimerRef.current = null;
-        const currentState = useStore.getState();
-        if (currentState.status === 'idle' && currentState.cart.length > 0) {
-          console.log('[自動追問] 觸發，送出:', AUTO_PROMPT_TEXT);
-          sendTextRef.current?.(AUTO_PROMPT_TEXT);
-        }
-      }, AUTO_PROMPT_DELAY);
-    }
-  }, [autoPromptTimerRef]);
-
   return {
     sendAudioToServer,
     sendTextToServer,
     handleSSEEvent,
     handleSSEEventRef,
-    triggerAutoPromptIfNeeded,
   };
 }

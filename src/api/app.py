@@ -5,8 +5,6 @@ import json
 import uuid
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from typing import Optional
 from loguru import logger
 from slowapi import _rate_limit_exceeded_handler
@@ -194,10 +192,6 @@ app.include_router(admin_router)
 app.include_router(checkout_router)
 app.include_router(service_test_router)
 
-# 掛載靜態檔案（如果目錄存在）
-_frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")
-if os.path.isdir(_frontend_dir):
-    app.mount("/static", StaticFiles(directory=_frontend_dir), name="static")
 
 # 初始化服務
 _session_store = create_session_store(
@@ -247,10 +241,7 @@ def validate_order_id(order_id: str):
 
 @app.get("/")
 async def serve_frontend():
-    """根路徑返回前端頁面"""
-    frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "index.html")
-    if os.path.exists(frontend_path):
-        return FileResponse(frontend_path)
+    """根路徑返回 API 資訊（前端由 Next.js :3000 提供）"""
     return {"message": "Voice Dashboard API", "docs": "/docs"}
 
 
