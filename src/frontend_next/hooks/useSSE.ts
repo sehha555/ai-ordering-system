@@ -50,7 +50,7 @@ export function useSSE({
   isPlayingRef,
   streamDoneRef,
 }: UseSSEProps) {
-  // ref 存放 handleSSEEvent，讓 sendAudioToServer/sendTextToServer 不受宣告順序限制
+  // ref 存放 handleSSEEvent，讓 sendAudioToServer 不受宣告順序限制
   const handleSSEEventRef = useRef<((event: string, dataStr: string) => void) | undefined>(undefined);
 
   // 共用 SSE stream 讀取邏輯：接受 fetchFn 建立 request，errorLabel 用於 console.error
@@ -109,7 +109,7 @@ export function useSSE({
       useStore.getState().setConnectionError(
         isTimeout ? '回應超時，請再試一次' : `${errorLabel} 傳送失敗，請稍後再試`
       );
-      // 播放中時讓 playback completion 處理 idle 轉換，避免重複觸發 autoPrompt
+      // 播放中時讓 playback completion 處理 idle 轉換，避免重複設定
       if (!isPlayingRef.current) {
         setStatus('idle');
         if (vadEnabled && isListeningRef.current) {
@@ -118,19 +118,6 @@ export function useSSE({
       }
     }
   }, [setStatus, vadEnabled, startVADLoop, streamDoneRef, audioQueueRef, isPlayingRef, isListeningRef]);
-
-  // 送純文字到後端（/api/text-chat），用於自動追問場景
-  const sendTextToServer = useCallback(async (text: string) => {
-    await streamSSE(
-      (signal) => fetch('/api/text-chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, session_id: sessionId }),
-        signal,
-      }),
-      '自動追問',
-    );
-  }, [streamSSE, sessionId]);
 
   // 送音訊到後端（/api/voice-chat）
   const sendAudioToServer = useCallback(async (audioBlob: Blob) => {
@@ -228,8 +215,6 @@ export function useSSE({
 
   return {
     sendAudioToServer,
-    sendTextToServer,
-    handleSSEEvent,
     handleSSEEventRef,
   };
 }

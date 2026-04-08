@@ -47,7 +47,7 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
   });
 
   const {
-    sendAudioToServer, handleSSEEvent,
+    sendAudioToServer,
     handleSSEEventRef,
   } = useSSE({
     sessionId, vadEnabled, isListeningRef,

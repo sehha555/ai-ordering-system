@@ -102,9 +102,11 @@ export function useAudioPlayback(
       revokeUrl();
       if (audioQueueRef.current.length > 0) {
         playNextAudio();
-      } else if (streamDoneRef.current) {
+      } else {
         isPlayingRef.current = false;
-        onPlaybackCompleteRef.current?.();
+        if (streamDoneRef.current) {
+          onPlaybackCompleteRef.current?.();
+        }
       }
     };
 

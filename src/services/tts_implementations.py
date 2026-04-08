@@ -1,6 +1,7 @@
 # src/services/tts_implementations.py
 import asyncio
 import io
+import time
 from typing import AsyncIterator
 import edge_tts
 import httpx
@@ -117,8 +118,6 @@ class OmniVoiceTTSModel(TTSModel):
         logger.info("[TTS] OmniVoice client 初始化 ({})", base_url)
 
     async def run_stream(self, text: str) -> AsyncIterator[bytes]:
-        import time
-
         now = time.monotonic()
         if now < OmniVoiceTTSModel._circuit_open_until:
             async for chunk in self._fallback.run_stream(text):
@@ -131,6 +130,8 @@ class OmniVoiceTTSModel(TTSModel):
                 yield r.content
                 return
             logger.warning("[TTS] OmniVoice 合成失敗 ({}), fallback Edge TTS", r.status_code)
+            if r.status_code >= 500:
+                OmniVoiceTTSModel._circuit_open_until = time.monotonic() + self._CIRCUIT_COOLDOWN
         except Exception as e:
             logger.warning(
                 "[TTS] OmniVoice 請求失敗: {}，circuit breaker 啟動 {}s", e, self._CIRCUIT_COOLDOWN
