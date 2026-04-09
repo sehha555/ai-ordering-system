@@ -75,6 +75,23 @@ async def readiness():
         checks["asr"] = f"error: {type(e).__name__}"
         all_ok = False
 
+    # 5. TTS 服務可達（檢查實際使用的 streaming TTS backend）
+    try:
+        from src.config.models import TTS_BACKEND
+        from src.services.tts_implementations import OMNIVOICE_BASE_URL
+
+        if TTS_BACKEND == "omnivoice":
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(f"{OMNIVOICE_BASE_URL}/health", timeout=3)
+            checks["tts"] = "ok" if resp.status_code == 200 else f"status_{resp.status_code}"
+            if resp.status_code != 200:
+                all_ok = False
+        else:
+            checks["tts"] = "ok"
+    except Exception as e:
+        checks["tts"] = f"unreachable: {type(e).__name__}"
+        all_ok = False
+
     return JSONResponse(
         content={"ready": all_ok, "checks": checks},
         status_code=200 if all_ok else 503,

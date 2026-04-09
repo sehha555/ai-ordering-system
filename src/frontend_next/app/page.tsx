@@ -10,6 +10,7 @@ import ChatPanel from '../components/ChatPanel';
 import OrderPanel from '../components/OrderPanel';
 import Toast from '../components/Toast';
 import MicSelector from '../components/MicSelector';
+import ServiceStatus from '../components/ServiceStatus';
 
 export default function Home() {
   const { status, vadEnabled, setVadEnabled } = useStore();
@@ -125,6 +126,11 @@ export default function Home() {
         >
           <OrderPanel />
         </div>
+      </div>
+
+      {/* 左下角服務狀態 */}
+      <div className="shrink-0 px-4 pb-3">
+        <ServiceStatus />
       </div>
 
       {/* 隱藏的 VoiceController */}

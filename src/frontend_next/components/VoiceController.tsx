@@ -3,6 +3,7 @@
 import { useRef, useCallback, useEffect, RefObject } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../store/useStore';
+import { useTypewriter } from '../hooks/useTypewriter';
 import AudioVisualizer from './AudioVisualizer';
 import { useAudioPlayback } from '../hooks/useAudioPlayback';
 import { useVAD } from '../hooks/useVAD';
@@ -55,6 +56,9 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
     startVADLoop, playNextAudio,
     audioQueueRef, isPlayingRef, streamDoneRef,
   });
+
+  // ASR 辨識結果逐字顯示
+  const displayedTranscript = useTypewriter(transcript, 25);
 
   // 接上 bridge refs
   sendAudioRef.current = sendAudioToServer;
@@ -155,7 +159,7 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
               className="text-xs text-center px-2"
               style={{ color: 'var(--accent)' }}
             >
-              「{transcript}」
+              「{displayedTranscript}」
             </motion.p>
           )}
         </AnimatePresence>

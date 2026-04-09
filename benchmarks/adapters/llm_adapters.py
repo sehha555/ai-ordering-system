@@ -5,8 +5,10 @@ LLM 模型 Adapters
 
 import json
 import logging
+import os
 import re
 import sys
+import time  # noqa: E402
 from pathlib import Path
 
 import httpx
@@ -751,10 +753,126 @@ class TextTagAdapter(BaseLLMAdapter):
         }
 
 
+class GeminiTextTagAdapter(TextTagAdapter):
+    """Gemini API adapter — text tag mode，繼承 TextTagAdapter 的 tag 解析邏輯。
+
+    差異：HTTP 請求打 Gemini REST API（非 OpenAI 格式），
+    回應格式轉換後共用 _parse_text_tags / _execute_tool / _apply_response_template。
+    """
+
+    GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
+
+    def __init__(self, params: dict):
+        super().__init__(params)
+        self._api_key = params.get("api_key") or os.environ.get(
+            params.get("api_key_env", "GEMINI_API_KEY"), ""
+        )
+        if not self._api_key:
+            raise ValueError("Gemini API key 未設定（params.api_key 或 env GEMINI_API_KEY）")
+
+    def _messages_to_gemini(self, messages: list[dict]) -> tuple[str, list[dict]]:
+        """OpenAI messages 格式 → Gemini contents 格式，回傳 (system_instruction, contents)"""
+        system_parts = []
+        contents = []
+        for msg in messages:
+            role = msg["role"]
+            text = msg.get("content", "")
+            if role == "system":
+                system_parts.append(text)
+            elif role == "user":
+                contents.append({"role": "user", "parts": [{"text": text}]})
+            elif role == "assistant":
+                contents.append({"role": "model", "parts": [{"text": text}]})
+        return "\n\n".join(system_parts), contents
+
+    def run(self, test_case: dict, timeout: float = 60) -> dict:
+        self._ensure_static_context()
+        tool_map, allowed_args = _create_fresh_tool_context(test_case.get("session_context"))
+        model = self.params.get("model", "gemini-2.5-flash")
+        temperature = self.params.get("temperature", 0.2)
+
+        messages = [{"role": "system", "content": self._system_prompt}]
+        messages.extend(self._priming)
+        messages.extend(
+            _inject_session_context(test_case["messages"], test_case.get("session_context"))
+        )
+
+        system_instruction, contents = self._messages_to_gemini(messages)
+
+        url = f"{self.GEMINI_BASE}/models/{model}:generateContent"
+        payload = {
+            "contents": contents,
+            "systemInstruction": {"parts": [{"text": system_instruction}]},
+            "generationConfig": {
+                "temperature": temperature,
+                "thinkingConfig": {"thinkingBudget": 0},
+            },
+        }
+
+        logger.debug("Gemini request | model=%s | contents=%d", model, len(contents))
+
+        client = self._get_client(timeout)
+        headers = {"X-goog-api-key": self._api_key}
+
+        # 429 rate limit retry（免費 tier 5 RPM）
+        max_retries = 6
+        for attempt in range(max_retries):
+            resp = client.post(url, json=payload, headers=headers)
+            if resp.status_code != 429:
+                break
+            wait = min(30, 10 * (attempt + 1))
+            logger.warning(
+                "Gemini 429 rate limit, retry in %ds (%d/%d)", wait, attempt + 1, max_retries
+            )
+            time.sleep(wait)
+
+        if resp.status_code != 200:
+            logger.error("Gemini API 回傳 %d: %s", resp.status_code, resp.text[:500])
+        resp.raise_for_status()
+        data = resp.json()
+
+        # 解析 Gemini 回應
+        candidate = data.get("candidates", [{}])[0]
+        parts = candidate.get("content", {}).get("parts", [])
+        raw_content = "".join(p.get("text", "") for p in parts)
+
+        usage = data.get("usageMetadata", {})
+        total_prompt_tokens = usage.get("promptTokenCount", 0)
+        total_completion_tokens = usage.get("candidatesTokenCount", 0)
+        total_tokens = usage.get("totalTokenCount", 0)
+        actual_model = data.get("modelVersion", model)
+
+        # 解析 text tags → tool_calls（繼承自 TextTagAdapter）
+        tool_calls, cleaned_text = self._parse_text_tags(raw_content)
+
+        # 執行 tools
+        all_exec_results = []
+        for tc in tool_calls:
+            exec_result = _execute_tool(tool_map, allowed_args, tc["name"], tc["arguments"])
+            all_exec_results.append(exec_result)
+            if not exec_result.get("ok"):
+                logger.debug(
+                    "Gemini tool 執行失敗: %s → %s", tc["name"], exec_result.get("message")
+                )
+
+        response_text = _apply_response_template(cleaned_text, tool_calls, all_exec_results)
+
+        return {
+            "response": response_text,
+            "raw_responses": [{"step": 0, "content": raw_content, "tool_calls": []}],
+            "tool_calls": tool_calls,
+            "actual_model": actual_model,
+            "tokens": total_tokens,
+            "prompt_tokens": total_prompt_tokens,
+            "completion_tokens": total_completion_tokens,
+        }
+
+
 REGISTRY = {
     "openai_compatible": OpenAICompatibleAdapter,
     "raw_completion": RawCompletionAdapter,
     "text_tag": TextTagAdapter,
+    "gemini_text_tag": GeminiTextTagAdapter,
 }
 
 
