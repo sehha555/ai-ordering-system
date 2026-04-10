@@ -823,17 +823,21 @@ class GeminiTextTagAdapter(TextTagAdapter):
             # 解析 quota 類型 — 日限耗盡直接 fail，不浪費 retry
             try:
                 err_data = resp.json()
-                details = err_data.get("error", {}).get("details", [])
-                for d in details:
-                    for v in d.get("violations", []):
-                        if "PerDay" in v.get("quotaId", ""):
-                            raise RuntimeError(
-                                f"Gemini 日限額度耗盡（{v.get('quotaId')}），請等待重置或升級付費方案"
-                            )
-            except RuntimeError:
-                raise
-            except Exception:
-                pass
+            except ValueError:
+                logger.warning("Gemini 429 但回傳非 JSON: %s", resp.text[:200])
+                err_data = {}
+            quota_ids = [
+                v.get("quotaId", "")
+                for d in err_data.get("error", {}).get("details", [])
+                for v in d.get("violations", [])
+            ]
+            daily_quota = next((q for q in quota_ids if "PerDay" in q), None)
+            if daily_quota:
+                raise RuntimeError(
+                    f"Gemini 日限額度耗盡（{daily_quota}），請等待重置或升級付費方案"
+                )
+            if quota_ids:
+                logger.debug("Gemini 429 quotaIds: %s", quota_ids)
             wait = min(30, 10 * (attempt + 1))
             logger.warning(
                 "Gemini 429 rate limit, retry in %ds (%d/%d)", wait, attempt + 1, max_retries
