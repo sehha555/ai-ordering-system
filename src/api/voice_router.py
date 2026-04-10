@@ -371,6 +371,8 @@ class StreamingDMAdapter:
 
                 elif evt_type == "done":
                     full_text = event.get("assistant_text", "")
+                    # 訓練資料：保存 raw LLM 輸出（含 [ADD:...][QUERY:...] 等 tags，tag strip 前）
+                    raw_assistant_text = full_text
                     session["llm_history"] = event.get("history", [])
 
                     if not full_text:
@@ -491,6 +493,14 @@ class StreamingDMAdapter:
                         full_text = _QUERY_RE.sub("", full_text).strip()
                         self._patch_last_assistant(session["llm_history"], full_text)
 
+                    # 訓練資料：append raw LLM pair（user = normalize 後的輸入，assistant = 含 tag 原文）
+                    session.setdefault("raw_llm_history", []).append(
+                        {"role": "user", "content": text}
+                    )
+                    session["raw_llm_history"].append(
+                        {"role": "assistant", "content": raw_assistant_text}
+                    )
+
                     _session_store.set(self._session_id, session)
 
                     # 讀取購物車
@@ -596,6 +606,7 @@ async def voice_chat(
         raise HTTPException(status_code=413, detail="音訊檔案超過 10MB 上限")
 
     # 非同步存原始音訊（不阻塞 event loop）
+    audio_path: Path | None = None
     try:
         now = datetime.now()
         audio_dir = _AUDIO_LOG_DIR / now.strftime("%Y-%m-%d")
@@ -607,6 +618,7 @@ async def voice_chat(
         logger.debug("[VOICE] 音訊已存: {}", audio_path)
     except Exception as e:
         logger.warning("[VOICE] 存音訊失敗: {}", e)
+        audio_path = None
 
     # 估算時長：webm/opus 通常 ~32kbps，過短視為空白音訊跳過 ASR
     estimated_duration_ms = len(audio_bytes) / (32 * 1024 / 8) * 1000
@@ -637,7 +649,10 @@ async def voice_chat(
     )
     return StreamingResponse(
         _sse_wrap(
-            orchestrator.process_audio_stream_v2(audio_bytes, session_id=session_id), "voice"
+            orchestrator.process_audio_stream_v2(
+                audio_bytes, session_id=session_id, audio_path=audio_path
+            ),
+            "voice",
         ),
         media_type="text/event-stream",
         headers=_SSE_HEADERS,

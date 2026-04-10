@@ -248,7 +248,7 @@ class TestVoiceChatSSE:
         """voice-chat 完整事件序列（mock orchestrator 跳過 ASR）"""
         b64_audio = base64.b64encode(FAKE_AUDIO).decode()
 
-        async def _mock_stream(self, audio_bytes, session_id=None):
+        async def _mock_stream(self, audio_bytes, session_id=None, audio_path=None):
             yield {"event": "thinking", "data": {}}
             yield {"event": "transcription", "data": {"text": "我要一個飯糰"}}
             yield {"event": "status", "data": {"message": _TOOL_STATUS_MAP["add_item"]}}

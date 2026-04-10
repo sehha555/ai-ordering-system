@@ -145,8 +145,13 @@ class OrderRepository:
         total: int,
         dine_type: str,
         messages: List[Dict[str, Any]],
+        raw_messages: List[Dict[str, Any]] | None = None,
     ):
-        """保存對話紀錄為 JSON 檔案"""
+        """保存對話紀錄為 JSON 檔案
+
+        raw_messages: LLM 原始輸出（含 [ADD:...] 等 text tags），訓練資料用。
+                      messages 是 tag strip 後供 history 使用的清理版本。
+        """
         today = datetime.now().strftime("%Y-%m-%d")
         # 使用絕對路徑，避免相對路徑依賴 CWD
         log_dir = os.path.join(_PROJECT_ROOT, "logs", today)
@@ -164,6 +169,7 @@ class OrderRepository:
             "total": total,
             "dine_type": dine_type,
             "messages": messages,
+            "raw_messages": raw_messages or [],
             "created_at": datetime.now().isoformat(),
         }
 

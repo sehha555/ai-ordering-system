@@ -125,14 +125,21 @@ async def checkout(request: Request, body: CheckoutRequest, api_key: str = Depen
         order_number = order_repo.save_order_with_number(order_payload, session_id)
         logger.info("[CHECKOUT] 訂單已保存: {} 取餐號碼: {}", order_id, order_number)
 
-        # 5. 儲存對話紀錄（JSON 檔）
+        # 5. 儲存對話紀錄（JSON 檔）— 含訓練用 raw_messages（LLM 原始輸出，含 text tags）
         order_repo.save_conversation_log_json(
-            session_id, order_number, cart, total_price, dine_type, llm_history
+            session_id,
+            order_number,
+            cart,
+            total_price,
+            dine_type,
+            llm_history,
+            raw_messages=session.get("raw_llm_history", []),
         )
         logger.info("[CHECKOUT] 對話紀錄已保存")
 
-        # 7. 清空 session（llm_history 和購物車）
+        # 7. 清空 session（llm_history / raw_llm_history / 購物車）
         session["llm_history"] = []
+        session["raw_llm_history"] = []
         session["cart"] = []
         container.session_store.set(session_id, session)  # Redis 回寫
         logger.debug("[CHECKOUT] Session 已清除")

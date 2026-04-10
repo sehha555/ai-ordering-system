@@ -31,6 +31,25 @@ def _append_turn_log(session_id: str | None, turn: dict) -> None:
         logger.warning("[CONV_LOG] 寫入失敗: {}", e)
 
 
+def _save_asr_pair(audio_path: Path, asr_text: str) -> None:
+    """ASR 訓練資料：存同名 .asr.txt + append 日 manifest.jsonl
+    - .asr.txt: 人工編輯友善（邊聽音訊邊改標註）
+    - manifest.jsonl: 集中索引，append 原子，方便導 dataset
+    """
+    # .asr.txt（不能用 with_suffix，.asr.txt 不是合法 single suffix）
+    txt_path = audio_path.parent / f"{audio_path.stem}.asr.txt"
+    txt_path.write_text(asr_text, encoding="utf-8")
+
+    manifest_path = audio_path.parent / "manifest.jsonl"
+    entry = {
+        "audio": audio_path.name,
+        "asr": asr_text,
+        "ts": datetime.now().isoformat(),
+    }
+    with open(manifest_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
 # 自適應分句閾值
 _MIN_SENTENCE_CHARS = 4  # 太短不送（繼續累積）
 _MAX_SENTENCE_CHARS = 40  # 超長強制切（不等標點）
@@ -299,9 +318,17 @@ class StreamingOrchestrator:
         )
 
     async def process_audio_stream_v2(
-        self, audio_bytes: bytes, session_id: str = None
+        self,
+        audio_bytes: bytes,
+        session_id: str = None,
+        audio_path: Path | None = None,
     ) -> AsyncIterator[Dict[str, Any]]:
-        """串流版流程：ASR → DM 串流 → 分段 TTS"""
+        """串流版流程：ASR → DM 串流 → 分段 TTS
+
+        Args:
+            audio_path: 若提供，ASR 成功後會寫 .asr.txt 同名配對檔 + manifest.jsonl
+                        供後續 ASR/LLM 訓練資料建構使用
+        """
         if session_id:
             self.session_id = session_id
 
@@ -321,6 +348,13 @@ class StreamingOrchestrator:
         asr_elapsed = time.perf_counter() - asr_start
         logger.info("[PERF] asr_transcribe 耗時 {:.3f}s", asr_elapsed)
         yield {"event": "transcription", "data": {"text": text}}
+
+        # 訓練資料：音訊 + ASR 文字 pair 存檔（不阻塞主流程）
+        if audio_path and text:
+            try:
+                _save_asr_pair(audio_path, text)
+            except (OSError, TypeError, ValueError) as e:
+                logger.warning("[ASR_PAIR] 寫入失敗: {}", e)
 
         if not text:
             logger.warning("[SSE-v2] ASR 無法識別語音，中止處理")
