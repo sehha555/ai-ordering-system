@@ -1,4 +1,5 @@
 # src/services/streaming_orchestrator.py
+import asyncio
 import base64
 import json
 import re as _re
@@ -32,14 +33,9 @@ def _append_turn_log(session_id: str | None, turn: dict) -> None:
 
 
 def _save_asr_pair(audio_path: Path, asr_text: str) -> None:
-    """ASR 訓練資料：存同名 .asr.txt + append 日 manifest.jsonl
-    - .asr.txt: 人工編輯友善（邊聽音訊邊改標註）
-    - manifest.jsonl: 集中索引，append 原子，方便導 dataset
+    """ASR 訓練資料：append 日 manifest.jsonl + 同名 .asr.txt
+    manifest 為 source of truth 先寫（失敗代表沒 commit），.asr.txt 為人工編輯便利檔後寫
     """
-    # .asr.txt（不能用 with_suffix，.asr.txt 不是合法 single suffix）
-    txt_path = audio_path.parent / f"{audio_path.stem}.asr.txt"
-    txt_path.write_text(asr_text, encoding="utf-8")
-
     manifest_path = audio_path.parent / "manifest.jsonl"
     entry = {
         "audio": audio_path.name,
@@ -48,6 +44,10 @@ def _save_asr_pair(audio_path: Path, asr_text: str) -> None:
     }
     with open(manifest_path, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    # .asr.txt（不能用 with_suffix，.asr.txt 不是合法 single suffix）
+    txt_path = audio_path.parent / f"{audio_path.stem}.asr.txt"
+    txt_path.write_text(asr_text, encoding="utf-8")
 
 
 # 自適應分句閾值
@@ -349,10 +349,11 @@ class StreamingOrchestrator:
         logger.info("[PERF] asr_transcribe 耗時 {:.3f}s", asr_elapsed)
         yield {"event": "transcription", "data": {"text": text}}
 
-        # 訓練資料：音訊 + ASR 文字 pair 存檔（不阻塞主流程）
+        # 訓練資料：音訊 + ASR 文字 pair 存檔（offload 到 executor 不阻塞 event loop，對齊 voice_router webm 存檔）
         if audio_path and text:
             try:
-                _save_asr_pair(audio_path, text)
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(None, _save_asr_pair, audio_path, text)
             except (OSError, TypeError, ValueError) as e:
                 logger.warning("[ASR_PAIR] 寫入失敗: {}", e)
 

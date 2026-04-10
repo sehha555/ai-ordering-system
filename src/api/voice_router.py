@@ -283,6 +283,7 @@ class StreamingDMAdapter:
         _tool_registry.set_session_id(self._session_id)
         session = _session_store.get(self._session_id)
         session.setdefault("llm_history", [])
+        session.setdefault("raw_llm_history", [])
 
         # ── 結帳狀態機攔截：不經 LLM ──
         if session.get("checkout_status") in _CK_STATES:
@@ -494,9 +495,7 @@ class StreamingDMAdapter:
                         self._patch_last_assistant(session["llm_history"], full_text)
 
                     # 訓練資料：append raw LLM pair（user = normalize 後的輸入，assistant = 含 tag 原文）
-                    session.setdefault("raw_llm_history", []).append(
-                        {"role": "user", "content": text}
-                    )
+                    session["raw_llm_history"].append({"role": "user", "content": text})
                     session["raw_llm_history"].append(
                         {"role": "assistant", "content": raw_assistant_text}
                     )
