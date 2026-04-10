@@ -1,6 +1,7 @@
 """
 模型 Benchmark Runner
 用法: python -m benchmarks.run_benchmark --type asr|tts|llm|e2e|all [--model MODEL_ID]
+      --resume: 從上次中斷處繼續跑
 """
 
 import argparse
@@ -12,6 +13,25 @@ from datetime import datetime
 from pathlib import Path
 
 import yaml
+
+
+def _checkpoint_path(output_dir: Path, benchmark_type: str, model_id: str) -> Path:
+    return output_dir / f"checkpoint_{benchmark_type}_{model_id}.json"
+
+
+def _load_checkpoint(path: Path) -> list[dict]:
+    """載入 checkpoint，回傳已完成的 test_cases"""
+    if path.exists():
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+
+def _save_checkpoint(path: Path, completed_cases: list[dict]) -> None:
+    """每完成一個 case 就寫入 checkpoint"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(completed_cases, f, ensure_ascii=False, indent=2)
 
 
 def load_config(config_path: Path = None) -> dict:
@@ -87,26 +107,43 @@ def run_single_benchmark(
     test_data: list,
     config: dict,
     workers: int = 1,
+    resume: bool = False,
+    output_dir: Path | None = None,
 ) -> dict:
     adapter = get_adapter(benchmark_type, model_config["adapter"], model_config.get("params", {}))
     repeat = config["benchmark"]["repeat"]
     timeout = config["benchmark"]["timeout"]
 
+    # Checkpoint: 載入已完成的 cases
+    ckpt_path = _checkpoint_path(
+        output_dir or Path(__file__).parent / config["benchmark"]["output_dir"],
+        benchmark_type,
+        model_config["id"],
+    )
+    completed_cases: list[dict] = []
+    if resume:
+        completed_cases = _load_checkpoint(ckpt_path)
+        if completed_cases:
+            done_ids = {c["case_id"] for c in completed_cases}
+            before = len(test_data)
+            test_data = [d for d in test_data if d["id"] not in done_ids]
+            print(f"    -- resume: {len(done_ids)} 已完成，剩 {len(test_data)}/{before}")
+
     # 暖機：先跑一次丟棄結果，避免冷啟動影響數據
     if test_data:
         try:
-            print("    🔥 暖機中...", end="", flush=True)
+            print("    -- warmup...", end="", flush=True)
             adapter.run(test_data[0], timeout=timeout)
-            print(" 完成")
+            print(" ok")
         except Exception:
-            print(" 跳過")
+            print(" skip")
 
     results = {
         "model_id": model_config["id"],
         "model_name": model_config["name"],
         "type": benchmark_type,
         "timestamp": datetime.now().isoformat(),
-        "test_cases": [],
+        "test_cases": list(completed_cases),
         "summary": {},
     }
 
@@ -120,9 +157,12 @@ def run_single_benchmark(
             print(f"    [{idx}/{total}] {case_id}...", end="", flush=True)
             case_result = _run_single_case(adapter, case, repeat, timeout)
             avg_lat = sum(r["latency"] for r in case_result["runs"]) / len(case_result["runs"])
-            status = "✓" if all(r["success"] for r in case_result["runs"]) else "✗"
+            status = "v" if all(r["success"] for r in case_result["runs"]) else "x"
             print(f" {status} {avg_lat:.1f}s")
             results["test_cases"].append(case_result)
+            # Checkpoint: 每完成一個 case 就存
+            completed_cases.append(case_result)
+            _save_checkpoint(ckpt_path, completed_cases)
     else:
         # 平行模式
         done_count = 0
@@ -134,7 +174,7 @@ def run_single_benchmark(
                 done_count += 1
                 runs = case_result["runs"]
                 avg_lat = sum(r["latency"] for r in runs) / len(runs)
-                status = "✓" if all(r["success"] for r in runs) else "✗"
+                status = "v" if all(r["success"] for r in runs) else "x"
                 print(
                     f"    [{done_count}/{total}] {case_result['case_id']}... {status} {avg_lat:.1f}s"
                 )
@@ -148,6 +188,8 @@ def run_single_benchmark(
                 case_result = future.result()
                 _on_complete(case_result)
                 results["test_cases"].append(case_result)
+                completed_cases.append(case_result)
+                _save_checkpoint(ckpt_path, completed_cases)
 
     # 釋放 adapter 資源（如 httpx.Client 連線池）
     if hasattr(adapter, "close"):
@@ -169,7 +211,15 @@ def run_single_benchmark(
     elif benchmark_type == "llm":
         from benchmarks.metrics.llm_metrics import compute_llm_metrics
 
-        results["summary"] = compute_llm_metrics(results["test_cases"], test_data)
+        allow_clarification = model_config.get("params", {}).get("allow_clarification", False)
+        results["summary"] = compute_llm_metrics(
+            results["test_cases"], test_data, allow_clarification=allow_clarification
+        )
+
+    # 全部跑完，清除 checkpoint
+    if ckpt_path.exists():
+        ckpt_path.unlink()
+        print("    -- checkpoint 已清除")
 
     return results
 
@@ -316,6 +366,11 @@ def main():
         default=None,
         help="指定 scenario 檔案名後綴（不含路徑和 .json），如 'v2' → test_scenarios_v2.json",
     )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="從上次中斷處繼續跑（讀取 checkpoint）",
+    )
     args = parser.parse_args()
 
     config = load_config(Path(args.config) if args.config else None)
@@ -361,7 +416,15 @@ def main():
         all_results = []
         for model in models:
             print(f"  ▶ 測試中: {model['name']}...")
-            result = run_single_benchmark(btype, model, test_data, config, workers=workers)
+            result = run_single_benchmark(
+                btype,
+                model,
+                test_data,
+                config,
+                workers=workers,
+                resume=args.resume,
+                output_dir=output_dir,
+            )
             all_results.append(result)
             print("    ✅ 完成")
 

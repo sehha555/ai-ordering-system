@@ -164,7 +164,10 @@ def _percentile(values: list[float], p: int) -> float:
 
 
 def compute_llm_metrics(
-    test_cases: list[dict], test_data: list[dict], pass_threshold: float = 0.8
+    test_cases: list[dict],
+    test_data: list[dict],
+    pass_threshold: float = 0.8,
+    allow_clarification: bool = False,
 ) -> dict:
     total_f1 = 0.0
     total_precision = 0.0
@@ -226,6 +229,16 @@ def compute_llm_metrics(
 
                 if scores["f1"] >= pass_threshold and rs["score"] >= pass_threshold:
                     case_passed = True
+                elif (
+                    allow_clarification
+                    and scores["f1"] < pass_threshold
+                    and not run.get("tool_calls", [])
+                    and expected_tools
+                    and rq >= pass_threshold
+                ):
+                    # Clarification pass: 沒出 tag 但正確提到品項關鍵字（先問再加）
+                    case_passed = True
+                    case_fail_reason = None
                 elif scores["f1"] < pass_threshold:
                     case_fail_reason = f"tool_call_f1={scores['f1']:.2f} < {pass_threshold}"
                 else:

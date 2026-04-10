@@ -814,12 +814,26 @@ class GeminiTextTagAdapter(TextTagAdapter):
         client = self._get_client(timeout)
         headers = {"X-goog-api-key": self._api_key}
 
-        # 429 rate limit retry（免費 tier 5 RPM）
+        # 429 rate limit retry（偵測日限 vs 分鐘限）
         max_retries = 6
         for attempt in range(max_retries):
             resp = client.post(url, json=payload, headers=headers)
             if resp.status_code != 429:
                 break
+            # 解析 quota 類型 — 日限耗盡直接 fail，不浪費 retry
+            try:
+                err_data = resp.json()
+                details = err_data.get("error", {}).get("details", [])
+                for d in details:
+                    for v in d.get("violations", []):
+                        if "PerDay" in v.get("quotaId", ""):
+                            raise RuntimeError(
+                                f"Gemini 日限額度耗盡（{v.get('quotaId')}），請等待重置或升級付費方案"
+                            )
+            except RuntimeError:
+                raise
+            except Exception:
+                pass
             wait = min(30, 10 * (attempt + 1))
             logger.warning(
                 "Gemini 429 rate limit, retry in %ds (%d/%d)", wait, attempt + 1, max_retries

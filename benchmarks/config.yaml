@@ -70,6 +70,15 @@ llm:
         api_key_env: GEMINI_API_KEY
         model: "gemini-2.5-flash"
         temperature: 0.2
+        allow_clarification: true
+    - id: gemini-2.0-flash
+      name: "Gemini 2.0 Flash (text_tag)"
+      adapter: gemini_text_tag
+      params:
+        api_key_env: GEMINI_API_KEY
+        model: "gemini-2.0-flash"
+        temperature: 0.2
+        allow_clarification: true
     # gemma4-e4b: 65% 通過率，中文品項理解差，不採用（2026-04-03 測試）
     # reasoning distilled 已驗證：延遲增加 + tool calling 準確度下降，移除
     # - id: qwen3.5-9b-reasoning-distilled（停用）
