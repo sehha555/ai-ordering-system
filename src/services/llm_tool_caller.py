@@ -138,9 +138,10 @@ class LLMToolCaller:
         history: List[Dict[str, Any]],
         context: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """組裝 LLM 訊息列表（/no_think + system + priming + history + context + user）
+        """組裝 LLM 訊息列表（/no_think + system + priming + history + user(+context)）
 
-        超過 6 輪時，舊對話用 cart context 取代（購物車就是最好的摘要）。
+        Qwen chat template 硬性規則：system 只能在首位。動態 context（購物車狀態）
+        併入 user message 前綴，讓 system+priming+history 保持固定前綴，KV cache 跨請求命中。
         """
         messages: List[Dict[str, Any]] = [
             {"role": "system", "content": _NO_THINK_PREFIX + system_prompt}
@@ -148,18 +149,13 @@ class LLMToolCaller:
         messages.extend(_PRIMING_MESSAGES)
 
         max_msgs = self._MAX_HISTORY_TURNS * 2
-        if len(history) > max_msgs:
-            if context:
-                summary = f"（先前對話已省略。{context}）"
-            else:
-                summary = "（先前對話已省略。）"
-            messages.append({"role": "system", "content": summary})
-            messages.extend(history[-max_msgs:])
-        else:
-            messages.extend(history)
-            if context:
-                messages.append({"role": "system", "content": context})
-        messages.append({"role": "user", "content": user_text})
+        messages.extend(history[-max_msgs:] if len(history) > max_msgs else history)
+        messages.append(
+            {
+                "role": "user",
+                "content": f"{context}\n\n{user_text}" if context else user_text,
+            }
+        )
         return messages
 
     async def _post(self, payload: Dict[str, Any]) -> Dict[str, Any]:

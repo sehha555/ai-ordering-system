@@ -77,8 +77,7 @@ async def readiness():
 
     # 5. TTS 服務可達（檢查實際使用的 streaming TTS backend）
     try:
-        from src.config.models import TTS_BACKEND
-        from src.services.tts_implementations import OMNIVOICE_BASE_URL
+        from src.config.models import OMNIVOICE_BASE_URL, TTS_BACKEND
 
         if TTS_BACKEND == "omnivoice":
             async with httpx.AsyncClient() as client:
