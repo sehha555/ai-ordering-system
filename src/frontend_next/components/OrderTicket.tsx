@@ -43,7 +43,7 @@ export default function OrderTicket({ items, total, onCheckout }: OrderTicketPro
         <AnimatePresence mode="popLayout">
           {items.map((item, index) => (
             <motion.div
-              key={`${item.name}-${item.details}`}
+              key={`${item.name}-${item.details}-${index}`}
               initial={{ opacity: 0, y: -14 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 6, scale: 0.97 }}
