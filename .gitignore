@@ -26,6 +26,20 @@ Thumbs.db
 .env
 .env.*
 *.env
+!.env.example
+
+# API 金鑰 / 憑證 / 私鑰
+.gemini/
+credentials.json
+service-account*.json
+*.pem
+*.p12
+*.key
+!*.py.key
+secrets/
+.credentials/
+auth.json
+token.json
 
 # Database
 *.db
