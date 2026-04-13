@@ -13,6 +13,10 @@ from src.tools.menu import menu_price_service
 from src.dm.session_store import InMemorySessionStore, SessionStore
 from src.dm import cart_manager
 from src.dm.clarify_policy import recompute_missing_slots, clarify_message
+from src.config.config_loader import load_json_config
+
+_store_cfg = load_json_config("store_config.json")
+_MESSAGES = _store_cfg.get("messages", {})
 
 
 class DialogueManager:
@@ -338,11 +342,11 @@ class DialogueManager:
                 continue
             res = order_router.route(span, current_order_has_main=bool(session["cart"]))
             if res["route_type"] == "greeting":
-                return "你好！歡迎光臨，請問要點什麼呢？"
+                return _MESSAGES.get("greeting", "你好！歡迎光臨，請問要點什麼呢？")
             if res["route_type"] == "menu_inquiry":
-                return "我們有飯糰、蛋餅、漢堡、饅頭、吐司、果醬吐司、飲料和小點心，請問想點什麼？"
+                return _MESSAGES.get("menu_inquiry", "我們有飯糰、蛋餅、漢堡、饅頭、吐司、果醬吐司、飲料和小點心，請問想點什麼？")
             if res["route_type"] == "help":
-                return "您可以直接說想點的品項，例如「一個鮪魚飯糰」或「大杯冰豆漿」，我會幫您加入購物車。"
+                return _MESSAGES.get("help", "您可以直接說想點的品項，例如「一個鮪魚飯糰」或「大杯冰豆漿」，我會幫您加入購物車。")
             if res["route_type"] == "unknown":
                 return res.get(
                     "clarify_question",

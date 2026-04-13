@@ -14,6 +14,7 @@ from src.dm.dialogue_manager import DialogueManager
 from src.dm.session_store import InMemorySessionStore
 from src.dm import cart_manager
 from src.tools.menu import menu_price_service, menu_state_service
+from src.config.config_loader import load_json_config
 
 # 導入各工具的別名映射
 from src.tools.riceball_tool import FLAVOR_ALIASES as RICEBALL_ALIASES
@@ -58,36 +59,12 @@ _DRINK_ALIASES_SORTED = tuple(sorted(DRINK_ALIASES.keys(), key=len, reverse=True
 _EGG_PANCAKE_ALIASES_SORTED = tuple(sorted(EGG_PANCAKE_ALIASES.keys(), key=len, reverse=True))
 _SNACK_ALIASES_SORTED = tuple(sorted(SNACK_ALIASES.keys(), key=len, reverse=True))
 
-# 載體後綴（用於從完整品項名稱中提取口味）
-_CARRIER_SUFFIXES = ["蛋吐司", "吐司", "蛋漢堡", "蛋堡", "漢堡", "蛋饅頭", "饅頭"]
-
-# 載體分類到 carrier 參數的對應
-_CARRIER_CATEGORY_MAP = {"吐司": "吐司", "漢堡": "漢堡", "饅頭": "饅頭"}
-
-# 套餐簡稱別名（「一號餐」→「套餐一」等，在別名解析中使用）
-_COMBO_NUMBER_ALIASES: Dict[str, str] = {
-    "一號餐": "套餐一",
-    "二號餐": "套餐二",
-    "三號餐": "套餐三",
-    "四號餐": "套餐四",
-    "五號餐": "套餐五",
-    "六號餐": "套餐六",
-    "七號餐": "套餐七",
-    "A餐": "套餐A",
-    "B餐": "套餐B",
-    "C餐": "套餐C",
-    "D餐": "套餐D",
-    "E餐": "套餐E",
-}
-
-# 口語俗稱 → 菜單品項名（_resolve_item_name 最先查）
-_COLLOQUIAL_ALIASES: Dict[str, str] = {
-    "花生厚片": "果醬吐司(花生/厚片)",
-    "草莓厚片": "果醬吐司(草莓/厚片)",
-    "蒜香厚片": "果醬吐司(蒜香/厚片)",
-    "奶酥厚片": "果醬吐司(奶酥/厚片)",
-    "巧克力厚片": "果醬吐司(巧克力/厚片)",
-}
+# 從 aliases_registry.json 載入 4 個常數
+_reg_cfg = load_json_config("aliases_registry.json")
+_COMBO_NUMBER_ALIASES: Dict[str, str] = _reg_cfg["combo_number_aliases"]
+_COLLOQUIAL_ALIASES: Dict[str, str] = _reg_cfg["colloquial_aliases"]
+_CARRIER_SUFFIXES: List[str] = _reg_cfg["carrier_suffixes"]
+_CARRIER_CATEGORY_MAP: Dict[str, str] = _reg_cfg["carrier_category_map"]
 
 # 果醬吐司名稱解析（預編譯，避免 add_item 內部每次 import + compile）
 _JAM_TOAST_RE = re.compile(r"果醬吐司\(([^/]+)/([^)]+)\)")

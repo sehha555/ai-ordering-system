@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "item_rules": {
+    "riceball": {
+      "prompt_label": "飯糰",
+      "required": ["flavor", "rice"],
+      "optional": ["spicy", "extra_egg"],
+      "prompt_desc": "必填：口味、米種。辣菜脯預設不加，加蛋預設蔥蛋不用問。",
+      "missing_prompts": {
+        "flavor": "飯糰什麼口味",
+        "rice": "飯糰要紫米白米？"
+      }
+    },
+    "drink": {
+      "prompt_label": "飲料",
+      "required": ["flavor", "size", "temp"],
+      "optional": [],
+      "prompt_desc": "必填：品名、規格（中冰/中溫/大冰/大溫）。甜度不用問。",
+      "missing_prompts": {
+        "flavor": "什麼飲料",
+        "size_temp": "中冰還是中溫"
+      }
+    },
+    "carrier": {
+      "prompt_label": "載體（吐司/漢堡/饅頭）",
+      "required": ["carrier", "flavor"],
+      "optional": [],
+      "prompt_desc": "必填：載體種類（吐司/漢堡/饅頭）、配料口味。只說配料未說載體就追問。",
+      "missing_prompts": {
+        "carrier": "吐司還是漢堡",
+        "flavor": "什麼口味"
+      }
+    },
+    "egg_pancake": {
+      "prompt_label": "蛋餅",
+      "required": ["flavor"],
+      "optional": [],
+      "prompt_desc": "必填：口味。",
+      "missing_prompts": {
+        "flavor": "蛋餅什麼口味"
+      }
+    },
+    "jam_toast": {
+      "prompt_label": "果醬吐司",
+      "required": ["flavor"],
+      "optional": ["size"],
+      "prompt_desc": "必填：口味（草莓/花生/蒜香/奶酥/巧克力）。",
+      "missing_prompts": {
+        "flavor": "果醬吐司什麼口味 草莓花生蒜香奶酥巧克力"
+      }
+    },
+    "snack": {
+      "prompt_label": "點心",
+      "required": [],
+      "optional": [],
+      "prompt_desc": "無必填，直接加入購物車。",
+      "missing_prompts": {}
+    },
+    "combo": {
+      "prompt_label": "套餐",
+      "required": ["combo_name", "temp"],
+      "optional": ["rice", "flavor"],
+      "prompt_desc": "主餐固定不能改。必填：飲料溫度。各套餐額外必填見工具回饋。",
+      "missing_prompts": {
+        "combo_name": "套餐名稱是什麼",
+        "temp": "飲料冰的還是溫的"
+      }
+    }
+  },
+  "combo_requirements": {
+    "套餐二": {"needs_rice": true},
+    "套餐五": {"needs_mantou_flavor": true},
+    "套餐六": {"needs_noodle_flavor": true},
+    "套餐七": {"needs_noodle_flavor": true},
+    "套餐B": {"needs_toast_flavor": true},
+    "兒童餐": {"needs_jam_flavor": true}
+  },
+  "combo_chase_prompts": {
+    "combo_name_missing": "套餐名稱是什麼",
+    "temp": "飲料冰的還是溫的",
+    "needs_rice": "飯糰要紫米白米還是混米",
+    "needs_mantou_flavor": "饅頭要什麼口味",
+    "needs_noodle_flavor": "鐵板麵要黑椒蘑菇義大利還是咖哩",
+    "needs_toast_flavor": "厚片要什麼口味 花生巧克力奶酥蒜香草莓",
+    "needs_jam_flavor": "果醬吐司要什麼口味 草莓花生巧克力"
+  }
+}

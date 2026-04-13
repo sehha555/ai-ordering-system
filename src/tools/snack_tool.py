@@ -1,31 +1,14 @@
 from typing import Dict, Optional, Any
 
+from src.config.config_loader import load_json_config
 from src.tools.menu import menu_price_service
 from src.tools.text_utils import parse_quantity as _parse_quantity_util
 
-# Define aliases to handle variations in user requests
-SNACK_ALIASES = {
-    "煎餃": "煎餃(8顆)",
-    "蘿蔔糕": "港式蘿蔔糕",
-    "港式蘿蔔糕": "港式蘿蔔糕",
-    "韭菜餡餅": "韭菜餡餅(5顆)",
-    "餡餅": "韭菜餡餅(5顆)",
-    "荷包蛋": "荷包蛋",
-    "蛋": "荷包蛋",
-    "蔥蛋": "蔥蛋",
-    "熱狗": "熱狗(3條)",
-    "薯餅": "薯餅(1片)",
-    "醬燒肉片": "醬燒肉片(1份)",
-    "肉片": "醬燒肉片(1份)",
-    "麥克雞塊": "麥克雞塊(5個)",
-    "雞塊": "麥克雞塊(5個)",
-    "香酥脆薯": "香酥脆薯",
-    "薯條": "香酥脆薯",
-    "原味卡啦雞腿": "原味咔啦雞腿",
-    "卡啦雞": "原味咔啦雞腿",
-    "無骨雞排": "無骨雞排",
-    "雞排": "無骨雞排"
-}
+# 從 aliases_snack.json 載入別名常數
+_snack_cfg = load_json_config("aliases_snack.json")
+SNACK_ALIASES: Dict[str, str] = _snack_cfg["snack_aliases"]
+_DEFAULT_EGG_COOK: str = _snack_cfg["default_egg_cook"]
+_PEPPER_RESTRICTED_ITEMS: list = _snack_cfg["pepper_restricted_items"]
 
 
 class SnackTool:
@@ -42,12 +25,12 @@ class SnackTool:
         quantity = self.parse_quantity(text)
 
         # Parse options
-        egg_cook = "全熟"  # Default
+        egg_cook = _DEFAULT_EGG_COOK  # 預設蛋熟度，從 config 載入
         if "半熟" in text:
             egg_cook = "半熟"
 
         no_pepper = False
-        if snack in ["麥克雞塊(5個)", "香酥脆薯"] and ("不要胡椒" in text or "無椒" in text):
+        if snack in _PEPPER_RESTRICTED_ITEMS and ("不要胡椒" in text or "無椒" in text):
             no_pepper = True
 
         frame = {

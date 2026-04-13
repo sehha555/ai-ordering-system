@@ -16,102 +16,20 @@ MENU_TOOL_VERSION = "2025-12-27-config-v6"
 
 RECIPES_FILE = Path(__file__).parent / "menu" / "riceball_recipes.json"
 
-# 飯糰價格規則
-SPECIAL_FLAVORS_ONLY_LARGE = {"源味傳統", "素料", "甜飯糰", "半甜鹹"}  # 只有加大，沒有重量
+# 從 config 載入別名與關鍵字
+_cfg = load_json_config("aliases_riceball.json")
+FLAVOR_ALIASES: Dict[str, str] = _cfg["flavor_aliases"]
+RICE_KEYWORDS: Dict[str, str] = _cfg["rice_keywords"]
+INGREDIENT_SYNONYMS: Dict[str, str] = _cfg["ingredient_synonyms"]
+ORAL_RICEBALL_KEYWORDS: List[str] = _cfg["oral_riceball_keywords"]
+SPECIAL_ONLY_PATTERNS: List[str] = _cfg["special_only_patterns"]
 
-HEAVY_RICEBALL_PRICES = {
-    "醬燒里肌": 80,
-    "黑椒里肌": 80,
-    "蜜汁燒肉": 80,
-    "沙茶豬肉": 80,
-    "香燻培根": 80,
-    "風味火腿": 80,
-    "椒鹽雞絲": 80,
-    "蒜香雞肉": 80,
-    "咖哩嫩雞": 80,
-    "和風雞肉": 80,
-    "QQ滷蛋": 80,
-    "懷古鹹蛋": 80,
-    "蔥蛋豆芽": 80,
-    "茄汁蛋包": 80,
-    "韓式泡菜": 80,
-    "香濃起司": 80,
-    "香煎吻魚": 80,
-    "鮪魚飯糰": 80,
-    "甜心芋泥": 80,
-}
-
-# 口味別名（只保留必要映射）
-# 重要：不要放 "甜" -> "甜飯糰"，避免 "半甜鹹" 被 "甜" 提前吃掉
-FLAVOR_ALIASES: Dict[str, str] = {
-    # 源味傳統相關
-    "源味傳統": "源味傳統",
-    "源味飯糰": "源味傳統",
-    "傳統源味": "源味傳統",
-    "源味": "源味傳統",
-    "傳統飯糰": "源味傳統",
-    "傳統": "源味傳統",
-    # 甜/半甜
-    "甜飯糰": "甜飯糰",
-    "半甜鹹": "半甜鹹",
-    # 注意：依你需求移除 `"半甜": "半甜鹹"`
-    # 你指定的 alias（短詞 → 完整口味）
-    "芋泥": "甜心芋泥",
-    "沙茶": "沙茶豬肉",
-    "咖哩": "咖哩嫩雞",
-    "泡菜": "韓式泡菜",
-    "滷蛋": "QQ滷蛋",
-    "豆芽": "蔥蛋豆芽",
-    "鹹蛋": "懷古鹹蛋",
-    "鹹蛋飯糰": "懷古鹹蛋",
-    "雞排": "嫩汁雞排",
-    "火腿": "風味火腿",
-    "培根": "香燻培根",
-    "蜜汁": "蜜汁燒肉",
-    "黑椒": "黑椒里肌",
-    # 實務常用簡稱（避免「蒜香」被當成源味傳統）
-    "蒜香": "蒜香雞肉",
-    "和風": "和風雞肉",
-    "椒鹽": "椒鹽雞絲",
-}
-
-# 米飯種類（全句解析只放「明確詞」；口語短詞請放 DM pending rice）
-RICE_KEYWORDS = {
-    "混合米": "混米",
-    "混米": "混米",
-    "紫飯": "紫米",
-    "紫米": "紫米",
-    "白飯": "白米",
-    "白米": "白米",
-}
-
-# 配料同義詞（normalize）
-INGREDIENT_SYNONYMS = {
-    "蛋": "蛋",
-    "加蛋": "蛋",
-    "起司片": "起司",
-    "起司": "起司",
-    "油條": "油條",
-    # 注意：這裡的單字 "肉" 會造成子字串誤判，所以 only-mode 解析時會排除 len<2 的 synonym
-    "肉": "肉類",
-    "肉類": "肉類",
-    "火腿": "火腿",
-    "培根": "培根",
-    "泡菜": "泡菜",
-    "鹹蛋": "鹹蛋",
-    "鮪魚沙拉": "鮪魚",
-    "鮪魚": "鮪魚",
-}
-
-SPECIAL_ONLY_PATTERNS = [
-    "只要飯跟蛋",
-    "只要飯和蛋",
-    "只要飯蛋",
-    "只要飯",
-    # 你可以在這裡繼續補口語變體
-]
-
-ORAL_RICEBALL_KEYWORDS = ["飯糰", "飯團"]
+# 從 price_rules.json 載入飯糰價格規則
+_price_cfg = load_json_config("price_rules.json")
+SPECIAL_FLAVORS_ONLY_LARGE: set = set(_price_cfg["riceball"]["special_flavors_only_large"])
+HEAVY_RICEBALL_PRICES: Dict[str, int] = _price_cfg["riceball"]["heavy_prices"]
+_LARGE_SURCHARGE: int = _price_cfg["riceball"]["large_surcharge"]
+_EXTRA_EGG_SURCHARGE: int = _price_cfg["riceball"]["extra_egg_surcharge"]
 
 
 # 向下相容別名（其他模組曾 import _chinese_number_to_int from riceball_tool）
@@ -257,10 +175,10 @@ class MenuTool:
             total = int(heavy_price)
         else:
             if is_large:
-                total += 5
+                total += _LARGE_SURCHARGE
 
         if extra_egg:
-            total += 10
+            total += _EXTRA_EGG_SURCHARGE
 
         return {
             "ok": True,

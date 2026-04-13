@@ -3,9 +3,11 @@ from typing import Dict, Optional, Any
 
 from src.tools.menu import menu_price_service
 from src.tools.text_utils import parse_quantity as _parse_quantity_util
+from src.config.config_loader import load_json_config
 
-JAM_TOAST_FLAVORS = ["草莓", "花生", "蒜香", "奶酥", "巧克力"]
-SIZE_MAP = {"薄片": "薄片", "厚片": "厚片", "吐司": "薄片"}
+_jt_cfg = load_json_config("aliases_jam_toast.json")
+JAM_TOAST_FLAVORS = _jt_cfg["jam_toast_flavors"]
+SIZE_MAP = _jt_cfg["size_map"]
 
 class JamToastTool:
     def parse_jam_toast_utterance(self, text: str) -> Dict[str, Any]:
@@ -19,8 +21,8 @@ class JamToastTool:
         no_toast = "不烤" in text
         cut_edge = "切邊" in text
 
-        # Business rule: cut_edge is only for 厚片
-        if cut_edge and size != "厚片":
+        # 業務規則：切邊僅限 cut_edge_only_size
+        if cut_edge and size != _jt_cfg["cut_edge_only_size"]:
             return {
                 "ok": False,
                 "message": "不好意思，只有厚片才能切邊喔！",
@@ -37,8 +39,8 @@ class JamToastTool:
         if flavor and size:
             full_name = f"果醬吐司({flavor}/{size})"
         elif flavor and not size:
-            # Default "吐司" to "薄片"
-            size = "薄片"
+            # 未指定 size 時套用預設值
+            size = _jt_cfg["default_size"]
             full_name = f"果醬吐司({flavor}/{size})"
 
         if not flavor: missing_slots.append("flavor")

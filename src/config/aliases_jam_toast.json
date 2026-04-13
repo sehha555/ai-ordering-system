@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "jam_toast_flavors": ["草莓", "花生", "蒜香", "奶酥", "巧克力"],
+  "size_map": {
+    "薄片": "薄片",
+    "厚片": "厚片",
+    "吐司": "薄片"
+  },
+  "default_size": "薄片",
+  "cut_edge_only_size": "厚片"
+}

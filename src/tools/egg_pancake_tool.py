@@ -1,45 +1,16 @@
 import re
 from typing import Dict, Any, List, Tuple
 
+from src.config.config_loader import load_json_config
 from src.tools.menu import menu_price_service
 from src.tools.text_utils import dedupe_keep_order, parse_quantity as _parse_quantity_util
 
+# 從 aliases_egg_pancake.json 載入別名常數
+_ep_cfg = load_json_config("aliases_egg_pancake.json")
+
 
 class EggPancakeTool:
-    # FLAVOR_ALIASES, ADDON_PRICES, etc. remain the same
-
-    # 口味同義（依你定義）
-    # - 我要一個蛋餅 = 原味蛋餅
-    # - 我要一個醬燒蛋餅 = 肉片蛋餅 = 醬燒肉片蛋餅
-    # - 蔬菜蛋餅 = 高麗菜蛋餅
-    FLAVOR_ALIASES: Dict[str, str] = {
-        # 先放長的，避免被「蛋餅」吃掉
-        "甜芋起司蛋餅": "甜芋起司蛋餅",
-        "甜芋肉鬆蛋餅": "甜芋肉鬆蛋餅",
-        "黑椒肉片蛋餅": "黑椒肉片蛋餅",
-        "沙茶豬肉蛋餅": "沙茶豬肉蛋餅",
-        "醬燒肉片蛋餅": "醬燒肉片蛋餅",
-        "韓式泡菜蛋餅": "韓式泡菜蛋餅",
-        "高麗菜蛋餅": "高麗菜蛋餅",
-        "鮪魚蛋餅": "鮪魚蛋餅",
-        "薯餅蛋餅": "薯餅蛋餅",
-        "培根蛋餅": "培根蛋餅",
-        "油條蛋餅": "油條蛋餅",
-        "洋蔥蛋餅": "洋蔥蛋餅",
-        "火腿蛋餅": "火腿蛋餅",
-        "玉米蛋餅": "玉米蛋餅",
-        "肉鬆蛋餅": "肉鬆蛋餅",
-        "紫米蛋餅": "紫米蛋餅",
-        "起司蛋餅": "起司蛋餅",
-        "原味蛋餅": "原味蛋餅",
-        # 業務同義
-        "蔬菜蛋餅": "高麗菜蛋餅",
-        "醬燒蛋餅": "醬燒肉片蛋餅",
-        "肉片蛋餅": "醬燒肉片蛋餅",
-        "醬燒肉片": "醬燒肉片蛋餅",
-        # 模糊
-        "蛋餅": "原味蛋餅",
-    }
+    FLAVOR_ALIASES: Dict[str, str] = _ep_cfg["flavor_aliases"]
 
     # 你提供的加料單價（可重複加，例如「加兩片起司」= 2 * 10）
     ADDON_PRICES: Dict[str, int] = {
@@ -51,52 +22,10 @@ class EggPancakeTool:
         "肉片": 35,
     }
 
-    # 加料文字同義（只用於解析「加XXX」）
-    ADDON_ALIASES: Dict[str, str] = {
-        "起司": "起司",
-        "高麗菜": "高麗菜",
-        "火腿": "火腿",
-        "培根": "培根",
-        "薯餅": "薯餅",
-        "肉片": "肉片",
-        "醬燒肉片": "肉片",
-    }
-
-    # 「同一組需求，枚舉所有可能載體，取最便宜」
-    # 這些成分如果存在對應口味，會被拿來當候選載體（例如：肉片 -> 醬燒肉片蛋餅）
-    CARRIER_MAP: Dict[str, str] = {
-        "肉片": "醬燒肉片蛋餅",
-        "薯餅": "薯餅蛋餅",
-        "培根": "培根蛋餅",
-        "火腿": "火腿蛋餅",
-        "高麗菜": "高麗菜蛋餅",
-        "起司": "起司蛋餅",
-    }
-
-    # 口味內建成分（用於：換載體時，把原本口味的成分保留下來；以及做「最便宜載體」的成本比較）
-    # 沒在 ADDON_PRICES 的成分，代表不能用「加料」補，只能靠載體本身滿足
-    FLAVOR_IMPLIED_COUNTS: Dict[str, Dict[str, int]] = {
-        "原味蛋餅": {},
-        "起司蛋餅": {"起司": 1},
-        "洋蔥蛋餅": {"洋蔥": 1},
-        "火腿蛋餅": {"火腿": 1},
-        "玉米蛋餅": {"玉米": 1},
-        "肉鬆蛋餅": {"肉鬆": 1},
-        "紫米蛋餅": {"紫米": 1},
-        "高麗菜蛋餅": {"高麗菜": 1},
-        "韓式泡菜蛋餅": {"泡菜": 1},
-        "培根蛋餅": {"培根": 1},
-        "油條蛋餅": {"油條": 1},
-        "薯餅蛋餅": {"薯餅": 1},
-        "鮪魚蛋餅": {"鮪魚": 1},
-        "甜芋起司蛋餅": {"甜芋": 1, "起司": 1},
-        "甜芋肉鬆蛋餅": {"甜芋": 1, "肉鬆": 1},
-        "醬燒肉片蛋餅": {"肉片": 1},
-        "沙茶豬肉蛋餅": {"豬肉": 1},
-        "黑椒肉片蛋餅": {"肉片": 1},
-    }
-
-    SAUCE_DEFAULT = "醬油"
+    ADDON_ALIASES: Dict[str, str] = _ep_cfg["addon_aliases"]
+    CARRIER_MAP: Dict[str, str] = _ep_cfg["carrier_map"]
+    FLAVOR_IMPLIED_COUNTS: Dict[str, Dict[str, int]] = _ep_cfg["flavor_implied_counts"]
+    SAUCE_DEFAULT: str = _ep_cfg["sauce_default"]
 
     def parse_egg_pancake_utterance(self, text: str) -> Dict[str, Any]:
         qty = self._parse_quantity(text)

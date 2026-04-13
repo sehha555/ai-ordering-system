@@ -1,11 +1,13 @@
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
+from src.config.config_loader import load_json_config
 from src.tools.menu import menu_price_service
 from src.tools.riceball_tool import INGREDIENT_SYNONYMS, menu_tool as riceball_menu_tool
 from src.tools.text_utils import chinese_number_to_int, dedupe_keep_order
 
-CARRIERS = ("吐司", "漢堡", "饅頭")
+_cfg = load_json_config("aliases_carrier.json")
+CARRIERS = tuple(_cfg["carriers"])
 
 
 class CarrierTool:
@@ -16,30 +18,7 @@ class CarrierTool:
     - 加料/去料 parsing 沿用飯糰規則（ingredients_add / ingredients_remove），價表也沿用 riceball_menu_tool.ADDON_PRICE_TABLE
     """
 
-    EXTRA_SYNONYMS = {
-        # 這些不是飯糰的同義詞，但載體品項常用
-        "小黃瓜": "小黃瓜",
-        "洋蔥": "洋蔥",
-        "番茄醬": "番茄醬",
-        "沙拉醬": "沙拉醬",
-        "肉鬆": "肉鬆",
-        "肉片": "肉片",
-        "豬肉": "豬肉",
-        "燒肉": "燒肉",
-        "蜜汁": "蜜汁",
-        "沙茶": "沙茶",
-        "黑椒": "黑椒",
-        "薯餅": "薯餅",
-        "鮪魚": "鮪魚",
-        "火腿": "火腿",
-        "培根": "培根",
-        "起司": "起司",
-        "雞絲": "雞絲",
-        "咔啦雞": "咔啦雞",
-        "蔥蛋": "蔥蛋",
-        "荷包蛋": "荷包蛋",
-        "散蛋": "散蛋",
-    }
+    EXTRA_SYNONYMS: Dict[str, str] = _cfg["extra_synonyms"]
 
     def __init__(self):
         self.menu_items = self._load_menu()
@@ -106,13 +85,13 @@ class CarrierTool:
             egg_style = self._default_egg_style(carrier)
             frame["egg_style"] = egg_style
 
-        # base ingredients
-        if carrier == "吐司":
-            base = [flavor, "小黃瓜", egg_style or "荷包蛋", "沙拉醬"]
-        elif carrier == "漢堡":
-            base = [flavor, "小黃瓜", "洋蔥", egg_style or "荷包蛋", "番茄醬", "沙拉醬"]
-        else:  # 饅頭
-            base = [flavor, egg_style or "蔥蛋"]
+        # base ingredients：從 config 讀取，"flavor" 佔位符替換為實際 flavor
+        _base_template = _cfg["base_ingredients"].get(carrier, ["flavor"])
+        _default_egg = self._default_egg_style(carrier)
+        base = [
+            flavor if x == "flavor" else (egg_style or _default_egg if x in ("荷包蛋", "蔥蛋") else x)
+            for x in _base_template
+        ]
 
         # only-mode：只保留指定配料（但不觸發 price_confirm）
         mode = frame.get("ingredients_mode") or "default"
@@ -206,7 +185,7 @@ class CarrierTool:
         return None
 
     def _default_egg_style(self, carrier: str) -> str:
-        return "蔥蛋" if carrier == "饅頭" else "荷包蛋"
+        return _cfg["default_egg_style"].get(carrier, "荷包蛋")
 
     def _detect_egg_style(self, text: str, carrier: Optional[str]) -> str:
         t = text
@@ -321,16 +300,8 @@ class CarrierTool:
             if ("饅頭", "醬燒肉片蛋") in self.price_index:
                 return "醬燒肉片蛋"
 
-        # 其他加料推回：肉鬆/火腿/起司/培根/鮪魚/薯餅
-        mapping = [
-            ("肉鬆", "肉鬆蛋"),
-            ("火腿", "火腿蛋"),
-            ("起司", "起司蛋"),
-            ("培根", "培根蛋"),
-            ("鮪魚", "鮪魚蛋"),
-            ("薯餅", "薯餅蛋"),
-        ]
-        for key, flav in mapping:
+        # 其他加料推回：從 config 載入 mapping
+        for key, flav in _cfg["mantou_flavor_inference"]:
             if key in adds and ("饅頭", flav) in self.price_index:
                 return flav
 
