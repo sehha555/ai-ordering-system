@@ -5,7 +5,8 @@
 
 $Root = $PSScriptRoot
 $ModelPath = "$env:USERPROFILE\.lmstudio\models\unsloth\Qwen3.5-9B-GGUF\Qwen3.5-9B-UD-Q4_K_XL.gguf"
-$ThinkingKwargs = '{"enable_thinking":false}'
+# llama-server 透過環境變數讀 JSON，繞過 PowerShell 原生 exe argument 雙引號脫落 bug
+$env:LLAMA_CHAT_TEMPLATE_KWARGS = '{"enable_thinking":false}'
 
 # 1. Backend 先啟（ASR 載入 GPU ~3.5GB，需 30-40 秒）
 Write-Host "Starting backend (FastAPI :8000) — ASR loading to GPU..."
@@ -33,7 +34,7 @@ $llm = Start-Process -NoNewWindow -PassThru -FilePath "$Root\tools\llama-server\
     "--flash-attn","auto", `
     "--cache-type-k","q4_0","--cache-type-v","q4_0", `
     "--parallel","1", `
-    "--jinja","--chat-template-kwargs",$ThinkingKwargs `
+    "--jinja" `
     -WorkingDirectory "$Root\tools\llama-server"
 
 # 3. OmniVoice TTS（~1.9GB VRAM）
