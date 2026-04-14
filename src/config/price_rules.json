@@ -2,6 +2,7 @@
   "version": 1,
   "riceball": {
     "special_flavors_only_large": ["源味傳統", "素料", "甜飯糰", "半甜鹹"],
+    "addon_prices": {},
     "heavy_prices": {
       "醬燒里肌": 80,
       "黑椒里肌": 80,

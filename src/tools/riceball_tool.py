@@ -42,8 +42,7 @@ class MenuTool:
         self.menu_data = self._load_menu()
         self.recipes_data = self._load_recipes()
 
-        cfg = load_json_config("addon_prices.json")
-        self.ADDON_PRICE_TABLE = cfg.get("riceball_addons", {})
+        self.ADDON_PRICE_TABLE: Dict[str, int] = _price_cfg["riceball"]["addon_prices"]
 
     def _load_menu(self) -> Dict[str, Any]:
         try:
@@ -205,7 +204,9 @@ class MenuTool:
         only_ingredients = _dedupe_keep_order(only_ingredients or [])
 
         default_recipe = self.get_riceball_recipe(flavor)
-        default_ings = default_recipe.get("ingredients", []) if default_recipe.get("available") else []
+        default_ings = (
+            default_recipe.get("ingredients", []) if default_recipe.get("available") else []
+        )
 
         normalized_add: List[str] = []
         unknown_add: List[str] = []
@@ -221,7 +222,11 @@ class MenuTool:
 
         # 推估最後配料數量（僅用於判斷是否極端客製）
         if only_mode:
-            final_ings = [INGREDIENT_SYNONYMS.get(x, x) for x in only_ingredients] if only_ingredients else []
+            final_ings = (
+                [INGREDIENT_SYNONYMS.get(x, x) for x in only_ingredients]
+                if only_ingredients
+                else []
+            )
         else:
             final_ings = [x for x in default_ings if x not in remove_ingredients]
 
@@ -256,7 +261,8 @@ class MenuTool:
             "normalized_add": normalized_add,
             "unknown_add": unknown_add,
             "needs_store_confirm": len(unknown_add) > 0,
-            "message": f"加料加價共 {addon_total} 元" + ("（含需店家確認項目）" if len(unknown_add) > 0 else ""),
+            "message": f"加料加價共 {addon_total} 元"
+            + ("（含需店家確認項目）" if len(unknown_add) > 0 else ""),
         }
 
     def parse_riceball_utterance(self, text: str) -> Dict[str, Any]:
@@ -275,8 +281,8 @@ class MenuTool:
                 quantity = v if isinstance(v, int) and v > 0 else 1
 
         large = ("加大" in t) or ("大顆" in t)
-        heavy = ("重量" in t)
-        extra_egg = ("加蛋" in t)
+        heavy = "重量" in t
+        extra_egg = "加蛋" in t
 
         rice = None
         for kw, val in RICE_KEYWORDS.items():
