@@ -7,14 +7,13 @@ from src.tools.text_utils import dedupe_keep_order, parse_quantity as _parse_qua
 
 # 從 aliases_egg_pancake.json 載入別名常數
 _ep_cfg = load_json_config("aliases_egg_pancake.json")
-# 從 price_rules.json 載入蛋餅加料單價（可重複加，例如「加兩片起司」= 2 * 10）
-_ep_price_cfg = load_json_config("price_rules.json")
+_price_cfg = load_json_config("price_rules.json")
 
 
 class EggPancakeTool:
     FLAVOR_ALIASES: Dict[str, str] = _ep_cfg["flavor_aliases"]
 
-    ADDON_PRICES: Dict[str, int] = _ep_price_cfg["egg_pancake"]["addon_prices"]
+    ADDON_PRICES: Dict[str, int] = _price_cfg["egg_pancake"]["addon_prices"]
 
     ADDON_ALIASES: Dict[str, str] = _ep_cfg["addon_aliases"]
     CARRIER_MAP: Dict[str, str] = _ep_cfg["carrier_map"]
