@@ -56,9 +56,9 @@ class CarrierTool:
                 flavor = "饅頭夾蛋"
 
         frame: Dict[str, Any] = {
-            "itemtype": "carrier", # Explicitly set itemtype
+            "itemtype": "carrier",  # Explicitly set itemtype
             "carrier": carrier,  # 吐司/漢堡/饅頭
-            "flavor": flavor,    # e.g. 豬肉蛋 / 醬燒肉片蛋 / 饅頭夾蛋
+            "flavor": flavor,  # e.g. 豬肉蛋 / 醬燒肉片蛋 / 饅頭夾蛋
             "quantity": qty,
             "egg_style": egg_style,  # 吐司/漢堡預設荷包蛋；饅頭預設蔥蛋
             "ingredients_mode": ingredients_mode,  # default/only
@@ -89,7 +89,9 @@ class CarrierTool:
         _base_template = _cfg["base_ingredients"].get(carrier, ["flavor"])
         _default_egg = self._default_egg_style(carrier)
         base = [
-            flavor if x == "flavor" else (egg_style or _default_egg if x in ("荷包蛋", "蔥蛋") else x)
+            flavor
+            if x == "flavor"
+            else (egg_style or _default_egg if x in ("荷包蛋", "蔥蛋") else x)
             for x in _base_template
         ]
 
@@ -124,10 +126,10 @@ class CarrierTool:
         # 加料價表沿用飯糰 ADDON_PRICE_TABLE
         addon_total = 0
         unknown_add: List[str] = []
-        for raw in (frame.get("ingredients_add") or []):
+        for raw in frame.get("ingredients_add") or []:
             key = self._normalize_ingredient(raw)
             # 推回口味後，不再把「肉/肉片/肉鬆」當作加料收費（避免雙算）
-            if flavor and key and key in flavor:
+            if flavor and (key in flavor or raw in flavor):
                 continue
 
             if key in riceball_menu_tool.ADDON_PRICE_TABLE:
@@ -172,7 +174,7 @@ class CarrierTool:
 
     def _build_flavors_by_carrier(self, index: Dict[Tuple[str, str], int]) -> Dict[str, List[str]]:
         out: Dict[str, List[str]] = {c: [] for c in CARRIERS}
-        for (c, f) in index.keys():
+        for c, f in index.keys():
             out[c].append(f)
         for c in CARRIERS:
             out[c] = sorted(out[c], key=len, reverse=True)
@@ -270,15 +272,28 @@ class CarrierTool:
             adds.append("肉")
 
         # 一般規則：加X / 再加X
-        for syn in sorted(set(list(INGREDIENT_SYNONYMS.keys()) + list(self.EXTRA_SYNONYMS.keys())), key=len, reverse=True):
+        for syn in sorted(
+            set(list(INGREDIENT_SYNONYMS.keys()) + list(self.EXTRA_SYNONYMS.keys())),
+            key=len,
+            reverse=True,
+        ):
             if syn in ("加蛋", "蛋"):  # 這裡不把「加蛋」當作加料，避免雙意義；載體品項蛋是內建
                 continue
             if ("加" + syn) in t or ("再加" + syn) in t:
                 adds.append(self._normalize_ingredient(syn))
 
         # 去料：不要/去掉/拿掉/不加X
-        for syn in sorted(set(list(INGREDIENT_SYNONYMS.keys()) + list(self.EXTRA_SYNONYMS.keys())), key=len, reverse=True):
-            if ("不要" + syn) in t or ("去掉" + syn) in t or ("拿掉" + syn) in t or ("不加" + syn) in t:
+        for syn in sorted(
+            set(list(INGREDIENT_SYNONYMS.keys()) + list(self.EXTRA_SYNONYMS.keys())),
+            key=len,
+            reverse=True,
+        ):
+            if (
+                ("不要" + syn) in t
+                or ("去掉" + syn) in t
+                or ("拿掉" + syn) in t
+                or ("不加" + syn) in t
+            ):
                 removes.append(self._normalize_ingredient(syn))
 
         adds = dedupe_keep_order([self._normalize_ingredient(x) for x in adds if x])
@@ -313,9 +328,8 @@ class CarrierTool:
 
     def _remove_inference_addons(self, add_ingredients: List[str]) -> List[str]:
         # 推回口味後，不再把「肉/肉片/肉鬆」當作加料收費（避免雙算）
-        drop = {"肉", "肉片", "肉鬆"}
+        drop = {"肉", "肉片", "肉鬆", "肉類"}
         return [x for x in add_ingredients if self._normalize_ingredient(x) not in drop]
 
 
 carrier_tool = CarrierTool()
-

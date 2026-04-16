@@ -2,7 +2,15 @@
   "version": 1,
   "riceball": {
     "special_flavors_only_large": ["源味傳統", "素料", "甜飯糰", "半甜鹹"],
-    "addon_prices": {},
+    "addon_prices": {
+      "蛋": 10,
+      "起司": 10,
+      "鮪魚": 35,
+      "吻仔魚": 35,
+      "肉類": 35,
+      "培根": 25,
+      "火腿": 15
+    },
     "heavy_prices": {
       "醬燒里肌": 80,
       "黑椒里肌": 80,
