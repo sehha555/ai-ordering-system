@@ -229,14 +229,8 @@ def compute_llm_metrics(
 
                 if scores["f1"] >= pass_threshold and rs["score"] >= pass_threshold:
                     case_passed = True
-                elif (
-                    allow_clarification
-                    and scores["f1"] < pass_threshold
-                    and not run.get("tool_calls", [])
-                    and expected_tools
-                    and rq >= pass_threshold
-                ):
-                    # Clarification pass: 沒出 tag 但正確提到品項關鍵字（先問再加）
+                elif allow_clarification and rq >= pass_threshold:
+                    # 先問後加都行：只要回覆含正確關鍵字就算 pass
                     case_passed = True
                     case_fail_reason = None
                 elif scores["f1"] < pass_threshold:

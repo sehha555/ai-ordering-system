@@ -54,6 +54,7 @@ llm:
     - id: qwen3.5-9b-text-tag
       name: "Qwen3.5-9B (text_tag)"
       adapter: text_tag
+      allow_clarification: true
       params:
         base_url: "http://127.0.0.1:1234/v1"
         model: "unsloth/qwen3.5-9b"

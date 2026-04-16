@@ -1516,7 +1516,15 @@
     "expected_response_contains": [
       "源味"
     ],
-    "expected_behavior": "應 [REMOVE:甜飯糰] + [ADD:源味傳統飯糰|rice=白米]，購物車更新"
+    "expected_behavior": "應 [REMOVE:甜飯糰] + [ADD:源味傳統飯糰|rice=白米]，購物車更新",
+    "session_context": {
+      "cart_items": [
+        "甜飯糰 x1"
+      ],
+      "cart_count": 1,
+      "sold_out": [],
+      "sold_out_categories": {}
+    }
   },
   {
     "id": "swap_drink_size",
