@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import storeConfig from '../../config/store_config.json';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "源飯糰 語音點餐系統",
+  title: `${storeConfig.store.name} ${storeConfig.store.subtitle}`,
   description: "AI 語音點餐系統 - Voice Ordering Dashboard",
 };
 

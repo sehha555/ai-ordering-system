@@ -11,6 +11,7 @@ import OrderPanel from '../components/OrderPanel';
 import Toast from '../components/Toast';
 import MicSelector from '../components/MicSelector';
 import ServiceStatus from '../components/ServiceStatus';
+import storeConfig from '../../config/store_config.json';
 
 export default function Home() {
   const { status, vadEnabled, setVadEnabled } = useStore();
@@ -59,14 +60,14 @@ export default function Home() {
         style={{ backgroundColor: '#ffffff', borderBottom: '1px solid var(--border-color)' }}
       >
         <div className="flex items-center gap-3">
-          <img src="/logo.png" alt="源飯糰" style={{ width: 36, height: 36 }} />
+          <img src="/logo.png" alt={storeConfig.store.name} style={{ width: 36, height: 36 }} />
           <h1 className="text-2xl font-black tracking-wide" style={{ color: 'var(--text-color)' }}>
-            源飯糰
+            {storeConfig.store.name}
           </h1>
         </div>
         <div className="flex items-center gap-2">
           <MicSelector />
-          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>語音點餐系統</p>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{storeConfig.store.subtitle}</p>
         </div>
       </header>
 

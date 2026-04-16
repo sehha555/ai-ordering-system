@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../store/useStore';
 import { useTypewriter } from '../hooks/useTypewriter';
+import storeConfig from '../../config/store_config.json';
 
 const ASSISTANT_BUBBLE_STYLE = {
   backgroundColor: 'rgba(114, 157, 173, 0.12)',
@@ -27,12 +28,12 @@ export default function ChatPanel() {
     <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4">
       {messages.length === 0 ? (
         <div className="h-full flex flex-col items-center justify-center text-center">
-          <img src="/logo.png" alt="源飯糰" className="w-16 h-16 mb-3" />
+          <img src="/logo.png" alt={storeConfig.store.name} className="w-16 h-16 mb-3" />
           <p className="text-2xl font-bold" style={{ color: '#3a5560' }}>
-            歡迎光臨源飯糰
+            {storeConfig.messages.welcome_title}
           </p>
           <p className="text-base mt-2" style={{ color: '#6a8a90' }}>
-            按空白鍵或點擊球體開始點餐
+            {storeConfig.messages.welcome_subtitle}
           </p>
         </div>
       ) : (
