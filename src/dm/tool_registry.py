@@ -53,6 +53,19 @@ _DRINK_MODIFIER_PREFIXES = tuple(
 # 子字串匹配最低長度比例（step 8 fallback）
 _SUBSTRING_MATCH_MIN_RATIO = 0.6
 
+# Subsequence 匹配最低長度比例（step 9）— 「煎吐司→煎蛋吐司」等漏字場景
+_SUBSEQUENCE_MATCH_MIN_RATIO = 0.6
+
+# Rapidfuzz 模糊匹配 cutoff（step 10）— 最後 fallback，避免誤匹配要嚴格
+_FUZZY_MATCH_CUTOFF = 80
+
+
+def _is_subsequence(short: str, long: str) -> bool:
+    """short 的所有字符按順序出現在 long 中（不要求連續）"""
+    it = iter(long)
+    return all(c in it for c in short)
+
+
 # 預排序別名 keys（避免每次 _resolve_alias 重新排序）
 _RICEBALL_ALIASES_SORTED = tuple(sorted(RICEBALL_ALIASES.keys(), key=len, reverse=True))
 _DRINK_ALIASES_SORTED = tuple(sorted(DRINK_ALIASES.keys(), key=len, reverse=True))
@@ -306,6 +319,24 @@ class ToolRegistry:
                 if shorter >= longer * _SUBSTRING_MATCH_MIN_RATIO:
                     return {**info, "resolved_name": full_name}
 
+        # 9. Subsequence 匹配（漏字場景：「煎吐司」→「煎蛋吐司」、「培根吐司」→「培根蛋吐司」）
+        # name 的字符按順序出現在 menu base 中，且長度比例 ≥ 60%
+        for full_name, info in _MENU_INDEX.items():
+            base = full_name.split("(")[0] if "(" in full_name else full_name
+            if len(name) >= len(base) * _SUBSEQUENCE_MATCH_MIN_RATIO and _is_subsequence(
+                name, base
+            ):
+                return {**info, "resolved_name": full_name}
+
+        # 10. Rapidfuzz 模糊匹配（typo / 字面相近場景，cutoff 80% 避免誤匹配）
+        choices = list(_MENU_INDEX.keys())
+        best = process.extractOne(
+            name, choices, scorer=fuzz.ratio, score_cutoff=_FUZZY_MATCH_CUTOFF
+        )
+        if best:
+            matched_name = best[0]
+            return {**_MENU_INDEX[matched_name], "resolved_name": matched_name}
+
         return None
 
     def add_item(
@@ -402,6 +433,7 @@ class ToolRegistry:
             return self.add_carrier(
                 carrier=carrier,
                 flavor=extracted_flavor,
+                menu_name=resolved_name,
                 quantity=quantity,
                 customization=customization,
             )
@@ -597,10 +629,11 @@ class ToolRegistry:
         self,
         carrier: Optional[str] = None,
         flavor: Optional[str] = None,
+        menu_name: Optional[str] = None,
         quantity: int = 1,
         customization: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """加入吐司/漢堡/饅頭系列到購物車。carrier（載體）和 flavor（餡料）都必填。"""
+        """加入吐司/漢堡/饅頭系列到購物車。menu_name 為菜單真實品項名（source of truth）。"""
         try:
             missing = []
             if not carrier:
@@ -626,12 +659,14 @@ class ToolRegistry:
                 "flavor": flavor,
                 "quantity": max(1, quantity),
             }
+            if menu_name:
+                item["menu_name"] = menu_name
             if customization:
                 item["customization"] = customization
 
             session["cart"].append(item)
 
-            display_name = f"{flavor}{carrier}"
+            display_name = menu_name or f"{flavor}{carrier}"
             return {
                 "ok": True,
                 "item_id": item_id,

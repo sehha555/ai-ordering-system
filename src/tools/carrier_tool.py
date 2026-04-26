@@ -23,6 +23,8 @@ class CarrierTool:
     def __init__(self):
         self.menu_items = self._load_menu()
         self.price_index = self._build_price_index(self.menu_items)
+        # menu_name → price（不依賴 endswith(cat) 的限制，所有 carrier 類品項都登記）
+        self.price_by_name = self._build_price_by_name(self.menu_items)
         self.flavors_by_carrier = self._build_flavors_by_carrier(self.price_index)
         self.global_flavor_set = set(flavor for (_, flavor) in self.price_index.keys())
 
@@ -113,15 +115,19 @@ class CarrierTool:
         return frame
 
     def quote_carrier_price(self, frame: Dict[str, Any]) -> Dict[str, Any]:
+        # menu_name 是 source of truth — 優先用它查價（cover 所有 carrier 類品項，包括 name 不 endswith cat 的特例）
+        menu_name = frame.get("menu_name")
         carrier = frame.get("carrier")
         flavor = frame.get("flavor")
 
-        if not carrier or not flavor:
-            return {"ok": False, "message": "缺少 carrier 或 flavor，無法計價。"}
+        base_price: Optional[int] = None
+        if menu_name and menu_name in self.price_by_name:
+            base_price = self.price_by_name[menu_name]
+        elif carrier and flavor:
+            base_price = self.price_index.get((carrier, flavor))
 
-        base_price = self.price_index.get((carrier, flavor))
         if base_price is None:
-            return {"ok": False, "message": f"找不到菜單品項：{flavor}{carrier}"}
+            return {"ok": False, "message": f"找不到菜單品項：{menu_name or f'{flavor}{carrier}'}"}
 
         # 加料價表沿用飯糰 ADDON_PRICE_TABLE
         addon_total = 0
@@ -170,6 +176,17 @@ class CarrierTool:
             flavor = name[: -len(cat)].strip()
             if flavor:
                 out[(cat, flavor)] = int(price)
+        return out
+
+    def _build_price_by_name(self, items: List[Dict[str, Any]]) -> Dict[str, int]:
+        # 不要求 name endswith cat — 「無骨雞排蛋堡」「鮮肉包」等特例也能登記
+        out: Dict[str, int] = {}
+        for it in items:
+            cat = it.get("category")
+            name = it.get("name", "")
+            price = it.get("price")
+            if cat in CARRIERS and isinstance(name, str) and isinstance(price, int):
+                out[name] = int(price)
         return out
 
     def _build_flavors_by_carrier(self, index: Dict[Tuple[str, str], int]) -> Dict[str, List[str]]:

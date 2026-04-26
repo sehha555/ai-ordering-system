@@ -29,7 +29,8 @@ def format_item(frame: Dict[str, Any]) -> str:
     if rtype == "riceball":
         return f"{frame.get('rice', '')}{'·' if frame.get('rice') else ''}{frame.get('flavor', '飯糰')}"
     if rtype == "carrier":
-        return f"{frame.get('flavor', '')}{frame.get('carrier', '餐點')}"
+        # menu_name 為菜單真實品名（source of truth），優先用；舊資料 fallback flavor+carrier
+        return frame.get("menu_name") or f"{frame.get('flavor', '')}{frame.get('carrier', '餐點')}"
     if rtype == "egg_pancake":
         f = frame.get("flavor", "蛋餅")
         return f if f.endswith("蛋餅") else f"{f}蛋餅"
