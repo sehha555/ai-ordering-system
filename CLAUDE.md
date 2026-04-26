@@ -1,5 +1,8 @@
 # AI Ordering System
 
+<!-- 對應 AI-OS/Projects/ 下的資料夾名稱；session skill 用這個找交接筆記/執行計劃 -->
+project: ordering-system
+
 ## Architecture
 - **Backend**: FastAPI (port 8000) — ASR/TTS/LLM pipeline
 - **Frontend (Next.js)**: `src/frontend_next/` — port 3000, App Router

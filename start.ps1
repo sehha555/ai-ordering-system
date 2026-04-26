@@ -9,14 +9,15 @@ $ModelPath = "$env:USERPROFILE\.lmstudio\models\unsloth\Qwen3.5-9B-GGUF\Qwen3.5-
 $env:LLAMA_CHAT_TEMPLATE_KWARGS = '{"enable_thinking":false}'
 
 # 1. Backend 先啟（ASR 載入 GPU ~3.5GB，需 30-40 秒）
-Write-Host "Starting backend (FastAPI :8000) — ASR loading to GPU..."
-$backend = Start-Process -NoNewWindow -PassThru -FilePath "uv" -ArgumentList "run","python","-m","uvicorn","src.api.app:app","--host","0.0.0.0","--port","8000" -WorkingDirectory $Root
+# 暫用 8001（8000 殭屍 socket 卡住，重開機後改回 8000）
+Write-Host "Starting backend (FastAPI :8001) — ASR loading to GPU..."
+$backend = Start-Process -NoNewWindow -PassThru -FilePath "uv" -ArgumentList "run","python","-m","uvicorn","src.api.app:app","--host","0.0.0.0","--port","8001" -WorkingDirectory $Root
 
 # 等 ASR 載入完成
 Write-Host "Waiting for ASR model to load..."
 for ($i = 0; $i -lt 60; $i++) {
     try {
-        $resp = Invoke-RestMethod -Uri "http://localhost:8000/readyz" -TimeoutSec 3 -ErrorAction Stop
+        $resp = Invoke-RestMethod -Uri "http://localhost:8001/readyz" -TimeoutSec 3 -ErrorAction Stop
         if ($resp.checks.asr -eq "ok") {
             Write-Host "ASR loaded."
             break
@@ -46,7 +47,7 @@ Write-Host "Starting frontend (Next.js :3000)..."
 $frontend = Start-Process -NoNewWindow -PassThru -FilePath "cmd.exe" -ArgumentList "/c","pnpm","dev" -WorkingDirectory "$Root\src\frontend_next"
 
 Write-Host ""
-Write-Host "Backend:   http://localhost:8000 (PID: $($backend.Id))"
+Write-Host "Backend:   http://localhost:8001 (PID: $($backend.Id))"
 Write-Host "LLM:       http://localhost:1234 (PID: $($llm.Id))"
 Write-Host "OmniVoice: http://localhost:8100 (PID: $($omnivoice.Id))"
 Write-Host "Frontend:  http://localhost:3000 (PID: $($frontend.Id))"

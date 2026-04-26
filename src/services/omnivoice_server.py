@@ -23,7 +23,7 @@ import threading
 
 _model = None
 _voice_prompt = None
-_instruct = "female, young adult, Taiwanese Mandarin accent, warm and friendly tone, moderate pitch"
+_instruct = "female, young adult, chinese accent, high pitch"
 _inference_lock = threading.Lock()
 
 
@@ -143,7 +143,7 @@ def main():
     parser.add_argument("--model", default="k2-fsa/OmniVoice")
     parser.add_argument(
         "--instruct",
-        default="female, young adult, Taiwanese Mandarin accent, warm and friendly tone, moderate pitch",
+        default="female, young adult, chinese accent, high pitch",
     )
     parser.add_argument("--ref-audio", default="")
     parser.add_argument("--ref-text", default="")
