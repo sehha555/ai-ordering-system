@@ -37,7 +37,13 @@ def format_item(frame: Dict[str, Any]) -> str:
     if rtype == "snack":
         base = frame.get("snack", "點心")
         details = [
-            v for v in [frame.get("egg_cook"), "不要胡椒" if frame.get("no_pepper") else None] if v
+            v
+            for v in [
+                frame.get("noodle"),
+                frame.get("egg_cook"),
+                "不要胡椒" if frame.get("no_pepper") else None,
+            ]
+            if v
         ]
         return f"{base}({','.join(details)})" if details else base
     if rtype == "jam_toast":

@@ -5,7 +5,7 @@
       "prompt_label": "飯糰",
       "required": ["flavor", "rice"],
       "optional": ["spicy", "extra_egg"],
-      "prompt_desc": "必填：口味、米種。辣菜脯預設不加，加蛋預設蔥蛋不用問。",
+      "prompt_desc": "決策樹：\n1. 客人單獨只說「飯糰」一個詞沒任何修飾 → 預設「源味傳統飯糰」\n2. 客人說「傳統飯糰」「原味飯糰」 → 解析為「源味傳統飯糰」（保留「傳統」keyword 在回覆）\n3. 量詞>1 且未說明各自口味（如「兩個紫米飯糰」）→ 先問「兩個都同一種口味嗎，還是要不同的？」\n4. 必填：口味、米種（紫米/白米/混米）\n5. 必填齊全後 → 必問加料：「要加辣菜脯嗎？」（不可省略，加蛋預設蔥蛋不用問）\n6. 加料齊全 → [ADD:口味飯糰|rice=米種|customization=加辣菜脯]；不加料 → [ADD:口味飯糰|rice=米種]",
       "missing_prompts": {
         "flavor": "飯糰什麼口味",
         "rice": "飯糰要紫米白米？"
@@ -15,7 +15,7 @@
       "prompt_label": "飲料",
       "required": ["flavor", "size", "temp"],
       "optional": [],
-      "prompt_desc": "必填：品名、規格（中冰/中溫/大冰/大溫）。甜度不用問。",
+      "prompt_desc": "決策樹：\n1. 必填：品名、杯型（中/大）、溫度（冰/溫）。甜度不用問\n2. 缺溫度+缺杯型 → 先問溫度，客人答了再問杯型（不一次問兩個）\n3. 多杯飲料都缺溫度 → 合併追問「飲料都冰的還是溫的？」一句話，不分開問\n4. 齊全 → [ADD:飲料名|size=杯型|temp=溫度]",
       "missing_prompts": {
         "flavor": "什麼飲料",
         "size_temp": "中冰還是中溫"
@@ -25,7 +25,7 @@
       "prompt_label": "載體（吐司/漢堡/饅頭）",
       "required": ["carrier", "flavor"],
       "optional": [],
-      "prompt_desc": "必填：載體種類（吐司/漢堡/饅頭）、配料口味。只說配料未說載體就追問。",
+      "prompt_desc": "決策樹：\n1. 客人說「漢堡」（如「卡啦堡」「火腿堡」「肉片蛋堡」）→ 預設加蛋，直接加蛋版本（卡啦堡→卡拉雞排蛋堡），不追問是否加蛋\n2. 客人說「肉片蛋」「火腿蛋」這類只有配料沒說明吐司/漢堡 → 追問「吐司還是漢堡？」\n3. 必填：完整品項名（如「培根蛋吐司」「卡拉雞排蛋堡」「火腿蛋饅頭」）\n4. 齊全 → [ADD:完整品項名]",
       "missing_prompts": {
         "carrier": "吐司還是漢堡",
         "flavor": "什麼口味"
@@ -35,7 +35,7 @@
       "prompt_label": "蛋餅",
       "required": ["flavor"],
       "optional": [],
-      "prompt_desc": "必填：口味。",
+      "prompt_desc": "決策樹：\n1. 必填：完整蛋餅名（如「起司蛋餅」「玉米蛋餅」）\n2. 客人只說「蛋餅」沒口味 → 「蛋餅什麼口味？」\n3. 齊全 → [ADD:口味蛋餅]",
       "missing_prompts": {
         "flavor": "蛋餅什麼口味"
       }
@@ -44,23 +44,33 @@
       "prompt_label": "果醬吐司",
       "required": ["flavor"],
       "optional": ["size"],
-      "prompt_desc": "必填：口味（草莓/花生/蒜香/奶酥/巧克力）。",
+      "prompt_desc": "決策樹：\n1. 必填：口味（草莓/花生/蒜香/奶酥/巧克力）\n2. 缺口味 → 「果醬吐司什麼口味？草莓花生蒜香奶酥巧克力」\n3. 齊全 → [ADD:果醬吐司|flavor=口味]（預設薄片，客人指定再帶 size）",
       "missing_prompts": {
         "flavor": "果醬吐司什麼口味 草莓花生蒜香奶酥巧克力"
       }
     },
     "snack": {
-      "prompt_label": "點心",
+      "prompt_label": "點心/蔥抓餅",
       "required": [],
       "optional": [],
-      "prompt_desc": "無必填，直接加入購物車。",
+      "prompt_desc": "決策樹：\n1. 完整品項名直接 [ADD:品項名]，無必填\n2. （鐵板麵不走此規則，見「鐵板麵」）",
       "missing_prompts": {}
+    },
+    "iron_noodle": {
+      "prompt_label": "鐵板麵",
+      "required": ["flavor", "noodle"],
+      "optional": [],
+      "prompt_desc": "決策樹：\n1. 必填：口味（黑椒/蘑菇/義大利/咖哩）+ 麵種（油麵/烏龍麵）\n2. 預設加蛋，不用問\n3. 缺口味 → 「鐵板麵要黑椒蘑菇義大利還是咖哩？」\n4. 缺麵種 → 「油麵還是烏龍麵？」\n5. 齊全 → [ADD:口味鐵板麵|noodle=麵種]",
+      "missing_prompts": {
+        "flavor": "鐵板麵要黑椒蘑菇義大利還是咖哩",
+        "noodle": "油麵還是烏龍麵"
+      }
     },
     "combo": {
       "prompt_label": "套餐",
       "required": ["combo_name", "temp"],
       "optional": ["rice", "flavor"],
-      "prompt_desc": "主餐固定不能改。必填：飲料溫度。各套餐額外必填見工具回饋。",
+      "prompt_desc": "決策樹：\n1. 必填：套餐名、飲料溫度（冰/溫）\n2. 主食有口味選擇 → 必問口味：\n   - 套餐 B（厚片）→ 「厚片要什麼口味？草莓花生蒜香奶酥巧克力」\n   - 套餐五（饅頭）→ 「饅頭要什麼口味？」\n   - 套餐六/套餐七（鐵板麵）→ 「鐵板麵要蘑菇還是黑椒？」\n   - 套餐二（飯糰）→ 「飯糰要紫米白米？」\n   - 兒童餐（果醬吐司）→ 「果醬吐司要什麼口味？」\n3. 套餐 E vs 套餐一同音 → 必須追問確認\n4. 齊全 → [ADD:套餐名|temp=溫度|flavor=口味]",
       "missing_prompts": {
         "combo_name": "套餐名稱是什麼",
         "temp": "飲料冰的還是溫的"

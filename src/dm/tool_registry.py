@@ -348,6 +348,7 @@ class ToolRegistry:
         size: Optional[str] = None,
         temp: Optional[str] = None,
         flavor: Optional[str] = None,
+        noodle: Optional[str] = None,
         spicy: bool = False,
         extra_egg: bool = False,
         customization: Optional[str] = None,
@@ -493,10 +494,25 @@ class ToolRegistry:
                 "cart_count": len(session["cart"]),
             }
 
-        # ── 點心 / 蔥抓餅 / 鐵板麵 ──
-        if category in ("點心", "蔥抓餅", "鐵板麵"):
+        # ── 點心 / 蔥抓餅 ──
+        if category in ("點心", "蔥抓餅"):
             return self.add_snack(
                 flavor=resolved_name, quantity=quantity, customization=customization
+            )
+
+        # ── 鐵板麵（必填麵種：油麵/烏龍麵）──
+        if category == "鐵板麵":
+            if not noodle:
+                return {
+                    "ok": False,
+                    "missing": ["noodle"],
+                    "message": "油麵還是烏龍麵？",
+                }
+            return self.add_snack(
+                flavor=resolved_name,
+                quantity=quantity,
+                noodle=noodle,
+                customization=customization,
             )
 
         # ── 套餐 ──
@@ -716,9 +732,10 @@ class ToolRegistry:
         self,
         flavor: Optional[str] = None,
         quantity: int = 1,
+        noodle: Optional[str] = None,
         customization: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """加入點心到購物車。flavor（品項名稱）必填。"""
+        """加入點心到購物車。flavor（品項名稱）必填。鐵板麵帶 noodle（油麵/烏龍麵）。"""
         try:
             if not flavor:
                 return {"ok": False, "missing": ["flavor"], "message": "請問要什麼點心？"}
@@ -733,15 +750,18 @@ class ToolRegistry:
                 "snack": resolved_flavor,
                 "quantity": max(1, quantity),
             }
+            if noodle:
+                item["noodle"] = noodle
             if customization:
                 item["customization"] = customization
 
             session["cart"].append(item)
 
+            display = f"{resolved_flavor}({noodle})" if noodle else resolved_flavor
             return {
                 "ok": True,
                 "item_id": item_id,
-                "message": f"已加入 {quantity}份 {resolved_flavor}",
+                "message": f"已加入 {quantity}份 {display}",
                 "cart_count": len(session["cart"]),
             }
         except Exception as e:

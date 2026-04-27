@@ -1767,9 +1767,9 @@
     "expected_args": [],
     "expected_response_contains": [
       "蘑菇",
-      "胡椒"
+      "黑椒"
     ],
-    "expected_behavior": "套餐六含鐵板麵，temp 齊全也不能直接 [ADD]，必問鐵板麵口味（蘑菇/胡椒）"
+    "expected_behavior": "套餐六含鐵板麵，temp 齊全也不能直接 [ADD]，必問鐵板麵口味（蘑菇/黑椒，menu 真實名稱）"
   },
   {
     "id": "teacher_iron_noodle_must_ask_type",
