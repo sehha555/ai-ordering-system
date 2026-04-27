@@ -61,7 +61,7 @@ llm:
         temperature: 0.2
         top_p: 0.8
         top_k: 20
-        min_p: 0.01
+        min_p: 0.0              # Qwen3 官方推薦 non-thinking mode
         repeat_penalty: 1.0
         force_no_think: true   # 跳過 thinking block，直接輸出 tags
     - id: gemini-2.5-flash

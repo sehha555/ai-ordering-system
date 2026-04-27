@@ -346,7 +346,7 @@ class OpenAICompatibleAdapter(BaseLLMAdapter):
         )
 
         sampling_overrides = {}
-        for key in ("repeat_penalty", "min_p", "top_p", "top_k"):
+        for key in ("repeat_penalty", "min_p", "top_p", "top_k", "presence_penalty"):
             if key in self.params:
                 sampling_overrides[key] = self.params[key]
 
@@ -513,7 +513,7 @@ class RawCompletionAdapter(BaseLLMAdapter):
         temperature = self.params.get("temperature", 0.0)
 
         sampling_overrides = {}
-        for key in ("repeat_penalty", "min_p", "top_p", "top_k"):
+        for key in ("repeat_penalty", "min_p", "top_p", "top_k", "presence_penalty"):
             if key in self.params:
                 sampling_overrides[key] = self.params[key]
 
@@ -678,7 +678,7 @@ class TextTagAdapter(BaseLLMAdapter):
         )
 
         sampling_overrides = {}
-        for key in ("repeat_penalty", "min_p", "top_p", "top_k"):
+        for key in ("repeat_penalty", "min_p", "top_p", "top_k", "presence_penalty"):
             if key in self.params:
                 sampling_overrides[key] = self.params[key]
 
