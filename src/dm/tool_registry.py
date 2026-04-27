@@ -32,6 +32,7 @@ import asyncio
 from datetime import datetime
 from src.api.order_broadcaster import order_broadcaster, format_order_for_admin
 from src.repository.order_repository import order_repo
+from rapidfuzz import fuzz, process
 
 # 蛋餅別名
 EGG_PANCAKE_ALIASES = EggPancakeTool.FLAVOR_ALIASES
