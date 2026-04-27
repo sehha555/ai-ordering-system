@@ -1717,5 +1717,176 @@
       "口味"
     ],
     "expected_behavior": "購物車沒有飯糰（cart 為空），但仍要處理新品項意圖（蛋餅），追問口味"
+  },
+  {
+    "id": "teacher_riceball_must_ask_addon",
+    "description": "T1: 飯糰必問加料（R2）— 米種齊全後必問辣菜脯",
+    "category": "missing_info",
+    "messages": [
+      {
+        "role": "user",
+        "content": "一個鮪魚飯糰 紫米"
+      }
+    ],
+    "expected_tools": [],
+    "expected_args": [],
+    "expected_response_contains": [
+      "辣菜脯"
+    ],
+    "expected_behavior": "飯糰品項+米種齊全後必須追問加料（辣菜脯），不應直接 [ADD]"
+  },
+  {
+    "id": "teacher_combo_b_thick_toast_flavor",
+    "description": "T2: 套餐 B 含厚片必問口味（R7）",
+    "category": "missing_info",
+    "messages": [
+      {
+        "role": "user",
+        "content": "一個套餐B 冰的"
+      }
+    ],
+    "expected_tools": [],
+    "expected_args": [],
+    "expected_response_contains": [
+      "厚片",
+      "口味"
+    ],
+    "expected_behavior": "套餐 B 含厚片，temp 齊全也不能直接 [ADD]，必問厚片口味（草莓/花生/蒜香/奶酥/巧克力）"
+  },
+  {
+    "id": "teacher_combo_six_noodle_flavor",
+    "description": "T3: 套餐六含鐵板麵必問口味（R7）",
+    "category": "missing_info",
+    "messages": [
+      {
+        "role": "user",
+        "content": "一個套餐六 冰的"
+      }
+    ],
+    "expected_tools": [],
+    "expected_args": [],
+    "expected_response_contains": [
+      "蘑菇",
+      "胡椒"
+    ],
+    "expected_behavior": "套餐六含鐵板麵，temp 齊全也不能直接 [ADD]，必問鐵板麵口味（蘑菇/胡椒）"
+  },
+  {
+    "id": "teacher_iron_noodle_must_ask_type",
+    "description": "T4: 鐵板麵必問麵種（R8）",
+    "category": "missing_info",
+    "messages": [
+      {
+        "role": "user",
+        "content": "一個蘑菇鐵板麵"
+      }
+    ],
+    "expected_tools": [],
+    "expected_args": [],
+    "expected_response_contains": [
+      "油麵",
+      "烏龍"
+    ],
+    "expected_behavior": "鐵板麵必問麵種（油麵/烏龍麵），不應直接 [ADD]"
+  },
+  {
+    "id": "teacher_burger_default_egg",
+    "description": "T5: 漢堡預設加蛋（R12）— 客人說「卡啦堡」直接 [ADD] 蛋堡",
+    "category": "basic",
+    "messages": [
+      {
+        "role": "user",
+        "content": "一個卡啦堡"
+      }
+    ],
+    "expected_tools": [
+      "add_item"
+    ],
+    "expected_args": [
+      {
+        "name": "add_item",
+        "args": {
+          "name": "卡拉雞排蛋堡"
+        }
+      }
+    ],
+    "expected_response_contains": [
+      "卡拉"
+    ],
+    "expected_behavior": "漢堡預設加蛋（R12），不用追問是否加蛋，直接 [ADD] 卡拉雞排蛋堡"
+  },
+  {
+    "id": "teacher_multi_drink_merge_temp",
+    "description": "T6: 多飲料合併追問溫度（R3）",
+    "category": "missing_info",
+    "messages": [
+      {
+        "role": "user",
+        "content": "一杯紅茶 一杯奶茶 一杯薏仁漿"
+      }
+    ],
+    "expected_tools": [],
+    "expected_args": [],
+    "expected_response_contains": [
+      "飲料",
+      "冰"
+    ],
+    "expected_behavior": "三杯飲料都缺 temp，要合併問「飲料都冰的還是溫的?」一句話，不分開問"
+  },
+  {
+    "id": "teacher_checkout_dine_in_payment",
+    "description": "T7: 內用先付追問付款方式（R5）",
+    "category": "checkout",
+    "session_context": {
+      "cart_items": [
+        "鮪魚飯糰(紫米) x1"
+      ],
+      "cart_count": 1
+    },
+    "messages": [
+      {
+        "role": "user",
+        "content": "好了 內用我先付"
+      }
+    ],
+    "expected_tools": [],
+    "expected_args": [],
+    "expected_response_contains": [
+      "現金",
+      "LINE"
+    ],
+    "expected_behavior": "內用 + 「先付」要追問現金還是 LINE Pay（R5），CHECKOUT 後分流付款"
+  },
+  {
+    "id": "teacher_checkout_takeout_cash",
+    "description": "T8: 外帶現金提示取餐再付（R13）",
+    "category": "checkout",
+    "session_context": {
+      "cart_items": [
+        "大冰紅茶 x1"
+      ],
+      "cart_count": 1
+    },
+    "messages": [
+      {
+        "role": "user",
+        "content": "外帶"
+      },
+      {
+        "role": "assistant",
+        "content": "[CHECKOUT]好~外帶。現金還是 LINE Pay?"
+      },
+      {
+        "role": "user",
+        "content": "現金"
+      }
+    ],
+    "expected_tools": [],
+    "expected_args": [],
+    "expected_response_contains": [
+      "取餐",
+      "螢幕"
+    ],
+    "expected_behavior": "外帶+現金應提示「取餐再付，金額螢幕顯示」（R13）"
   }
 ]
