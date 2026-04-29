@@ -85,6 +85,7 @@ class LLMToolCaller:
         max_arg_chars: int = 8000,
         max_retries: int = 2,
         retry_base_delay: float = 1.0,
+        use_grammar: bool = False,
     ):
         self.base_url = base_url
         self.model = model
@@ -94,6 +95,12 @@ class LLMToolCaller:
         self.max_retries = max_retries
         self.retry_base_delay = retry_base_delay
         self._client = httpx.AsyncClient(timeout=timeout)
+        # GBNF grammar 懶載入；只在 use_grammar=True 時 build
+        self._grammar: Optional[str] = None
+        if use_grammar:
+            from src.dm.grammar_builder import build_grammar
+
+            self._grammar = build_grammar()
 
     async def aclose(self) -> None:
         """關閉持久 httpx client（app shutdown 時呼叫）"""
@@ -126,6 +133,8 @@ class LLMToolCaller:
             payload["tool_choice"] = tool_choice
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
+        if self._grammar is not None:
+            payload["grammar"] = self._grammar
         return payload
 
     # 超過 _MAX_HISTORY_TURNS 輪（一輪 = user + assistant = 2 條）時壓縮舊對話

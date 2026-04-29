@@ -609,13 +609,19 @@ class TextTagAdapter(BaseLLMAdapter):
         self._client: httpx.Client | None = None
 
     def _ensure_static_context(self):
-        """懶載入靜態 context（system prompt、priming）— 不載入 tools_schema"""
+        """懶載入靜態 context（system prompt、priming、可選 grammar）"""
         if self._system_prompt is None:
             # 只需要 system_prompt；tools_schema 不送給 LLM
             from src.dm.system_prompts import build_system_prompt
 
             self._system_prompt = build_system_prompt()
             self._priming = _load_priming_messages()
+            # use_grammar=True 時懶載入 GBNF（grammar-constrained decoding）
+            self._grammar = None
+            if self.params.get("use_grammar", False):
+                from src.dm.grammar_builder import build_grammar
+
+                self._grammar = build_grammar()
 
     def _get_client(self, timeout: float) -> httpx.Client:
         if self._client is None or self._client.is_closed:
@@ -699,6 +705,8 @@ class TextTagAdapter(BaseLLMAdapter):
             "temperature": temperature,
             **sampling_overrides,
         }
+        if self._grammar is not None:
+            payload["grammar"] = self._grammar
 
         logger.debug("TextTag request | model=%s | messages=%d", model, len(messages))
 

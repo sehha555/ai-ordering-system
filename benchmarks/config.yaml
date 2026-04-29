@@ -64,6 +64,20 @@ llm:
         min_p: 0.0              # Qwen3 官方推薦 non-thinking mode
         repeat_penalty: 1.0
         force_no_think: true   # 跳過 thinking block，直接輸出 tags
+    - id: qwen3.5-9b-text-tag-grammar
+      name: "Qwen3.5-9B (text_tag + GBNF grammar)"
+      adapter: text_tag
+      allow_clarification: true
+      params:
+        base_url: "http://127.0.0.1:1234/v1"
+        model: "unsloth/qwen3.5-9b"
+        temperature: 0.2
+        top_p: 0.8
+        top_k: 20
+        min_p: 0.0
+        repeat_penalty: 1.0
+        force_no_think: true
+        use_grammar: true       # 結構嚴 + 欄位 enum 嚴 + 品項名自由（93% benchmark）
     - id: gemini-2.5-flash
       name: "Gemini 2.5 Flash (text_tag)"
       adapter: gemini_text_tag

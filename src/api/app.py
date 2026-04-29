@@ -239,6 +239,7 @@ _llm_caller = LLMToolCaller(
     base_url=settings.LLM_BASE_URL,
     model=settings.LLM_MODEL,
     timeout=settings.LLM_TIMEOUT,
+    use_grammar=settings.LLM_USE_GRAMMAR,
 )
 _dialogue_manager = DialogueManager(llm=_llm_caller, store=_session_store)
 _tool_registry = ToolRegistry(_dialogue_manager, _session_store)

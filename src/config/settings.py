@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     LLM_BASE_URL: str = "http://127.0.0.1:1234/v1/chat/completions"
     LLM_MODEL: str = "qwen/qwen3-30b-a3b-2507"
     LLM_TIMEOUT: int = 120
+    LLM_USE_GRAMMAR: bool = (
+        False  # GBNF grammar-constrained decoding（實驗工具，benchmark 無顯著提升）
+    )
 
     # --- 店家設定 ---
     STORE_NAME: str = "源飯糰"
