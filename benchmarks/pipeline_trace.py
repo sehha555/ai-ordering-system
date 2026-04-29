@@ -24,13 +24,9 @@ SCENARIO_FILE = ROOT / "benchmarks" / "test_data" / "llm" / "test_scenarios.json
 
 # 要 trace 的失敗場景（2026-04-29 baseline 90% 跑出來的 7 個 fail）
 TRACE_IDS = [
-    "u_riceball_multi_round",
-    "u_carrier_missing",
-    "u_intent_mushroom_noodle",
     "u_combo_b_toast",
     "sold_out_combo_component",
     "swap_riceball",
-    "swap_nonexistent_remove_but_add",
 ]
 
 # Text Tag 正則（與 voice_router 一致）

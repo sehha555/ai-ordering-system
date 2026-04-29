@@ -130,6 +130,24 @@ def _build_menu_index() -> Dict[str, Dict[str, Any]]:
 # 模組載入時建立一次索引（避免每次 add_item 讀檔）
 _MENU_INDEX: Dict[str, Dict[str, Any]] = _build_menu_index()
 
+
+def _augment_with_sold_out_rice(base_msg: str) -> str:
+    """米種追問訊息前綴注入售完狀態（如有米種售完）。
+
+    base_msg: 例「飯糰要紫米白米還是混米」「飯糰要白米紫米？」
+    return:   「白米售完，{base_msg}」（如有售完）或原訊息
+    """
+    rice_status = menu_state_service.get_rice_options_status()
+    sold_rices: List[str] = []
+    if not rice_status.get("white", True):
+        sold_rices.append("白米")
+    if not rice_status.get("purple", True):
+        sold_rices.append("紫米")
+    if not sold_rices:
+        return base_msg
+    return f"{'、'.join(sold_rices)}售完，{base_msg}"
+
+
 # 結帳正規化映射（finalize_order / preview_checkout 共用）
 _DINE_TYPE_MAP: Dict[str, str] = {
     "內用": "dine-in",
@@ -417,7 +435,11 @@ class ToolRegistry:
         # ── 飯糰 ──
         if category == "飯糰":
             if not rice:
-                return {"ok": False, "missing": ["rice"], "message": "飯糰要白米紫米還是混米？"}
+                return {
+                    "ok": False,
+                    "missing": ["rice"],
+                    "message": _augment_with_sold_out_rice("飯糰要白米紫米還是混米？"),
+                }
             return self.add_riceball(
                 flavor=resolved_name,
                 rice=rice,
@@ -824,6 +846,9 @@ class ToolRegistry:
             # 用現有函式檢查套餐必填欄位
             missing_msg = check_combo_required(combo_name, temp, flavor, rice, customization)
             if missing_msg:
+                # 缺米種時注入售完狀態（讓 keyword「售完」進入回覆給客人）
+                if "米" in missing_msg:
+                    missing_msg = _augment_with_sold_out_rice(missing_msg)
                 return {"ok": False, "message": missing_msg}
 
             session = self.get_current_session()
