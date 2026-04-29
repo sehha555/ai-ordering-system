@@ -8,16 +8,14 @@ menu_state_service 單元測試
   - is_currently_open 邏輯
 """
 
-import json
-import os
 import pytest
-from unittest.mock import patch
 from datetime import datetime
 
 from src.tools.menu import menu_state_service
 
 
 # ── Fixture ────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture(autouse=True)
 def reset_state(tmp_path, monkeypatch):
@@ -35,6 +33,7 @@ def reset_state(tmp_path, monkeypatch):
 
 
 # ── 基本讀寫 ──────────────────────────────────────────────────────────────
+
 
 class TestGetState:
     def test_回傳預設狀態_當檔案不存在(self):
@@ -94,6 +93,7 @@ class TestResetAllSoldOut:
 
 
 # ── 連動規則：get_effective_sold_out ──────────────────────────────────────
+
 
 class TestEffectiveSoldOut:
     # 規則1：載體
@@ -157,6 +157,7 @@ class TestEffectiveSoldOut:
 
 # ── get_rice_options_status 米種選項狀態測試 ──────────────────────────────
 
+
 class TestGetRiceOptionsStatus:
     def test_預設全部米種可用(self):
         status = menu_state_service.get_rice_options_status()
@@ -208,31 +209,38 @@ class TestGetRiceOptionsStatus:
         assert "白饅頭" not in sold
         assert "黑糖花捲" not in sold
 
-    # 規則4：鐵板麵麵種
-    def test_烏龍關_咖哩烏龍直接關(self):
+    # 規則4：鐵板麵麵種（4 口味 × 2 麵體 = 8 SKU）
+    def test_烏龍關_4個烏龍SKU全關(self):
         menu_state_service.set_category_sold_out("noodle_udon", True)
         sold = menu_state_service.get_effective_sold_out()
-        assert "咖哩烏龍麵+蛋" in sold
+        assert "黑椒鐵板麵(烏龍)+蛋" in sold
+        assert "蘑菇鐵板麵(烏龍)+蛋" in sold
+        assert "義大利肉醬鐵板麵(烏龍)+蛋" in sold
+        assert "咖哩鐵板麵(烏龍)+蛋" in sold
 
-    def test_只有油麵關_不影響咖哩烏龍(self):
+    def test_烏龍關_4個油麵SKU不受影響(self):
+        menu_state_service.set_category_sold_out("noodle_udon", True)
+        sold = menu_state_service.get_effective_sold_out()
+        assert "黑椒鐵板麵(油麵)+蛋" not in sold
+        assert "蘑菇鐵板麵(油麵)+蛋" not in sold
+        assert "義大利肉醬鐵板麵(油麵)+蛋" not in sold
+        assert "咖哩鐵板麵(油麵)+蛋" not in sold
+
+    def test_油麵關_4個油麵SKU全關(self):
         menu_state_service.set_category_sold_out("noodle_oil", True)
         sold = menu_state_service.get_effective_sold_out()
-        assert "咖哩烏龍麵+蛋" not in sold
+        assert "黑椒鐵板麵(油麵)+蛋" in sold
+        assert "蘑菇鐵板麵(油麵)+蛋" in sold
+        assert "義大利肉醬鐵板麵(油麵)+蛋" in sold
+        assert "咖哩鐵板麵(油麵)+蛋" in sold
 
-    def test_油麵和烏龍都關_黑椒蘑菇義大利也關(self):
+    def test_油麵和烏龍都關_8個鐵板麵SKU全關(self):
         menu_state_service.set_category_sold_out("noodle_udon", True)
         menu_state_service.set_category_sold_out("noodle_oil", True)
         sold = menu_state_service.get_effective_sold_out()
-        assert "黑椒鐵板麵+蛋" in sold
-        assert "蘑菇鐵板麵+蛋" in sold
-        assert "義大利肉醬麵+蛋" in sold
-        assert "咖哩烏龍麵+蛋" in sold
-
-    def test_只有烏龍關_黑椒蘑菇義大利不關(self):
-        menu_state_service.set_category_sold_out("noodle_udon", True)
-        sold = menu_state_service.get_effective_sold_out()
-        assert "黑椒鐵板麵+蛋" not in sold
-        assert "蘑菇鐵板麵+蛋" not in sold
+        for flavor in ("黑椒", "蘑菇", "義大利肉醬", "咖哩"):
+            for noodle in ("油麵", "烏龍"):
+                assert f"{flavor}鐵板麵({noodle})+蛋" in sold
 
     # 規則5：蔥抓餅
     def test_蔥抓餅分類關_原味和加蛋都關(self):
@@ -255,6 +263,7 @@ class TestGetRiceOptionsStatus:
 
 
 # ── 套餐連動：get_effective_combo_status ─────────────────────────────────
+
 
 class TestEffectiveComboStatus:
     def test_初始狀態全部套餐可用(self):
@@ -291,23 +300,36 @@ class TestEffectiveComboStatus:
         assert combos["套餐四"]["available"] is False
 
     def test_5種饅頭全關_套餐五關閉(self):
-        for key in ["mantou_black_sugar", "mantou_white", "mantou_black_sugar_roll",
-                    "mantou_white_roll", "mantou_taro"]:
+        for key in [
+            "mantou_black_sugar",
+            "mantou_white",
+            "mantou_black_sugar_roll",
+            "mantou_white_roll",
+            "mantou_taro",
+        ]:
             menu_state_service.set_category_sold_out(key, True)
         combos = menu_state_service.get_effective_combo_status()
         assert combos["套餐五"]["available"] is False
 
     def test_只有4種饅頭關_套餐五仍可用(self):
-        for key in ["mantou_black_sugar", "mantou_white", "mantou_black_sugar_roll",
-                    "mantou_white_roll"]:
+        for key in [
+            "mantou_black_sugar",
+            "mantou_white",
+            "mantou_black_sugar_roll",
+            "mantou_white_roll",
+        ]:
             menu_state_service.set_category_sold_out(key, True)
         combos = menu_state_service.get_effective_combo_status()
         assert combos["套餐五"]["available"] is True
 
     def test_饅頭品項級售完也計入套餐五判斷(self):
         # 4 種用分類關，1 種用品項級售完
-        for key in ["mantou_black_sugar", "mantou_white", "mantou_black_sugar_roll",
-                    "mantou_white_roll"]:
+        for key in [
+            "mantou_black_sugar",
+            "mantou_white",
+            "mantou_black_sugar_roll",
+            "mantou_white_roll",
+        ]:
             menu_state_service.set_category_sold_out(key, True)
         menu_state_service.set_item_sold_out("芋頭饅頭", True)
         combos = menu_state_service.get_effective_combo_status()
@@ -377,6 +399,7 @@ class TestEffectiveComboStatus:
 
 # ── 營業時間 ──────────────────────────────────────────────────────────────
 
+
 class TestBusinessHours:
     def test_取得預設營業時間(self):
         hours = menu_state_service.get_business_hours()
@@ -437,6 +460,7 @@ class TestSetOpenOverride:
 
 
 # ── 持久化驗證 ────────────────────────────────────────────────────────────
+
 
 class TestPersistence:
     def test_狀態寫入後重載快取仍保留(self):

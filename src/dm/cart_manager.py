@@ -35,11 +35,11 @@ def format_item(frame: Dict[str, Any]) -> str:
         f = frame.get("flavor", "蛋餅")
         return f if f.endswith("蛋餅") else f"{f}蛋餅"
     if rtype == "snack":
+        # 鐵板麵 menu_name 已含 (油麵)/(烏龍)，不再額外拼 noodle 後綴
         base = frame.get("snack", "點心")
         details = [
             v
             for v in [
-                frame.get("noodle"),
                 frame.get("egg_cook"),
                 "不要胡椒" if frame.get("no_pepper") else None,
             ]

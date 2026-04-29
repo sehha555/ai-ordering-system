@@ -13,8 +13,10 @@ _PEPPER_RESTRICTED_ITEMS: list = _snack_cfg["pepper_restricted_items"]
 
 class SnackTool:
     def __init__(self):
-        self.menu_items = [item for item in menu_price_service.get_raw_menu() if item['category'] == '點心']
-        self.snack_names = sorted([item['name'] for item in self.menu_items], key=len, reverse=True)
+        self.menu_items = [
+            item for item in menu_price_service.get_raw_menu() if item["category"] == "點心"
+        ]
+        self.snack_names = sorted([item["name"] for item in self.menu_items], key=len, reverse=True)
         self.snack_keywords = sorted(list(SNACK_ALIASES.keys()), key=len, reverse=True)
         # Sort aliases by length for longest-match-first
         self.sorted_aliases = sorted(SNACK_ALIASES.items(), key=lambda x: len(x[0]), reverse=True)
@@ -40,7 +42,7 @@ class SnackTool:
             "egg_cook": egg_cook if snack == "荷包蛋" else None,
             "no_pepper": no_pepper,
             "raw_text": text,
-            "missing_slots": []
+            "missing_slots": [],
         }
 
         if not snack:
@@ -74,7 +76,10 @@ class SnackTool:
             return {"ok": False, "message": "缺少點心名稱，無法計價。"}
 
         try:
-            base_price = menu_price_service.get_price("點心", snack_name)
+            try:
+                base_price = menu_price_service.get_price("點心", snack_name)
+            except KeyError:
+                base_price = menu_price_service.get_price("鐵板麵", snack_name)
             total_price = base_price * quantity
 
             message = f"{quantity}份{snack_name}，共 {total_price}元"

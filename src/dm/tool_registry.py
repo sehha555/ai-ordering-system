@@ -83,6 +83,48 @@ _CARRIER_CATEGORY_MAP: Dict[str, str] = _reg_cfg["carrier_category_map"]
 # 果醬吐司名稱解析（預編譯，避免 add_item 內部每次 import + compile）
 _JAM_TOAST_RE = re.compile(r"果醬吐司\(([^/]+)/([^)]+)\)")
 
+# 鐵板麵口味別名 → 規範化口味（用於組 menu_name）
+_IRON_NOODLE_FLAVOR_CANON: Dict[str, str] = {
+    "黑椒": "黑椒",
+    "黑胡椒": "黑椒",
+    "胡椒": "黑椒",
+    "蘑菇": "蘑菇",
+    "香菇": "蘑菇",
+    "義大利肉醬": "義大利肉醬",
+    "義大利": "義大利肉醬",
+    "咖哩": "咖哩",
+}
+# 排序：長 alias 優先，避免「黑椒」被「黑」截
+_IRON_NOODLE_FLAVOR_KEYS = tuple(sorted(_IRON_NOODLE_FLAVOR_CANON.keys(), key=len, reverse=True))
+
+# 鐵板麵麵體別名 → 規範化（menu_name 內括號用「油麵」「烏龍」）
+_NOODLE_TYPE_CANON: Dict[str, str] = {
+    "油麵": "油麵",
+    "油": "油麵",
+    "烏龍": "烏龍",
+    "烏龍麵": "烏龍",
+}
+
+
+def _resolve_iron_noodle_menu_name(name_input: str, noodle: str) -> Optional[str]:
+    """從口味字串 + 麵體組出鐵板麵完整 menu_name，例：「黑椒鐵板麵」+「油麵」→「黑椒鐵板麵(油麵)+蛋」"""
+    if not name_input or not noodle:
+        return None
+    flavor_canon: Optional[str] = None
+    for alias in _IRON_NOODLE_FLAVOR_KEYS:
+        if alias in name_input:
+            flavor_canon = _IRON_NOODLE_FLAVOR_CANON[alias]
+            break
+    if not flavor_canon:
+        return None
+    noodle_canon = _NOODLE_TYPE_CANON.get(noodle)
+    if not noodle_canon:
+        return None
+    menu_name = f"{flavor_canon}鐵板麵({noodle_canon})+蛋"
+    if menu_name not in _MENU_INDEX:
+        return None
+    return menu_name
+
 
 def _build_menu_index() -> Dict[str, Dict[str, Any]]:
     """
@@ -368,6 +410,18 @@ class ToolRegistry:
         if not name:
             return {"ok": False, "message": "請告訴我要點什麼品項"}
 
+        # 鐵板麵 fast-path：有 noodle 參數 + name 含鐵板麵口味關鍵字 → 直接走 resolver。
+        # 避免「咖哩烏龍麵」「義大利肉醬麵」這類舊名 / 短口味名走不到 _resolve_item_name。
+        if noodle and any(alias in name for alias in _IRON_NOODLE_FLAVOR_KEYS):
+            menu_name = _resolve_iron_noodle_menu_name(name, noodle)
+            if menu_name:
+                return self.add_snack(
+                    flavor=menu_name,
+                    quantity=quantity,
+                    noodle=noodle,
+                    customization=customization,
+                )
+
         # 找到品項資訊
         item_info = self._resolve_item_name(name)
         if item_info is None:
@@ -500,7 +554,7 @@ class ToolRegistry:
                 flavor=resolved_name, quantity=quantity, customization=customization
             )
 
-        # ── 鐵板麵（必填麵種：油麵/烏龍麵）──
+        # ── 鐵板麵（必填麵種：油麵/烏龍麵；組成完整 menu_name 為 source of truth）──
         if category == "鐵板麵":
             if not noodle:
                 return {
@@ -508,8 +562,15 @@ class ToolRegistry:
                     "missing": ["noodle"],
                     "message": "油麵還是烏龍麵？",
                 }
+            # 從原始 name（如「黑椒鐵板麵」「義大利肉醬麵」）+ noodle 組出 menu_name
+            menu_name = _resolve_iron_noodle_menu_name(name, noodle)
+            if not menu_name:
+                return {
+                    "ok": False,
+                    "message": f"鐵板麵口味或麵種無法辨識：{name} / {noodle}",
+                }
             return self.add_snack(
-                flavor=resolved_name,
+                flavor=menu_name,
                 quantity=quantity,
                 noodle=noodle,
                 customization=customization,
@@ -757,11 +818,11 @@ class ToolRegistry:
 
             session["cart"].append(item)
 
-            display = f"{resolved_flavor}({noodle})" if noodle else resolved_flavor
+            # 鐵板麵 menu_name 已含 (油麵)/(烏龍)，不再額外拼 noodle 後綴
             return {
                 "ok": True,
                 "item_id": item_id,
-                "message": f"已加入 {quantity}份 {display}",
+                "message": f"已加入 {quantity}份 {resolved_flavor}",
                 "cart_count": len(session["cart"]),
             }
         except Exception as e:

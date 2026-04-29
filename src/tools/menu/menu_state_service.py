@@ -37,28 +37,52 @@ _DEFAULT_CATEGORIES = {
 
 # ── 吐司分類品項（carrier_toast 關掉後全部不可用）──────────────────────────
 _TOAST_ITEMS = [
-    "煎蛋吐司", "起司蛋吐司", "火腿蛋吐司", "豬肉蛋吐司", "培根蛋吐司",
-    "薯餅蛋吐司", "鮪魚蛋吐司", "蜜汁燒肉蛋吐司", "醬燒肉片蛋吐司",
-    "黑椒肉片蛋吐司", "原味咔啦雞蛋吐司", "無骨雞排蛋吐司", "醬燒肉片總匯吐司",
+    "煎蛋吐司",
+    "起司蛋吐司",
+    "火腿蛋吐司",
+    "豬肉蛋吐司",
+    "培根蛋吐司",
+    "薯餅蛋吐司",
+    "鮪魚蛋吐司",
+    "蜜汁燒肉蛋吐司",
+    "醬燒肉片蛋吐司",
+    "黑椒肉片蛋吐司",
+    "原味咔啦雞蛋吐司",
+    "無骨雞排蛋吐司",
+    "醬燒肉片總匯吐司",
 ]
 
 # ── 薄片果醬吐司（carrier_toast 關掉後連動）─────────────────────────────
 _JAM_TOAST_THIN = [
-    "果醬吐司(草莓/薄片)", "果醬吐司(花生/薄片)", "果醬吐司(蒜香/薄片)",
-    "果醬吐司(奶酥/薄片)", "果醬吐司(巧克力/薄片)",
+    "果醬吐司(草莓/薄片)",
+    "果醬吐司(花生/薄片)",
+    "果醬吐司(蒜香/薄片)",
+    "果醬吐司(奶酥/薄片)",
+    "果醬吐司(巧克力/薄片)",
 ]
 
 # ── 厚片果醬吐司（carrier_thick_toast 關掉後連動）──────────────────────
 _JAM_TOAST_THICK = [
-    "果醬吐司(草莓/厚片)", "果醬吐司(花生/厚片)", "果醬吐司(蒜香/厚片)",
-    "果醬吐司(奶酥/厚片)", "果醬吐司(巧克力/厚片)",
+    "果醬吐司(草莓/厚片)",
+    "果醬吐司(花生/厚片)",
+    "果醬吐司(蒜香/厚片)",
+    "果醬吐司(奶酥/厚片)",
+    "果醬吐司(巧克力/厚片)",
 ]
 
 # ── 漢堡分類品項（carrier_burger 關掉後全部不可用）──────────────────────
 _BURGER_ITEMS = [
-    "火腿蛋漢堡", "起司蛋漢堡", "豬肉蛋漢堡", "薯餅蛋漢堡", "培根蛋漢堡",
-    "鮪魚蛋漢堡", "椒鹽雞絲蛋漢堡", "醬燒肉片蛋漢堡", "黑椒肉片蛋漢堡",
-    "原味咔啦雞蛋漢堡", "無骨雞排蛋堡",
+    "火腿蛋漢堡",
+    "起司蛋漢堡",
+    "豬肉蛋漢堡",
+    "薯餅蛋漢堡",
+    "培根蛋漢堡",
+    "鮪魚蛋漢堡",
+    "椒鹽雞絲蛋漢堡",
+    "醬燒肉片蛋漢堡",
+    "黑椒肉片蛋漢堡",
+    "原味咔啦雞蛋漢堡",
+    "無骨雞排蛋堡",
 ]
 
 # ── 饅頭種類 → 分類 key 對應品項名稱 ──────────────────────────────────
@@ -70,8 +94,23 @@ _MANTOU_CATEGORY_TO_ITEM = {
     "mantou_taro": "芋頭饅頭",
 }
 
+# ── 鐵板麵 SKU（4 口味 × 2 麵體）──────────────────────────────────────
+_IRON_NOODLE_OIL_SKUS = [
+    "黑椒鐵板麵(油麵)+蛋",
+    "蘑菇鐵板麵(油麵)+蛋",
+    "義大利肉醬鐵板麵(油麵)+蛋",
+    "咖哩鐵板麵(油麵)+蛋",
+]
+_IRON_NOODLE_UDON_SKUS = [
+    "黑椒鐵板麵(烏龍)+蛋",
+    "蘑菇鐵板麵(烏龍)+蛋",
+    "義大利肉醬鐵板麵(烏龍)+蛋",
+    "咖哩鐵板麵(烏龍)+蛋",
+]
+
 
 # ── 內部工具函式 ─────────────────────────────────────────────────────────
+
 
 def _load_state() -> dict:
     """讀取 menu_state.json，若檔案不存在則回傳預設狀態。"""
@@ -107,6 +146,7 @@ def _default_state() -> dict:
 
 
 # ── 公開 API ─────────────────────────────────────────────────────────────
+
 
 def get_state() -> dict:
     """取得完整狀態（sold_out_items、sold_out_categories、business_hours、is_open_override）。"""
@@ -167,7 +207,7 @@ def get_effective_sold_out() -> list[str]:
       規則1：載體關 → 對應載體所有品項 + 相關果醬吐司連動
       規則2：米種連動 → 紫米或白米關 → 混米自動關
       規則3：饅頭種類 → 各自獨立，分類 key 對應單一品項
-      規則4：鐵板麵麵種 → 烏龍關=咖哩烏龍直接關；油麵+烏龍都關=其他鐵板麵關
+      規則4：鐵板麵麵種 → 油麵關=4 個油麵 SKU 關；烏龍關=4 個烏龍 SKU 關
       規則5：蔥抓餅關 → 蔥抓餅(原味) + 蔥抓餅(加蛋) 都關
     """
     with _file_lock:
@@ -198,17 +238,11 @@ def get_effective_sold_out() -> list[str]:
         if cats.get(cat_key):
             sold_items.add(item_name)
 
-    # 規則4：鐵板麵麵種
-    noodle_udon_off = cats.get("noodle_udon", False)
-    noodle_oil_off = cats.get("noodle_oil", False)
-    if noodle_udon_off:
-        # 咖哩烏龍固定用烏龍麵 → 烏龍關 = 直接關
-        sold_items.add("咖哩烏龍麵+蛋")
-    if noodle_udon_off and noodle_oil_off:
-        # 油麵+烏龍都關 → 黑椒/蘑菇/義大利鐵板麵也無法供應
-        sold_items.add("黑椒鐵板麵+蛋")
-        sold_items.add("蘑菇鐵板麵+蛋")
-        sold_items.add("義大利肉醬麵+蛋")
+    # 規則4：鐵板麵麵種（4 口味 × 2 麵體 = 8 SKU）
+    if cats.get("noodle_oil", False):
+        sold_items.update(_IRON_NOODLE_OIL_SKUS)
+    if cats.get("noodle_udon", False):
+        sold_items.update(_IRON_NOODLE_UDON_SKUS)
 
     # 規則5：蔥抓餅關
     if cats.get("scallion_pancake"):
@@ -247,9 +281,7 @@ def get_effective_combo_status() -> dict:
         item = _MANTOU_CATEGORY_TO_ITEM[cat_key]
         return cats.get(cat_key, False) or item in sold_items
 
-    all_mantou_off = all(
-        _mantou_item_sold_out(k) for k in _MANTOU_CATEGORY_TO_ITEM
-    )
+    all_mantou_off = all(_mantou_item_sold_out(k) for k in _MANTOU_CATEGORY_TO_ITEM)
 
     # 無骨雞排是否售完
     chicken_off = "無骨雞排" in sold_items
@@ -299,8 +331,10 @@ def get_effective_combo_status() -> dict:
     # 套餐B：厚片關 → 關
     result["套餐B"] = _make(not thick_toast_off, "厚片吐司售完" if thick_toast_off else None)
 
-    # 套餐C：油麵+烏龍都關 OR 義大利肉醬麵售完 → 關
-    italian_off = "義大利肉醬麵+蛋" in sold_items
+    # 套餐C：油麵+烏龍都關 OR 兩個義大利肉醬鐵板麵 SKU 都售完 → 關
+    italian_off = (
+        "義大利肉醬鐵板麵(油麵)+蛋" in sold_items and "義大利肉醬鐵板麵(烏龍)+蛋" in sold_items
+    )
     comboC_off = all_noodles_off or italian_off
     if comboC_off:
         reasonC = "義大利肉醬麵售完" if italian_off else "油麵與烏龍麵均售完"
@@ -363,6 +397,7 @@ def get_rice_options_status() -> dict:
 
 
 # ── 營業時間 ─────────────────────────────────────────────────────────────
+
 
 def get_business_hours() -> dict:
     """取得營業時間設定，回傳 {"open": "HH:MM", "close": "HH:MM"}。"""

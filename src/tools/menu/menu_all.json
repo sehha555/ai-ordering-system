@@ -94,10 +94,14 @@
   {"category":"蔥抓餅","name":"蔥抓餅(原味)","price":40},
   {"category":"蔥抓餅","name":"蔥抓餅(加蛋)","price":50},
 
-  {"category":"鐵板麵","name":"黑椒鐵板麵+蛋","price":60},
-  {"category":"鐵板麵","name":"蘑菇鐵板麵+蛋","price":60},
-  {"category":"鐵板麵","name":"義大利肉醬麵+蛋","price":65},
-  {"category":"鐵板麵","name":"咖哩烏龍麵+蛋","price":65},
+  {"category":"鐵板麵","name":"黑椒鐵板麵(油麵)+蛋","price":60},
+  {"category":"鐵板麵","name":"黑椒鐵板麵(烏龍)+蛋","price":60},
+  {"category":"鐵板麵","name":"蘑菇鐵板麵(油麵)+蛋","price":60},
+  {"category":"鐵板麵","name":"蘑菇鐵板麵(烏龍)+蛋","price":60},
+  {"category":"鐵板麵","name":"義大利肉醬鐵板麵(油麵)+蛋","price":65},
+  {"category":"鐵板麵","name":"義大利肉醬鐵板麵(烏龍)+蛋","price":65},
+  {"category":"鐵板麵","name":"咖哩鐵板麵(油麵)+蛋","price":65},
+  {"category":"鐵板麵","name":"咖哩鐵板麵(烏龍)+蛋","price":65},
 
   {"category":"點心","name":"煎餃(8顆)","price":40},
   {"category":"點心","name":"港式蘿蔔糕","price":40},
