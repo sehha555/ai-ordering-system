@@ -316,7 +316,7 @@
   },
   {
     "id": "u_carrier_missing",
-    "description": "C1: 起司蛋解析 — model/tool 解析為起司蛋餅",
+    "description": "C1: 起司蛋追問載體 — 只說配料沒說吐司/漢堡",
     "category": "missing_info",
     "messages": [
       {
@@ -324,21 +324,13 @@
         "content": "一個起司蛋"
       }
     ],
-    "expected_tools": [
-      "add_item"
-    ],
-    "expected_args": [
-      {
-        "name": "add_item",
-        "args": {
-          "name": "起司蛋"
-        }
-      }
-    ],
+    "expected_tools": [],
+    "expected_args": [],
     "expected_response_contains": [
-      "起司"
+      "吐司",
+      "漢堡"
     ],
-    "expected_behavior": "text tag 模式下 model 輸出 [ADD:起司蛋]，tool_registry 子字串匹配到起司蛋餅（蛋餅分類）；ok:true，response 含起司"
+    "expected_behavior": "客人只說配料『起司蛋』沒指定載體（吐司/漢堡），prompt 決策樹規則要追問載體，不應直接 [ADD]"
   },
   {
     "id": "u_carrier_resolved",
@@ -402,30 +394,21 @@
   },
   {
     "id": "u_intent_mushroom_noodle",
-    "description": "D1: 蘑菇麵 = 蘑菇鐵板麵",
-    "category": "intent",
+    "description": "D1: 蘑菇麵理解為蘑菇鐵板麵 — 必問麵種（R8）",
+    "category": "missing_info",
     "messages": [
       {
         "role": "user",
         "content": "兩個蘑菇麵"
       }
     ],
-    "expected_tools": [
-      "add_item"
-    ],
-    "expected_args": [
-      {
-        "name": "add_item",
-        "args": {
-          "name": "蘑菇",
-          "quantity": 2
-        }
-      }
-    ],
+    "expected_tools": [],
+    "expected_args": [],
     "expected_response_contains": [
-      "蘑菇"
+      "油麵",
+      "烏龍"
     ],
-    "expected_behavior": "理解蘑菇麵=蘑菇鐵板麵+蛋，call add_item(name 含蘑菇, qty=2)；name 子串匹配蘑菇即通過"
+    "expected_behavior": "理解蘑菇麵=蘑菇鐵板麵，但鐵板麵必問麵種（油麵/烏龍麵），不應直接 [ADD]"
   },
   {
     "id": "u_intent_grabcake",

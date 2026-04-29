@@ -22,12 +22,12 @@ from src.dm.system_prompts import SystemPromptBuilder
 LLM_URL = "http://127.0.0.1:1234/v1/chat/completions"
 SCENARIO_FILE = ROOT / "benchmarks" / "test_data" / "llm" / "test_scenarios.json"
 
-# 要 trace 的失敗場景
+# 要 trace 的失敗場景（2026-04-29 baseline 90% 跑出來的 7 個 fail）
 TRACE_IDS = [
-    "u_egg_pancake_missing",
-    "u_riceball_missing_rice",
+    "u_riceball_multi_round",
     "u_carrier_missing",
-    "u_drink_batch_ask",
+    "u_intent_mushroom_noodle",
+    "u_combo_b_toast",
     "sold_out_combo_component",
     "swap_riceball",
     "swap_nonexistent_remove_but_add",
