@@ -469,24 +469,14 @@ class ToolRegistry:
                     extracted_flavor = extracted_flavor[: -len(suffix)]
                     break
 
-            # 饅頭特殊處理：若 rice 含口味資訊（非真正米種），重建完整品項名
-            # 場景：model 輸出 [ADD:饅頭夾蛋|rice=黑糖]，期望解析為「黑糖饅頭夾蛋」或「黑糖饅頭」
-            _RICE_TYPES = {"白米", "紫米", "混米"}
-            if category == "饅頭" and rice and rice not in _RICE_TYPES:
-                # 先試 {rice}{原始名稱}（如 黑糖饅頭夾蛋）— 只接受饅頭類 category
-                rebuilt = f"{rice}{resolved_name}"
-                rebuilt_info = self._resolve_item_name(rebuilt)
-                if rebuilt_info is not None and rebuilt_info.get("category") == "饅頭":
-                    return self.add_item(
-                        name=rebuilt, quantity=quantity, customization=customization
-                    )
-                # 再試 {rice}饅頭（如 黑糖饅頭）
-                rebuilt_base = f"{rice}饅頭"
-                rebuilt_base_info = self._resolve_item_name(rebuilt_base)
-                if rebuilt_base_info is not None and rebuilt_base_info.get("category") == "饅頭":
-                    return self.add_item(
-                        name=rebuilt_base, quantity=quantity, customization=customization
-                    )
+            # 饅頭口味：model 輸出 [ADD:饅頭夾蛋|flavor=黑糖] → 重建為「黑糖饅頭夾蛋」或「黑糖饅頭」
+            if category == "饅頭" and flavor:
+                for candidate in (f"{flavor}{resolved_name}", f"{flavor}饅頭"):
+                    candidate_info = self._resolve_item_name(candidate)
+                    if candidate_info is not None and candidate_info.get("category") == "饅頭":
+                        return self.add_item(
+                            name=candidate, quantity=quantity, customization=customization
+                        )
 
             return self.add_carrier(
                 carrier=carrier,

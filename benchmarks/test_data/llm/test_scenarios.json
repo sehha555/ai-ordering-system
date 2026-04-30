@@ -576,7 +576,7 @@
     "expected_response_contains": [
       "饅頭"
     ],
-    "expected_behavior": "理解黑糖=黑饅頭口味，text tag 模式 model 輸出 [ADD:饅頭夾蛋|rice=黑糖]，tool_registry 重建為黑糖饅頭；expected_args 用子串 '饅頭' 匹配"
+    "expected_behavior": "理解黑糖=黑饅頭口味，text tag 模式 model 輸出 [ADD:饅頭夾蛋|flavor=黑糖]，tool_registry 重建為黑糖饅頭夾蛋；expected_args 用子串 '饅頭' 匹配"
   },
   {
     "id": "u_drink_batch_ask",
