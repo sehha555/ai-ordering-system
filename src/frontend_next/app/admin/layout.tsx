@@ -3,16 +3,18 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
-import { Menu, X, ShoppingBag, Store, BarChart3 } from 'lucide-react';
+import { Menu, X, ShoppingBag, Store, BarChart3, Activity } from 'lucide-react';
 
 const NAV_ITEMS = [
   { href: '/admin/dashboard', label: '效能監控', Icon: BarChart3 },
+  { href: '/admin/monitor', label: 'Pipeline Monitor', Icon: Activity },
   { href: '/admin/orders', label: '訂單列表', Icon: ShoppingBag },
   { href: '/admin/menu', label: '菜單管理', Icon: Store },
 ];
 
 const PAGE_TITLE: Record<string, string> = {
   '/admin/dashboard': '效能監控',
+  '/admin/monitor': 'Pipeline Monitor',
   '/admin/orders': '訂單列表',
   '/admin/menu': '菜單管理',
 };

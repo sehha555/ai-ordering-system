@@ -349,6 +349,15 @@ class StreamingOrchestrator:
         logger.info("[PERF] asr_transcribe 耗時 {:.3f}s", asr_elapsed)
         yield {"event": "transcription", "data": {"text": text}}
 
+        # 推送 monitor 事件（純觀察用，無訂閱者時為 no-op）
+        from src.api.pipeline_event_broadcaster import pipeline_broadcaster
+
+        pipeline_broadcaster.emit(
+            "asr_done",
+            self.session_id or "",
+            {"text": text, "latency_ms": int(asr_elapsed * 1000)},
+        )
+
         # 訓練資料：音訊 + ASR 文字 pair 存檔（offload 到 executor 不阻塞 event loop，對齊 voice_router webm 存檔）
         if audio_path and text:
             try:

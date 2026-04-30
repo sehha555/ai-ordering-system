@@ -233,6 +233,22 @@ async def order_stream():
     )
 
 
+@router.get("/monitor/stream")
+async def monitor_stream():
+    """SSE 即時推送 pipeline 各階段事件（ASR / LLM / Tool / Cart）給 admin/monitor 頁面。"""
+    from src.api.pipeline_event_broadcaster import pipeline_broadcaster
+
+    return StreamingResponse(
+        pipeline_broadcaster.subscribe(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.patch("/orders/{order_id}/status")
 async def update_order_status(order_id: str, body: StatusUpdateRequest):
     """更新訂單狀態（SUBMITTED / IN_PROGRESS / COMPLETED）。"""

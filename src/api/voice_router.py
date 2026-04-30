@@ -380,6 +380,19 @@ class StreamingDMAdapter:
                     raw_assistant_text = full_text
                     session["llm_history"] = event.get("history", [])
 
+                    # 推送 monitor 事件 — LLM raw output（含 tag）
+                    from src.api.pipeline_event_broadcaster import pipeline_broadcaster
+
+                    pipeline_broadcaster.emit(
+                        "llm_raw",
+                        self._session_id,
+                        {
+                            "raw_text": raw_assistant_text,
+                            "user_text": text,
+                            "usage": event.get("usage", {}),
+                        },
+                    )
+
                     if not full_text:
                         full_text = "好的，還需要什麼嗎？"
 
@@ -458,6 +471,18 @@ class StreamingDMAdapter:
                                         kwargs[key] = value.lower() == "true"
                             add_result = _tool_registry.add_item(**kwargs)
                             add_results.append(add_result)
+                            pipeline_broadcaster.emit(
+                                "tool_exec",
+                                self._session_id,
+                                {
+                                    "tool": "add_item",
+                                    "input": {k: v for k, v in kwargs.items() if k != "name"}
+                                    | {"name": item_name},
+                                    "ok": add_result.get("ok", False),
+                                    "missing": add_result.get("missing"),
+                                    "message": add_result.get("message"),
+                                },
+                            )
                             if not add_result.get("ok"):
                                 logger.warning(
                                     "[ADD tag] 執行失敗: {} → {}",
@@ -532,6 +557,17 @@ class StreamingDMAdapter:
                     # 讀取購物車
                     cart = session.get("cart", [])
                     total_price = cart_manager.calculate_cart_total(cart)
+
+                    # 推送 monitor 事件 — cart 狀態 + 最終回覆給客人
+                    pipeline_broadcaster.emit(
+                        "session_done",
+                        self._session_id,
+                        {
+                            "cart_summary": [cart_manager.format_item(i) for i in cart],
+                            "total_price": total_price,
+                            "assistant_text": full_text,
+                        },
+                    )
 
                     # 檢查 finalize_order
                     finalize_result = None
