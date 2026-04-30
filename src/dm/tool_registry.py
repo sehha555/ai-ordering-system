@@ -132,16 +132,12 @@ _MENU_INDEX: Dict[str, Dict[str, Any]] = _build_menu_index()
 
 
 def _augment_with_sold_out_rice(base_msg: str) -> str:
-    """米種追問訊息前綴注入售完狀態（如有米種售完）。
-
-    base_msg: 例「飯糰要紫米白米還是混米」「飯糰要白米紫米？」
-    return:   「白米售完，{base_msg}」（如有售完）或原訊息
-    """
+    """米種售完時前綴注入訊息，無售完原樣返回。"""
     rice_status = menu_state_service.get_rice_options_status()
     sold_rices: List[str] = []
-    if not rice_status.get("white", True):
+    if not rice_status["white"]:
         sold_rices.append("白米")
-    if not rice_status.get("purple", True):
+    if not rice_status["purple"]:
         sold_rices.append("紫米")
     if not sold_rices:
         return base_msg
