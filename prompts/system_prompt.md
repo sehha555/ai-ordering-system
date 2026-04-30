@@ -56,7 +56,6 @@
 [ADD:品項名|size=大杯|temp=冰]       — 飲料帶規格
 [ADD:品項名|temp=冰]                — 套餐帶溫度
 [ADD:品項名|temp=冰|flavor=蘑菇]     — 套餐帶口味
-[ADD:饅頭夾蛋|flavor=黑糖]           — 饅頭帶口味（黑糖/白）
 [ADD:品項名|qty=2]                  — 數量 >1 時
 [ADD:品項名|customization=不要小黃瓜] — 客製化備註
 [QUERY:分類名]                      — 查詢特定分類（如 [QUERY:飲品]）

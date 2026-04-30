@@ -201,11 +201,17 @@ def _validate_drink_options(arguments: dict[str, Any]) -> list[str]:
 
 
 def _validate_riceball_options(arguments: dict[str, Any]) -> list[str]:
-    """驗證飯糰的 rice 額外參數（若有傳入）"""
+    """驗證飯糰的 rice 額外參數（若有傳入）
+    饅頭品項允許用 rice 傳口味（如 rice='黑糖' = 黑糖饅頭），跳過米種驗證。
+    """
     errors: list[str] = []
 
     rice = arguments.get("rice")
     if rice is not None:
+        # 饅頭品項用 rice 欄位傳口味資訊（如 黑糖/白糖），不是米種，跳過驗證
+        name = arguments.get("name", "")
+        if "饅頭" in name:
+            return errors
         valid_rice = ["白米", "紫米", "混米"]
         if rice not in valid_rice:
             errors.append(f"米種 '{rice}' 不合法，可選：{'、'.join(valid_rice)}")

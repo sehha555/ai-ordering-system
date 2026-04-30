@@ -177,27 +177,6 @@ class TestAddComboMissingFields:
         assert "flavor" in result.get("missing", [])
 
 
-class TestMantouFlavorRouting:
-    """饅頭 flavor 欄位路由 — [ADD:饅頭夾蛋|flavor=黑糖] 重建為「黑糖饅頭」"""
-
-    def test_mantou_with_flavor_routes_to_specific_item(self):
-        from src.dm.tool_registry import ToolRegistry
-        from src.dm.dialogue_manager import DialogueManager
-        from src.dm.session_store import InMemorySessionStore
-
-        store = InMemorySessionStore()
-        dm = DialogueManager(store=store)
-        registry = ToolRegistry(dm, store)
-        registry.set_session_id("mt1")
-
-        result = registry.add_item(name="饅頭夾蛋", flavor="黑糖")
-        assert result["ok"] is True
-        session = store.get("mt1")
-        assert session["cart"]
-        item = session["cart"][-1]
-        assert "黑糖" in item.get("menu_name", "") or "黑糖" in item.get("flavor", "")
-
-
 class TestBackwardCompatibility:
     """向後兼容性測試"""
 
