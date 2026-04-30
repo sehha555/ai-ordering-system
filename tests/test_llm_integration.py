@@ -1,6 +1,6 @@
 """LLM 集成測試"""
+
 import pytest
-from unittest.mock import Mock
 from src.dm.dialogue_manager import DialogueManager
 from src.dm.session_store import InMemorySessionStore
 
@@ -57,7 +57,7 @@ class TestSessionContextIntegration:
         session = {
             "cart": [{"itemtype": "drink", "drink": "豆漿"}],
             "pending_frames": [{"itemtype": "riceball", "missing_slots": ["flavor"]}],
-            "status": "OPEN"
+            "status": "OPEN",
         }
 
         context = SessionContext.from_session(session)
@@ -71,17 +71,110 @@ class TestSessionContextIntegration:
         """測試空會話的上下文"""
         from src.dm.session_context import SessionContext
 
-        session = {
-            "cart": [],
-            "pending_frames": [],
-            "status": "OPEN"
-        }
+        session = {"cart": [], "pending_frames": [], "status": "OPEN"}
 
         context = SessionContext.from_session(session)
         assert context.cart_count == 0
         assert context.pending_count == 0
         assert context.has_main_item is False
         assert context.has_drink is False
+        assert context.last_failed_attempt is None
+
+    def test_session_context_carries_last_failed_attempt(self, store):
+        """multi-turn 接續：上輪 add 失敗的 provided/missing 要進 SessionContext"""
+        from src.dm.session_context import SessionContext
+
+        session = {
+            "cart": [],
+            "pending_frames": [],
+            "status": "OPEN",
+            "last_failed_attempt": {
+                "item_name": "套餐B",
+                "missing": ["flavor"],
+                "provided": {"temp": "冰"},
+            },
+        }
+
+        context = SessionContext.from_session(session)
+        assert context.last_failed_attempt is not None
+        assert context.last_failed_attempt["item_name"] == "套餐B"
+        assert context.last_failed_attempt["missing"] == ["flavor"]
+        assert context.last_failed_attempt["provided"] == {"temp": "冰"}
+
+
+class TestSystemPromptContextRendering:
+    """system_prompts._format_session_context 注入待補品項區塊"""
+
+    def test_format_includes_last_failed_attempt(self):
+        from src.dm.session_context import SessionContext
+        from src.dm.system_prompts import SystemPromptBuilder
+
+        ctx = SessionContext(
+            cart_count=0,
+            cart_items=[],
+            has_main_item=False,
+            has_drink=False,
+            pending_count=0,
+            pending_items=[],
+            current_status="OPEN",
+            last_failed_attempt={
+                "item_name": "套餐B",
+                "missing": ["flavor"],
+                "provided": {"temp": "冰"},
+            },
+        )
+        text = SystemPromptBuilder()._format_session_context(ctx)
+        assert "套餐B" in text
+        assert "temp=冰" in text
+        assert "缺：flavor" in text
+
+    def test_format_omits_block_when_no_failed_attempt(self):
+        from src.dm.session_context import SessionContext
+        from src.dm.system_prompts import SystemPromptBuilder
+
+        ctx = SessionContext(
+            cart_count=0,
+            cart_items=[],
+            has_main_item=False,
+            has_drink=False,
+            pending_count=0,
+            pending_items=[],
+            current_status="OPEN",
+        )
+        text = SystemPromptBuilder()._format_session_context(ctx)
+        assert "待補品項" not in text
+
+
+class TestAddComboMissingFields:
+    """add_combo 缺必填欄位時回 structured missing list"""
+
+    def test_add_combo_missing_temp_returns_structured(self):
+        from src.dm.tool_registry import ToolRegistry
+        from src.dm.dialogue_manager import DialogueManager
+        from src.dm.session_store import InMemorySessionStore
+
+        store = InMemorySessionStore()
+        dm = DialogueManager(store=store)
+        registry = ToolRegistry(dm, store)
+        registry.set_session_id("t1")
+
+        result = registry.add_combo(combo_name="套餐B", flavor="花生")
+        assert result["ok"] is False
+        assert "temp" in result.get("missing", [])
+
+    def test_add_combo_missing_flavor_for_combo_b(self):
+        from src.dm.tool_registry import ToolRegistry
+        from src.dm.dialogue_manager import DialogueManager
+        from src.dm.session_store import InMemorySessionStore
+
+        store = InMemorySessionStore()
+        dm = DialogueManager(store=store)
+        registry = ToolRegistry(dm, store)
+        registry.set_session_id("t2")
+
+        result = registry.add_combo(combo_name="套餐B", temp="冰")
+        assert result["ok"] is False
+        assert "flavor" in result.get("missing", [])
 
 
 class TestBackwardCompatibility:

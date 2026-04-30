@@ -1,6 +1,7 @@
 """會話上下文提取 - 協助 LLM 理解當前訂單狀態"""
-from typing import Dict, Any, List
-from dataclasses import dataclass, asdict
+
+from typing import Dict, Any, List, Optional
+from dataclasses import dataclass, field, asdict
 
 
 @dataclass
@@ -14,6 +15,8 @@ class SessionContext:
     pending_count: int  # 待補槽的品項數
     pending_items: List[str]  # 待補槽品項摘要
     current_status: str  # 會話狀態
+    # 上一輪 add_item/add_combo 失敗的補槽狀態，給 LLM 接續多輪追問
+    last_failed_attempt: Optional[Dict[str, Any]] = field(default=None)
 
     @classmethod
     def from_session(cls, session: Dict[str, Any]) -> "SessionContext":
@@ -21,11 +24,13 @@ class SessionContext:
         cart = session.get("cart", [])
         pending_frames = session.get("pending_frames", [])
         status = session.get("status", "OPEN")
+        last_failed_attempt = session.get("last_failed_attempt")
 
         # 計算購物車統計
         cart_count = len(cart)
         has_main_item = any(
-            item.get("itemtype") in ["riceball", "egg_pancake", "carrier", "combo", "snack", "jam_toast"]
+            item.get("itemtype")
+            in ["riceball", "egg_pancake", "carrier", "combo", "snack", "jam_toast"]
             for item in cart
         )
         has_drink = any(item.get("itemtype") == "drink" for item in cart)
@@ -52,7 +57,7 @@ class SessionContext:
                     "egg_pancake": "蛋餅",
                     "carrier": "載體",
                     "jam_toast": "吐司",
-                    "snack": "點心"
+                    "snack": "點心",
                 }.get(itemtype, itemtype)
                 cart_items.append(itemtype_display)
 
@@ -69,7 +74,7 @@ class SessionContext:
                     "carrier": "載體",
                     "egg_pancake": "蛋餅",
                     "jam_toast": "吐司",
-                    "snack": "點心"
+                    "snack": "點心",
                 }.get(itemtype, itemtype)
                 pending_items.append(f"{itemtype_display}(缺:{','.join(missing)})")
 
@@ -80,7 +85,8 @@ class SessionContext:
             has_drink=has_drink,
             pending_count=pending_count,
             pending_items=pending_items,
-            current_status=status
+            current_status=status,
+            last_failed_attempt=last_failed_attempt,
         )
 
     def to_dict(self) -> Dict[str, Any]:

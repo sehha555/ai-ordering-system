@@ -16,6 +16,7 @@ from src.dm.tool_priming import CHECKOUT_TAG
 import re
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, Optional
 
 _AUDIO_LOG_DIR = Path(__file__).resolve().parents[2] / "logs" / "audio"
 
@@ -66,6 +67,9 @@ _QUERY_RE = re.compile(r"\[QUERY(?::([^\]]*))?\]")
 
 # 規則層攔截常數
 _EMPTY_CART_MOD_KEYWORDS = ["刪掉", "移除", "撤銷", "取消上一", "刪掉剛剛"]
+
+# last_failed_attempt 中要保留的「客人實際提供的選項」鍵，過濾掉 name/quantity 等內部欄位
+_PROVIDED_KEYS = ("rice", "size", "temp", "flavor", "noodle", "customization", "spicy", "extra_egg")
 _DRINK_INQUIRY_PATTERNS = [
     "有什麼飲料",
     "飲料有什麼",
@@ -426,6 +430,7 @@ class StreamingDMAdapter:
                     # ── [ADD:品項名|key=value|...] 攔截 ──
                     if "[ADD:" in full_text:
                         add_results: list[dict] = []
+                        last_failed_attempt: Optional[Dict[str, Any]] = None
                         for add_content in _ADD_RE.findall(full_text):
                             parts = add_content.split("|")
                             item_name = parts[0].strip()
@@ -459,7 +464,22 @@ class StreamingDMAdapter:
                                     add_content,
                                     add_result.get("message"),
                                 )
+                                if add_result.get("missing"):
+                                    last_failed_attempt = {
+                                        "item_name": item_name,
+                                        "missing": add_result["missing"],
+                                        "provided": {
+                                            k: v for k, v in kwargs.items() if k in _PROVIDED_KEYS
+                                        },
+                                    }
                         full_text = _ADD_RE.sub("", full_text).strip()
+
+                        # 多輪追問狀態：失敗就記錄、有任何 ADD 成功就清除
+                        any_ok = any(r.get("ok") for r in add_results)
+                        if last_failed_attempt:
+                            session["last_failed_attempt"] = last_failed_attempt
+                        elif any_ok:
+                            session["last_failed_attempt"] = None
 
                         # add_item 失敗 → 補發 text_delta 讓使用者聽到追問
                         failed = [r for r in add_results if not r.get("ok")]

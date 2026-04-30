@@ -25,6 +25,7 @@ def _default_session_state() -> Dict[str, Any]:
         "pending_frames": [],
         "last_user_text": None,
         "state": "idle",
+        "last_failed_attempt": None,
     }
 
 

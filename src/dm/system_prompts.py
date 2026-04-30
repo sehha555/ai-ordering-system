@@ -95,6 +95,21 @@ def _format_rice_restriction(rice_status: dict) -> str:
     return f"飯糰米種：{unavailable_str}不可選，僅{'、'.join(available)}可用"
 
 
+def _format_last_failed_attempt(attempt: Dict) -> str:
+    """格式化上一輪 add 失敗的補槽狀態，給 LLM 接續多輪追問。"""
+    item_name = attempt.get("item_name", "品項")
+    missing = attempt.get("missing", []) or []
+    provided = attempt.get("provided", {}) or {}
+    parts = [f"待補品項：{item_name}"]
+    if provided:
+        provided_str = "、".join(f"{k}={v}" for k, v in provided.items() if v)
+        if provided_str:
+            parts.append(f"已提供：{provided_str}")
+    if missing:
+        parts.append(f"缺：{'、'.join(missing)}")
+    return "（接續上輪追問）" + "，".join(parts)
+
+
 def _get_available_mantou(sold_cats: Dict[str, bool]) -> Optional[list]:
     """
     計算目前可用的饅頭種類。
@@ -254,6 +269,10 @@ class SystemPromptBuilder:
             lines.append(f"待補資訊（{session_context.pending_count} 項）：")
             for item in session_context.pending_items:
                 lines.append(f"  - {item}")
+
+        # 上一輪 add 失敗 — 多輪追問接續
+        if session_context.last_failed_attempt:
+            lines.append(_format_last_failed_attempt(session_context.last_failed_attempt))
 
         return "\n".join(lines)
 

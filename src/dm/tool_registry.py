@@ -840,12 +840,13 @@ class ToolRegistry:
                 return {"ok": False, "missing": ["combo_name"], "message": "請問要哪個套餐？"}
 
             # 用現有函式檢查套餐必填欄位
-            missing_msg = check_combo_required(combo_name, temp, flavor, rice, customization)
+            missing_msg, missing_fields = check_combo_required(
+                combo_name, temp, flavor, rice, customization
+            )
             if missing_msg:
-                # 缺米種時注入售完狀態（讓 keyword「售完」進入回覆給客人）
-                if "米" in missing_msg:
+                if "rice" in missing_fields:
                     missing_msg = _augment_with_sold_out_rice(missing_msg)
-                return {"ok": False, "message": missing_msg}
+                return {"ok": False, "missing": missing_fields, "message": missing_msg}
 
             session = self.get_current_session()
             item_id = self._next_item_id(session, "combo")
