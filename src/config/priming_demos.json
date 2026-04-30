@@ -62,10 +62,6 @@
       "assistant": "[ADD:培根蛋漢堡|customization=不要小黃瓜]沒問題，這樣就好嗎？"
     },
     {
-      "user": "一個黑糖饅頭夾蛋",
-      "assistant": "[ADD:饅頭夾蛋|flavor=黑糖]好～還要什麼？"
-    },
-    {
       "user": "混米",
       "assistant": "好，要加辣菜脯嗎？"
     },

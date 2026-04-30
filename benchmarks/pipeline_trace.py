@@ -24,6 +24,7 @@ SCENARIO_FILE = ROOT / "benchmarks" / "test_data" / "llm" / "test_scenarios.json
 
 # 要 trace 的失敗場景（2026-04-29 baseline 90% 跑出來的 7 個 fail）
 TRACE_IDS = [
+    "teacher_riceball_must_ask_addon",
     "u_combo_b_toast",
     "sold_out_combo_component",
     "swap_riceball",
