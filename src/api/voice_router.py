@@ -136,6 +136,52 @@ async def _sse_wrap(stream, label: str):
         yield f"event: error\ndata: {error_data}\n\n"
 
 
+# ── 取消意圖偵測（供「模型漏發 [REMOVE] tag」時後端兜底）─────────────────────
+# 取消詞刻意收斂：只認終結性取消詞，不認單獨「不要」，
+# 避免「飯糰不要辣」「不要香菜」這類加料偏好被誤判成取消品項。
+_CANCEL_TRIGGERS = ("不要了", "不用了", "取消", "去掉", "拿掉", "刪掉", "移除", "不需要")
+_CANCEL_ALL_KEYWORDS = ("全部", "都不要", "通通", "全不要", "都取消", "整單")
+
+
+def _item_mentioned_in_text(item: dict, text: str) -> bool:
+    """購物車品項是否在這句話被點名（顯示名 + 尾字類別名詞比對）。"""
+    from src.dm import cart_manager  # lazy import，對齊本檔既有風格
+
+    display = cart_manager.format_item(item)
+    core = display.split("(")[0].strip()  # 去掉杯型/溫度等括號選項
+    if not core:
+        return False
+    if core in text:
+        return True
+    # 拆掉前綴選項（如「紫米·」）後的片段
+    for piece in re.split(r"[·\s]+", core):
+        if len(piece) >= 2 and piece in text:
+            return True
+    # 中文品名核心通常落在尾字（紅茶 / 飯糰 / 蛋餅 / 漢堡）
+    for n in (3, 2):
+        if len(core) >= n and core[-n:] in text:
+            return True
+    return False
+
+
+def _resolve_cancel_intent(text: str, cart: list) -> list:
+    """偵測『取消品項』意圖並對應到 item_id。
+
+    回傳要移除的 item_id 清單（整單取消回 ['__all__']）；無明確取消意圖回 []。
+    """
+    if not cart or not any(kw in text for kw in _CANCEL_TRIGGERS):
+        return []
+    if any(kw in text for kw in _CANCEL_ALL_KEYWORDS):
+        return ["__all__"]
+    matched = []
+    for item in cart:
+        if _item_mentioned_in_text(item, text):
+            iid = item.get("item_id")
+            if iid:
+                matched.append(iid)
+    return matched
+
+
 class StreamingDMAdapter:
     """串流版 DM 適配器 — 提供 process_input_stream() 方法"""
 
@@ -407,6 +453,7 @@ class StreamingDMAdapter:
                         self._patch_last_assistant(session["llm_history"], full_text)
 
                     # ── [REMOVE:...] 攔截 ──
+                    removed_ok = False
                     if "[REMOVE:" in full_text:
                         remove_match = _REMOVE_RE.search(full_text)
                         if remove_match:
@@ -434,11 +481,31 @@ class StreamingDMAdapter:
                                         "message": f"購物車裡沒有{remove_target}",
                                     }
 
+                            removed_ok = remove_result.get("ok", False)
                             full_text = _REMOVE_RE.sub("", full_text).strip()
                             if not full_text:
                                 msg_text = remove_result.get("message", "已移除")
                                 full_text = f"{msg_text}～還需要什麼？"
                             self._patch_last_assistant(session["llm_history"], full_text)
+
+                    # ── 取消意圖兜底 ──
+                    # 模型漏發 [REMOVE] tag、或發了但 tag 沒對到品項（移除失敗）時，
+                    # 依客人取消意圖補移除。沒發 ADD 才兜底；取消詞收斂避免誤刪。
+                    if not removed_ok and "[ADD:" not in full_text:
+                        cancel_ids = _resolve_cancel_intent(text, session.get("cart", []))
+                        if cancel_ids:
+                            if cancel_ids == ["__all__"]:
+                                _tool_registry.remove_from_cart(all=True)
+                            else:
+                                for iid in cancel_ids:
+                                    _tool_registry.remove_from_cart(item_id=iid)
+                            logger.info(
+                                "[REMOVE fallback] 模型漏發/誤發 tag，依取消意圖移除 {} 項",
+                                len(cancel_ids),
+                            )
+                            if not full_text.strip():
+                                full_text = "好的，已幫您取消～還需要什麼？"
+                                self._patch_last_assistant(session["llm_history"], full_text)
 
                     # ── [ADD:品項名|key=value|...] 攔截 ──
                     if "[ADD:" in full_text:

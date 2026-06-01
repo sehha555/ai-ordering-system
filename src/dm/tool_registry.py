@@ -144,6 +144,17 @@ def _augment_with_sold_out_rice(base_msg: str) -> str:
     return f"{'、'.join(sold_rices)}售完，{base_msg}"
 
 
+def _sold_out_block(menu_name: str) -> Optional[Dict[str, Any]]:
+    """品項命中今日售完清單 → 回傳擋下用的 ok:false dict；未售完回 None。
+
+    售完是後端硬攔截，不依賴 LLM 自律：模型即使輸出 [ADD:售完品項]，
+    此處仍會擋下，不讓它進購物車。
+    """
+    if menu_name and menu_name in menu_state_service.get_effective_sold_out():
+        return {"ok": False, "message": f"{menu_name}今天賣完了，要不要換別的？"}
+    return None
+
+
 # 結帳正規化映射（finalize_order / preview_checkout 共用）
 _DINE_TYPE_MAP: Dict[str, str] = {
     "內用": "dine-in",
@@ -414,6 +425,9 @@ class ToolRegistry:
         if noodle and any(alias in name for alias in _IRON_NOODLE_FLAVOR_KEYS):
             menu_name = _resolve_iron_noodle_menu_name(name, noodle)
             if menu_name:
+                blocked = _sold_out_block(menu_name)
+                if blocked:
+                    return blocked
                 return self.add_snack(
                     flavor=menu_name,
                     quantity=quantity,
@@ -427,6 +441,12 @@ class ToolRegistry:
 
         category = item_info["category"]
         resolved_name = item_info["resolved_name"]
+
+        # ── 售完硬攔截：命中今日售完清單就擋下，不准進購物車 ──
+        # （米種售完走 get_rice_options_status / 套餐走 combo_status，不在此清單，不受影響）
+        blocked = _sold_out_block(resolved_name)
+        if blocked:
+            return blocked
 
         # ── 飯糰 ──
         if category == "飯糰":
