@@ -82,6 +82,7 @@ def _format_cart_items(cart: list) -> list:
                 "details": "",
                 "price": price,
                 "quantity": qty,
+                "price_pending": cart_manager.is_item_price_pending(item),
             }
         )
     return items
@@ -268,7 +269,14 @@ class StreamingOrchestrator:
         # Cart Update
         cart = context_snapshot.get("cart", [])
         total = context_snapshot.get("order_payload", {}).get("total_price", 0)
-        yield {"event": "cart_update", "data": {"items": _format_cart_items(cart), "total": total}}
+        yield {
+            "event": "cart_update",
+            "data": {
+                "items": _format_cart_items(cart),
+                "total": total,
+                "has_pending": cart_manager.cart_has_pending(cart),
+            },
+        }
 
         # Order Complete
         finalize_result = context_snapshot.get("finalize_result")

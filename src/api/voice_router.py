@@ -264,8 +264,24 @@ class StreamingDMAdapter:
             dine = self._parse_dine_type(text)
             if dine:
                 session["checkout_dine_type"] = dine
-                session["checkout_status"] = _CK_PAY
-                reply = "現金還是行動支付？"
+                cart = session.get("cart", [])
+                if cart_manager.cart_has_pending(cart):
+                    # 有客製待確認 → 不能先付：跳過付款步驟，直接建「待店員結算」單
+                    result = _tool_registry.finalize_order(dine_type=dine, payment_method="pending")
+                    session.pop("checkout_status", None)
+                    session.pop("checkout_dine_type", None)
+                    if result.get("ok"):
+                        finalize_result = result
+                        order_number = result.get("order_number", "")
+                        reply = (
+                            f"好的，{order_number}號～有客製品項需店員確認價格，"
+                            "請稍候結算，這邊先不收款喔。"
+                        )
+                    else:
+                        reply = result.get("message", "結帳失敗，請再試一次")
+                else:
+                    session["checkout_status"] = _CK_PAY
+                    reply = "現金還是行動支付？"
             elif self._has_order_intent(text):
                 # 反悔：intent 檢查必須在 parse 失敗後才執行
                 self._exit_checkout(session, _session_store)

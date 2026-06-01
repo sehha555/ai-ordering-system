@@ -10,6 +10,8 @@ interface OrderTicketProps {
 }
 
 export default function OrderTicket({ items, total, onCheckout }: OrderTicketProps) {
+  // 任一品項價格待確認 → 合計也無法確定，顯示「待確認」
+  const hasPending = items.some((i) => i.price_pending);
   return (
     <div
       className="rounded-2xl overflow-hidden"
@@ -64,9 +66,15 @@ export default function OrderTicket({ items, total, onCheckout }: OrderTicketPro
                   <span className="text-base font-medium" style={{ color: '#8a9a9f' }}>
                     x{item.quantity}
                   </span>
-                  <span className="text-xl font-bold" style={{ color: 'var(--text-color)' }}>
-                    ${item.price}
-                  </span>
+                  {item.price_pending ? (
+                    <span className="text-base font-semibold" style={{ color: 'var(--warning)' }}>
+                      價格待確認
+                    </span>
+                  ) : (
+                    <span className="text-xl font-bold" style={{ color: 'var(--text-color)' }}>
+                      ${item.price}
+                    </span>
+                  )}
                 </div>
               </div>
               {index < items.length - 1 && (
@@ -84,7 +92,11 @@ export default function OrderTicket({ items, total, onCheckout }: OrderTicketPro
       >
         <div className="flex justify-between items-center mb-5">
           <span className="text-lg font-semibold" style={{ color: 'var(--text-muted)' }}>合計</span>
-          <span className="font-black" style={{ fontSize: '2rem', color: 'var(--accent)' }}>${total}</span>
+          {hasPending ? (
+            <span className="font-black" style={{ fontSize: '1.5rem', color: 'var(--warning)' }}>待確認</span>
+          ) : (
+            <span className="font-black" style={{ fontSize: '2rem', color: 'var(--accent)' }}>${total}</span>
+          )}
         </div>
         <button
           onClick={onCheckout}

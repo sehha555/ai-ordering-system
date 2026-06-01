@@ -312,15 +312,28 @@ export default function CheckoutFlow() {
                 ))}
                 <div className="flex justify-between pt-3 mt-2 font-semibold text-lg" style={{ borderTop: '2px solid var(--border-color)' }}>
                   <span style={{ color: 'var(--text-color)' }}>總計</span>
-                  <span style={{ color: 'var(--accent)' }}>${orderResult.total}</span>
+                  <span style={{ color: orderResult.price_pending ? 'var(--warning)' : 'var(--accent)' }}>
+                    {orderResult.price_pending ? '待確認' : `$${orderResult.total}`}
+                  </span>
                 </div>
               </div>
             )}
 
             {/* 用餐/付款資訊 */}
-            <p className="mb-4 text-sm" style={{ color: 'var(--text-muted)' }}>
-              {orderResult.dine_type === 'dine-in' ? '內用' : '外帶'} / {orderResult.payment_method === 'cash' ? '現金' : 'Line Pay'}
-            </p>
+            {orderResult.price_pending ? (
+              <div
+                className="w-full max-w-sm rounded-xl p-3 mb-4 text-center text-sm"
+                style={{ backgroundColor: '#fff8e6', color: 'var(--warning)', border: '1px solid var(--warning)' }}
+              >
+                含客製品項，需店員確認價格後結算
+                <br />
+                <span className="font-semibold">尚未付款</span>，請至櫃台結帳
+              </div>
+            ) : (
+              <p className="mb-4 text-sm" style={{ color: 'var(--text-muted)' }}>
+                {orderResult.dine_type === 'dine-in' ? '內用' : '外帶'} / {orderResult.payment_method === 'cash' ? '現金' : 'Line Pay'}
+              </p>
+            )}
 
             {/* Line Pay QR Code */}
             {(orderResult.payment_method === 'line_pay' || orderResult.payment_method === 'mobile') && (

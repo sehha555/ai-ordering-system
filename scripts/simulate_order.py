@@ -44,6 +44,41 @@ SCENARIOS = {
         "內用",
         "現金",
     ],
+    # 換品項情境：點 A → 要求換成 B，測 [REMOVE]+[ADD] 一起發的可靠度
+    # 高風險：模型常只發其中一個 tag，導致舊品項沒刪或新品項沒加
+    "replace": [
+        "你好",
+        "一個鮪魚飯糰 紫米 不要辣",  # 先點飯糰
+        "飯糰改成起司蛋餅",  # 換品項：應刪飯糰、加起司蛋餅
+        "結帳",
+        "外帶",
+        "現金",
+    ],
+    # 改數量情境：用點心（薯餅）避免飯糰「兩份要不要不同口味」的追問
+    "qty": [
+        "你好",
+        "我要三個薯餅",  # 一次點三份
+        "薯餅改成一個",  # 改數量 3→1
+        "結帳",
+        "內用",
+        "現金",
+    ],
+    # 套餐情境：套餐走 combo_status / check_combo_required，跟單品不同路徑
+    "combo": [
+        "你好",
+        "我要一個套餐一",  # 點套餐，可能追問飲料/溫度
+        "紅茶 冰的",  # 補飲料
+        "結帳",
+        "內用",
+        "現金",
+    ],
+    # 客製化待確認：加料類客製 → 價格待確認 + 不能先付
+    "custom": [
+        "你好",
+        "一個鮪魚飯糰 紫米 加起司",  # 加料客製 → 應標待確認
+        "結帳",
+        "內用",  # 有 pending → 應跳過付款、建待店員結算單、不收款
+    ],
 }
 
 
@@ -66,10 +101,11 @@ def parse_sse(raw: str):
 
 
 def send_turn(client: httpx.Client, session: str, text: str):
-    """送一句話，回傳 (ai_reply, cart_items, total, order_complete)。"""
+    """送一句話，回傳 (ai_reply, cart_items, total, has_pending, order_complete, err)。"""
     ai_reply = ""
     cart_items = None
     total = None
+    has_pending = False
     order_done = None
     err = None
 
@@ -91,14 +127,15 @@ def send_turn(client: httpx.Client, session: str, text: str):
                     elif ev == "cart_update":
                         cart_items = data.get("items")
                         total = data.get("total")
+                        has_pending = data.get("has_pending", False)
                     elif ev == "order_complete":
                         order_done = data
                     elif ev == "error":
                         err = data.get("message")
-    return ai_reply, cart_items, total, order_done, err
+    return ai_reply, cart_items, total, has_pending, order_done, err
 
 
-def fmt_cart(items, total):
+def fmt_cart(items, total, has_pending=False):
     if not items:
         return "（空）"
     lines = []
@@ -106,12 +143,17 @@ def fmt_cart(items, total):
         if isinstance(it, dict):
             name = it.get("name") or it.get("display") or json.dumps(it, ensure_ascii=False)
             qty = it.get("quantity") or it.get("qty") or ""
-            price = it.get("price", "")
-            lines.append(f"{name} x{qty}" + (f"  ${price}" if price != "" else ""))
+            if it.get("price_pending"):
+                price_str = "  價格待確認"
+            else:
+                price = it.get("price", "")
+                price_str = f"  ${price}" if price != "" else ""
+            lines.append(f"{name} x{qty}{price_str}")
         else:
             lines.append(str(it))
     body = "；".join(lines)
-    return f"{body}  ｜ 小計 ${total}" if total is not None else body
+    total_str = "待確認" if has_pending else f"${total}"
+    return f"{body}  ｜ 小計 {total_str}" if total is not None else body
 
 
 def main():
@@ -129,13 +171,13 @@ def main():
         for i, text in enumerate(utterances, 1):
             print(f"\n[{i}] 客人：{text}")
             t0 = time.perf_counter()
-            ai, items, total, done, err = send_turn(client, session, text)
+            ai, items, total, has_pending, done, err = send_turn(client, session, text)
             dt = time.perf_counter() - t0
             if err:
                 print(f"    ✗ 錯誤：{err}")
             print(f"    店員：{ai or '（無文字回覆）'}")
             if items is not None:
-                print(f"    購物車：{fmt_cart(items, total)}")
+                print(f"    購物車：{fmt_cart(items, total, has_pending)}")
             if done:
                 print(f"    >>> 結帳完成：{json.dumps(done, ensure_ascii=False)}")
             print(f"    （耗時 {dt:.2f}s）")

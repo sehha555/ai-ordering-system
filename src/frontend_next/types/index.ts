@@ -19,6 +19,7 @@ export interface CartItem {
   details: string;
   price: number;
   quantity: number;
+  price_pending?: boolean; // 客製化無對應價格，待店員確認
 }
 
 export interface ChatMessage {
@@ -53,6 +54,8 @@ export interface OrderResult {
   }>;
   dine_type: string;
   payment_method: string;
+  payment_status?: string; // PAID（已付）/ UNPAID（待店員結算）
+  price_pending?: boolean; // 含客製待確認品項：未收款，待店員補價
 }
 
 export interface AppState {

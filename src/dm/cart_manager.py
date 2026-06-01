@@ -105,6 +105,49 @@ def extract_total(pi: Dict[str, Any], qty: int) -> int:
     return 0
 
 
+# 客製化中代表「加料/換料」的訊號詞（會改變價格 → 需店員確認）
+_ADD_SIGNALS = ("加", "多", "換", "雙", "額外", "加料")
+# 否定前綴：「不加」「沒加」等代表的是減料，不算加料
+_ADD_NEGATORS = ("不", "沒", "別", "免")
+# 免費標準辣度選項（店家本來就提供、不加價）：先剝除避免「加辣菜脯」被誤判成加價加料
+# 由長到短排序，確保「加辣菜脯」整段先被剝掉，不會殘留「加」字
+_FREE_SPICY_PHRASES = ("加辣菜脯", "辣菜脯", "加辣", "辣")
+
+
+def is_price_pending_customization(customization: Optional[str]) -> bool:
+    """客製化是否需店員確認價格。
+
+    含未被否定的「加/換/多」類客製（如「加起司」「換醬」）→ True。
+    純減料偏好（「不要辣」「去掉香菜」）、免費辣度（「加辣菜脯」）或無客製 → False，不誤標。
+    註：本階段不自動套加料表計價，加料類一律標待確認；
+    「加料表內自動算價（辣菜脯免費、起司算進價）」為後續增量。
+    """
+    if not customization:
+        return False
+    c = customization.strip()
+    # 先剝除免費標準辣度選項，避免「加辣菜脯」被當成加價加料
+    for phrase in _FREE_SPICY_PHRASES:
+        c = c.replace(phrase, "")
+    for sig in _ADD_SIGNALS:
+        idx = c.find(sig)
+        while idx != -1:
+            prev = c[idx - 1] if idx > 0 else ""
+            if prev not in _ADD_NEGATORS:
+                return True
+            idx = c.find(sig, idx + 1)
+    return False
+
+
+def is_item_price_pending(item: Dict[str, Any]) -> bool:
+    """購物車品項是否價格待確認（由 customization 推導，不另存欄位）。"""
+    return is_price_pending_customization(item.get("customization"))
+
+
+def cart_has_pending(cart: List[Dict[str, Any]]) -> bool:
+    """購物車是否含任何價格待確認品項。"""
+    return any(is_item_price_pending(i) for i in cart)
+
+
 def build_cart_summary(cart: List[Dict[str, Any]], price_format: str = "dollar") -> Dict[str, Any]:
     """將購物車 list 轉換為摘要結構。
 

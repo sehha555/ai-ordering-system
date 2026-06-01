@@ -1146,6 +1146,10 @@ class ToolRegistry:
             # 計算總價（複用現有 _calculate_cart_total）
             total_price = cart_manager.calculate_cart_total(session["cart"])
 
+            # 客製待確認：有 pending 品項 → 不能先付，標未付待店員結算
+            has_pending = cart_manager.cart_has_pending(cart)
+            payment_status = "UNPAID" if has_pending else "PAID"
+
             # 建立訂單 payload（order_number 由 save_order_with_number 原子性取號）
             order_id = f"order-{self._session_id}-{datetime.now().timestamp()}"
 
@@ -1174,6 +1178,8 @@ class ToolRegistry:
                 "items_display": items_payload,
                 "total_price": total_price,
                 "status": "SUBMITTED",
+                "payment_status": payment_status,
+                "price_pending": has_pending,
                 "created_at": datetime.now().isoformat(),
             }
 
@@ -1207,6 +1213,8 @@ class ToolRegistry:
                 "items_display": items_payload,
                 "dine_type": resolved_dine,
                 "payment_method": resolved_payment,
+                "payment_status": payment_status,
+                "price_pending": has_pending,
             }
 
         except Exception as e:
