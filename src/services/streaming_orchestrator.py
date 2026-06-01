@@ -269,14 +269,8 @@ class StreamingOrchestrator:
         # Cart Update
         cart = context_snapshot.get("cart", [])
         total = context_snapshot.get("order_payload", {}).get("total_price", 0)
-        yield {
-            "event": "cart_update",
-            "data": {
-                "items": _format_cart_items(cart),
-                "total": total,
-                "has_pending": cart_manager.cart_has_pending(cart),
-            },
-        }
+        # has_pending 不另送：前端/腳本由 items 的 price_pending 自行 derive，單一來源
+        yield {"event": "cart_update", "data": {"items": _format_cart_items(cart), "total": total}}
 
         # Order Complete
         finalize_result = context_snapshot.get("finalize_result")

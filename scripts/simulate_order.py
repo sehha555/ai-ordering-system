@@ -127,7 +127,10 @@ def send_turn(client: httpx.Client, session: str, text: str):
                     elif ev == "cart_update":
                         cart_items = data.get("items")
                         total = data.get("total")
-                        has_pending = data.get("has_pending", False)
+                        # has_pending 由 items 的 price_pending derive（後端不另送）
+                        has_pending = any(
+                            (it or {}).get("price_pending") for it in (cart_items or [])
+                        )
                     elif ev == "order_complete":
                         order_done = data
                     elif ev == "error":
