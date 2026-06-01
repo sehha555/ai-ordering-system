@@ -55,37 +55,37 @@ _CART = [
 
 def test_cancel_named_riceball():
     """「飯糰不要了」→ 對應到飯糰那一項。"""
-    assert _resolve_cancel_intent("飯糰不要了", _CART) == ["a1"]
+    assert _resolve_cancel_intent("飯糰不要了", _CART) == (False, ["a1"])
 
 
 def test_cancel_named_drink():
     """「紅茶不要了」→ 對應到紅茶（精選紅茶 尾字匹配）。"""
-    assert _resolve_cancel_intent("紅茶不要了", _CART) == ["b2"]
+    assert _resolve_cancel_intent("紅茶不要了", _CART) == (False, ["b2"])
 
 
 def test_cancel_all():
     """「全部不要了」→ 整單取消。"""
-    assert _resolve_cancel_intent("全部不要了", _CART) == ["__all__"]
+    assert _resolve_cancel_intent("全部不要了", _CART) == (True, [])
 
 
 def test_no_misfire_on_spicy_preference():
     """關鍵安全案例：「飯糰不要辣」是加料偏好，不可誤判成取消飯糰。"""
-    assert _resolve_cancel_intent("飯糰不要辣", _CART) == []
+    assert _resolve_cancel_intent("飯糰不要辣", _CART) == (False, [])
 
 
 def test_no_misfire_on_cilantro():
     """「不要香菜」不含終結性取消詞，不觸發移除。"""
-    assert _resolve_cancel_intent("不要香菜", _CART) == []
+    assert _resolve_cancel_intent("不要香菜", _CART) == (False, [])
 
 
 def test_no_cancel_intent_plain_order():
     """單純點餐句不觸發移除。"""
-    assert _resolve_cancel_intent("我要一個飯糰", _CART) == []
+    assert _resolve_cancel_intent("我要一個飯糰", _CART) == (False, [])
 
 
 def test_empty_cart_no_match():
     """空購物車不觸發。"""
-    assert _resolve_cancel_intent("飯糰不要了", []) == []
+    assert _resolve_cancel_intent("飯糰不要了", []) == (False, [])
 
 
 def test_item_mentioned_tail_match():

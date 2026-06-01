@@ -164,22 +164,21 @@ def _item_mentioned_in_text(item: dict, text: str) -> bool:
     return False
 
 
-def _resolve_cancel_intent(text: str, cart: list) -> list:
+def _resolve_cancel_intent(text: str, cart: list) -> tuple[bool, list]:
     """偵測『取消品項』意圖並對應到 item_id。
 
-    回傳要移除的 item_id 清單（整單取消回 ['__all__']）；無明確取消意圖回 []。
+    回傳 (是否整單取消, 要移除的 item_id 清單)；無明確取消意圖回 (False, [])。
     """
     if not cart or not any(kw in text for kw in _CANCEL_TRIGGERS):
-        return []
+        return False, []
     if any(kw in text for kw in _CANCEL_ALL_KEYWORDS):
-        return ["__all__"]
-    matched = []
-    for item in cart:
-        if _item_mentioned_in_text(item, text):
-            iid = item.get("item_id")
-            if iid:
-                matched.append(iid)
-    return matched
+        return True, []
+    matched = [
+        item["item_id"]
+        for item in cart
+        if _item_mentioned_in_text(item, text) and item.get("item_id")
+    ]
+    return False, matched
 
 
 class StreamingDMAdapter:
@@ -466,9 +465,17 @@ class StreamingDMAdapter:
                             elif remove_target == "last":
                                 remove_result = _tool_registry.remove_from_cart(last=True)
                             else:
+                                # 正規化分隔符再比對：模型常漏發「·」（如 [REMOVE:紫米鮪魚飯糰]
+                                # vs 顯示名「紫米·鮪魚飯糰」），去掉分隔符讓 tag 路徑本身就接得上
+                                norm_target = remove_target.replace("·", "").replace(" ", "")
                                 matched_id = None
                                 for item in cart:
-                                    if remove_target in cart_manager.format_item(item):
+                                    display = (
+                                        cart_manager.format_item(item)
+                                        .replace("·", "")
+                                        .replace(" ", "")
+                                    )
+                                    if norm_target in display:
                                         matched_id = item.get("item_id")
                                         break
                                 if matched_id:
@@ -492,17 +499,16 @@ class StreamingDMAdapter:
                     # 模型漏發 [REMOVE] tag、或發了但 tag 沒對到品項（移除失敗）時，
                     # 依客人取消意圖補移除。沒發 ADD 才兜底；取消詞收斂避免誤刪。
                     if not removed_ok and "[ADD:" not in full_text:
-                        cancel_ids = _resolve_cancel_intent(text, session.get("cart", []))
-                        if cancel_ids:
-                            if cancel_ids == ["__all__"]:
+                        cancel_all, cancel_ids = _resolve_cancel_intent(
+                            text, session.get("cart", [])
+                        )
+                        if cancel_all or cancel_ids:
+                            if cancel_all:
                                 _tool_registry.remove_from_cart(all=True)
                             else:
                                 for iid in cancel_ids:
                                     _tool_registry.remove_from_cart(item_id=iid)
-                            logger.info(
-                                "[REMOVE fallback] 模型漏發/誤發 tag，依取消意圖移除 {} 項",
-                                len(cancel_ids),
-                            )
+                            logger.info("[REMOVE fallback] 模型漏發/誤發 tag，依取消意圖補移除")
                             if not full_text.strip():
                                 full_text = "好的，已幫您取消～還需要什麼？"
                                 self._patch_last_assistant(session["llm_history"], full_text)
