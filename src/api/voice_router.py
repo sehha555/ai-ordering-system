@@ -62,6 +62,9 @@ _REMOVE_RE = re.compile(r"\[REMOVE:(.+?)\]")
 # [ADD:品項名|key=value|...] — 點餐 tag
 _ADD_RE = re.compile(r"\[ADD:([^\]]+)\]")
 
+# [SET_QTY:品項|qty=N] — 修改數量 tag
+_SET_QTY_RE = re.compile(r"\[SET_QTY:([^\]]+)\]")
+
 # [QUERY:分類] 或 [QUERY] — 菜單查詢 tag
 _QUERY_RE = re.compile(r"\[QUERY(?::([^\]]*))?\]")
 
@@ -511,6 +514,42 @@ class StreamingDMAdapter:
                                 full_text = f"{msg_text}～還需要什麼？"
                             self._patch_last_assistant(session["llm_history"], full_text)
 
+                    # ── [SET_QTY:品項|qty=N] 攔截 ──
+                    if "[SET_QTY:" in full_text:
+                        for sqm in _SET_QTY_RE.finditer(full_text):
+                            sq_content = sqm.group(1).strip()
+                            sq_parts = sq_content.split("|")
+                            sq_target = sq_parts[0].strip()
+                            sq_qty = 1
+                            for p in sq_parts[1:]:
+                                if p.strip().startswith("qty="):
+                                    try:
+                                        sq_qty = int(p.strip().split("=", 1)[1])
+                                    except ValueError:
+                                        pass
+                            cart = session.get("cart", [])
+                            norm_target = sq_target.replace("·", "").replace(" ", "")
+                            matched_id = None
+                            for item in cart:
+                                display = (
+                                    cart_manager.format_item(item).replace("·", "").replace(" ", "")
+                                )
+                                if norm_target in display:
+                                    matched_id = item.get("item_id")
+                                    break
+                            if matched_id:
+                                sq_result = _tool_registry.set_item_quantity(
+                                    item_id=matched_id, quantity=sq_qty
+                                )
+                            else:
+                                sq_result = {"ok": False, "message": f"購物車裡沒有{sq_target}"}
+                            if not sq_result.get("ok"):
+                                logger.warning("[SET_QTY] %s", sq_result.get("message"))
+                        full_text = _SET_QTY_RE.sub("", full_text).strip()
+                        if not full_text:
+                            full_text = f"{sq_result.get('message', '已修改')}～還需要什麼？"
+                        self._patch_last_assistant(session["llm_history"], full_text)
+
                     # ── 取消意圖兜底 ──
                     # 模型漏發 [REMOVE] tag、或發了但 tag 沒對到品項（移除失敗）時，
                     # 依客人取消意圖補移除。沒發 ADD 才兜底；取消詞收斂避免誤刪。
@@ -532,6 +571,7 @@ class StreamingDMAdapter:
                     # ── [ADD:品項名|key=value|...] 攔截 ──
                     if "[ADD:" in full_text:
                         add_results: list[dict] = []
+                        add_kwargs_list: list[dict] = []
                         last_failed_attempt: Optional[Dict[str, Any]] = None
                         for add_content in _ADD_RE.findall(full_text):
                             parts = add_content.split("|")
@@ -558,6 +598,7 @@ class StreamingDMAdapter:
                                         kwargs[key] = value
                                     elif key in ("spicy", "extra_egg"):
                                         kwargs[key] = value.lower() == "true"
+                            add_kwargs_list.append(kwargs)
                             add_result = _tool_registry.add_item(**kwargs)
                             add_results.append(add_result)
                             pipeline_broadcaster.emit(
@@ -587,6 +628,39 @@ class StreamingDMAdapter:
                                         },
                                     }
                         full_text = _ADD_RE.sub("", full_text).strip()
+
+                        # ── 套餐補槽 fallback ──
+                        # LLM 忽略 last_failed_attempt context、把回答當獨立品項加了
+                        # → 從這一輪 ADD kwargs 撈缺的參數補回去 retry
+                        # 必須在 any_ok 清除 session 之前做
+                        prev_attempt = session.get("last_failed_attempt")
+                        if prev_attempt and not last_failed_attempt:
+                            prev_name = prev_attempt["item_name"]
+                            already_added = any(
+                                r.get("ok") and ak.get("name") == prev_name
+                                for r, ak in zip(add_results, add_kwargs_list)
+                            )
+                            if already_added:
+                                session["last_failed_attempt"] = None
+                            else:
+                                missing = set(prev_attempt.get("missing", []))
+                                merged = dict(prev_attempt.get("provided", {}))
+                                for ak in add_kwargs_list:
+                                    for field in list(missing):
+                                        if ak.get(field):
+                                            merged[field] = ak[field]
+                                            missing.discard(field)
+                                if not missing:
+                                    retry_kwargs = {"name": prev_name, **merged}
+                                    retry_result = _tool_registry.add_item(**retry_kwargs)
+                                    if retry_result.get("ok"):
+                                        session["last_failed_attempt"] = None
+                                        add_results.append(retry_result)
+                                        logger.info(
+                                            "[ADD fallback] 補槽成功: {} → {}",
+                                            retry_kwargs,
+                                            retry_result.get("message"),
+                                        )
 
                         # 多輪追問狀態：失敗就記錄、有任何 ADD 成功就清除
                         any_ok = any(r.get("ok") for r in add_results)

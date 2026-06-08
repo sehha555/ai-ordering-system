@@ -94,6 +94,7 @@ export default function CheckoutFlow() {
 
       if (data.status === 'ok') {
         // 使用 setOrderResult，它會自動設定 checkoutStep 為 2
+        const hasPending = cart.some(i => i.price_pending);
         setOrderResult({
           order_number: data.order_number,
           total: data.total_price || total,
@@ -101,6 +102,7 @@ export default function CheckoutFlow() {
           items_display: data.items_display || [],
           dine_type: selectedDine,
           payment_method: selectedPayment,
+          price_pending: hasPending || undefined,
         });
       } else {
         throw new Error('結帳失敗');
@@ -210,7 +212,9 @@ export default function CheckoutFlow() {
                   style={{ borderBottom: i < cart.length - 1 ? '1px solid var(--border-color)' : 'none' }}
                 >
                   <span style={{ color: 'var(--text-color)' }}>{item.name} x{item.quantity}</span>
-                  <span className="font-medium" style={{ color: 'var(--accent)' }}>${item.price}</span>
+                  <span className="font-medium" style={{ color: item.price_pending ? 'var(--warning)' : 'var(--accent)' }}>
+                    {item.price_pending ? '價格待確認' : `$${item.price}`}
+                  </span>
                 </div>
               ))}
             </div>
@@ -218,7 +222,11 @@ export default function CheckoutFlow() {
             {/* 總計 */}
             <div className="flex justify-between items-center mb-6 px-1">
               <span className="text-lg font-medium" style={{ color: 'var(--text-muted)' }}>總計</span>
-              <span className="text-2xl font-bold" style={{ color: 'var(--accent)' }}>${total}</span>
+              {cart.some(i => i.price_pending) ? (
+                <span className="text-2xl font-bold" style={{ color: 'var(--warning)' }}>待確認</span>
+              ) : (
+                <span className="text-2xl font-bold" style={{ color: 'var(--accent)' }}>${total}</span>
+              )}
             </div>
 
             {/* 按鈕區 */}

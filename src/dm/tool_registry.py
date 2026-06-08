@@ -971,6 +971,30 @@ class ToolRegistry:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def set_item_quantity(
+        self,
+        item_id: str,
+        quantity: int,
+    ) -> Dict[str, Any]:
+        """修改購物車中指定品項的數量，qty=0 等同移除"""
+        try:
+            session = self.get_current_session()
+            cart = session["cart"]
+            for i, item in enumerate(cart):
+                if item.get("item_id") == item_id:
+                    if quantity <= 0:
+                        cart.pop(i)
+                        return {"ok": True, "message": f"已移除 {cart_manager.format_item(item)}"}
+                    old_qty = item.get("quantity", 1)
+                    item["quantity"] = quantity
+                    return {
+                        "ok": True,
+                        "message": f"{cart_manager.format_item(item)} 數量 {old_qty} → {quantity}",
+                    }
+            return {"ok": False, "message": f"找不到 item_id={item_id}"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     def get_cart_summary(self) -> Dict[str, Any]:
         """
         取得購物車摘要（含 item_id 和 draft_items）
