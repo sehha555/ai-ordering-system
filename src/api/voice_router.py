@@ -68,6 +68,19 @@ _SET_QTY_RE = re.compile(r"\[SET_QTY:([^\]]+)\]")
 # [QUERY:分類] 或 [QUERY] — 菜單查詢 tag
 _QUERY_RE = re.compile(r"\[QUERY(?::([^\]]*))?\]")
 
+
+def _find_cart_item_id(cart: list, keyword: str) -> Optional[str]:
+    """正規化分隔符後用子字串比對找到購物車品項的 item_id"""
+    from src.dm import cart_manager
+
+    norm = keyword.replace("·", "").replace(" ", "")
+    for item in cart:
+        display = cart_manager.format_item(item).replace("·", "").replace(" ", "")
+        if norm in display:
+            return item.get("item_id")
+    return None
+
+
 # 規則層攔截常數
 _EMPTY_CART_MOD_KEYWORDS = ["刪掉", "移除", "撤銷", "取消上一", "刪掉剛剛"]
 
@@ -484,19 +497,7 @@ class StreamingDMAdapter:
                             elif remove_target == "last":
                                 remove_result = _tool_registry.remove_from_cart(last=True)
                             else:
-                                # 正規化分隔符再比對：模型常漏發「·」（如 [REMOVE:紫米鮪魚飯糰]
-                                # vs 顯示名「紫米·鮪魚飯糰」），去掉分隔符讓 tag 路徑本身就接得上
-                                norm_target = remove_target.replace("·", "").replace(" ", "")
-                                matched_id = None
-                                for item in cart:
-                                    display = (
-                                        cart_manager.format_item(item)
-                                        .replace("·", "")
-                                        .replace(" ", "")
-                                    )
-                                    if norm_target in display:
-                                        matched_id = item.get("item_id")
-                                        break
+                                matched_id = _find_cart_item_id(cart, remove_target)
                                 if matched_id:
                                     remove_result = _tool_registry.remove_from_cart(
                                         item_id=matched_id
@@ -521,22 +522,13 @@ class StreamingDMAdapter:
                             sq_parts = sq_content.split("|")
                             sq_target = sq_parts[0].strip()
                             sq_qty = 1
-                            for p in sq_parts[1:]:
-                                if p.strip().startswith("qty="):
-                                    try:
-                                        sq_qty = int(p.strip().split("=", 1)[1])
-                                    except ValueError:
-                                        pass
+                            if len(sq_parts) > 1 and sq_parts[1].strip().startswith("qty="):
+                                try:
+                                    sq_qty = int(sq_parts[1].strip().split("=", 1)[1])
+                                except ValueError:
+                                    pass
                             cart = session.get("cart", [])
-                            norm_target = sq_target.replace("·", "").replace(" ", "")
-                            matched_id = None
-                            for item in cart:
-                                display = (
-                                    cart_manager.format_item(item).replace("·", "").replace(" ", "")
-                                )
-                                if norm_target in display:
-                                    matched_id = item.get("item_id")
-                                    break
+                            matched_id = _find_cart_item_id(cart, sq_target)
                             if matched_id:
                                 sq_result = _tool_registry.set_item_quantity(
                                     item_id=matched_id, quantity=sq_qty

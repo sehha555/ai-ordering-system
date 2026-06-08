@@ -102,7 +102,7 @@ export default function CheckoutFlow() {
           items_display: data.items_display || [],
           dine_type: selectedDine,
           payment_method: selectedPayment,
-          price_pending: hasPending || undefined,
+          price_pending: hasPending,
         });
       } else {
         throw new Error('結帳失敗');

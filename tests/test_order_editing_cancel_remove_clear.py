@@ -1,6 +1,7 @@
 import pytest
 import uuid
 from src.dm.dialogue_manager import DialogueManager
+from src.dm.tool_registry import ToolRegistry
 from src.tools.menu import menu_price_service
 
 
@@ -134,7 +135,6 @@ def test_cancel_when_pending_confirmation_only_cancels_pending_action(dm_session
 def test_set_item_quantity(dm_session):
     dm = dm_session["dm"]
     sid = dm_session["session_id"]
-    from src.dm.tool_registry import ToolRegistry
 
     tr = ToolRegistry(dm, dm.store)
     tr.set_session_id(sid)
@@ -163,7 +163,6 @@ def test_set_item_quantity(dm_session):
 def test_set_item_quantity_not_found(dm_session):
     dm = dm_session["dm"]
     sid = dm_session["session_id"]
-    from src.dm.tool_registry import ToolRegistry
 
     tr = ToolRegistry(dm, dm.store)
     tr.set_session_id(sid)
