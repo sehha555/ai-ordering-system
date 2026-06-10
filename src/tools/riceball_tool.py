@@ -479,4 +479,4 @@ if __name__ == "__main__":
             print("addon_quote:", addon)
 
 
-riceball_tool = MenuTool()
+riceball_tool = menu_tool

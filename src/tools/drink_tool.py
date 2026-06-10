@@ -20,12 +20,7 @@ _ALIASES_SORTED = tuple(sorted(DRINK_ALIASES.keys(), key=len, reverse=True))
 
 _MODIFIER_PREFIXES = tuple(
     sorted(
-        set(
-            list(TEMP_SIZE_SHORTCUTS.keys())
-            + list(SIZE_MAP.keys())
-            + list(TEMP_MAP.keys())
-            + list(SUGAR_MAP.keys())
-        ),
+        set(TEMP_SIZE_SHORTCUTS) | set(SIZE_MAP) | set(TEMP_MAP) | set(SUGAR_MAP),
         key=len,
         reverse=True,
     )

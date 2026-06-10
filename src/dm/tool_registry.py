@@ -114,7 +114,6 @@ def _build_menu_index() -> Dict[str, Dict[str, Any]]:
 
 # 模組載入時建立一次索引（避免每次 add_item 讀檔）
 _MENU_INDEX: Dict[str, Dict[str, Any]] = _build_menu_index()
-_MENU_NAMES: set = set(_MENU_INDEX.keys())
 
 
 def _augment_with_sold_out_rice(base_msg: str) -> str:
@@ -266,7 +265,7 @@ class ToolRegistry:
                 return {**_MENU_INDEX[resolved_ep], "resolved_name": resolved_ep}
 
         # 7. 點心別名解析
-        resolved_snack = _snack_resolve(name, _MENU_NAMES)
+        resolved_snack = _snack_resolve(name, _MENU_INDEX)
         if resolved_snack and resolved_snack != name and resolved_snack in _MENU_INDEX:
             return {**_MENU_INDEX[resolved_snack], "resolved_name": resolved_snack}
 
@@ -591,7 +590,7 @@ class ToolRegistry:
         )
 
     def add_snack(self, flavor=None, quantity=1, customization=None) -> Dict[str, Any]:
-        resolved = _snack_resolve(flavor, _MENU_NAMES) or flavor
+        resolved = _snack_resolve(flavor, _MENU_INDEX) or flavor
         result = _build_snack(flavor=resolved, quantity=quantity, customization=customization)
         return (
             result
@@ -833,21 +832,17 @@ class ToolRegistry:
 
             # 飯糰分類額外附上成分表（幫助確認客人所說俗稱）
             if category == "飯糰":
-                import json as _json
-                import os as _os
-
-                recipes_path = _os.path.join(
-                    _os.path.dirname(_os.path.abspath(__file__)),
-                    "..",
-                    "tools",
-                    "menu",
-                    "riceball_recipes.json",
+                recipes_path = (
+                    Path(__file__).resolve().parent.parent
+                    / "tools"
+                    / "menu"
+                    / "riceball_recipes.json"
                 )
                 try:
                     with open(recipes_path, encoding="utf-8") as _f:
-                        result["recipes"] = _json.load(_f)
+                        result["recipes"] = json.load(_f)
                 except Exception:
-                    pass  # 成分表讀取失敗不影響主流程
+                    pass
 
             return result
 
