@@ -20,42 +20,6 @@ from typing import Any, Dict, Optional
 
 _AUDIO_LOG_DIR = Path(__file__).resolve().parents[2] / "logs" / "audio"
 
-# 結帳狀態機常數
-_CK_DINE = "CHECKOUT_DINE"
-_CK_PAY = "CHECKOUT_PAY"
-_CK_STATES = (_CK_DINE, _CK_PAY)
-
-# 偵測點餐意圖的關鍵字（結帳中反悔 → 退出結帳回 LLM）
-_ORDER_INTENT_KEYWORDS = [
-    "飯糰",
-    "蛋餅",
-    "吐司",
-    "漢堡",
-    "饅頭",
-    "鐵板麵",
-    "薯餅",
-    "蘿蔔糕",
-    "蔥抓餅",
-    "餡餅",
-    "點心",
-    "果醬吐司",
-    "豆漿",
-    "奶茶",
-    "紅茶",
-    "綠茶",
-    "咖啡",
-    "果汁",
-    "套餐",
-    "加一",
-    "再一",
-    "多一",
-    "還要",
-    "點一",
-    "來一",
-    "給我",
-    "我要",
-]
-
 # [REMOVE] tag 正則
 _REMOVE_RE = re.compile(r"\[REMOVE:(.+?)\]")
 
@@ -203,153 +167,6 @@ class StreamingDMAdapter:
     def __init__(self, session_id: str):
         self._session_id = session_id
 
-    # ── 結帳狀態機：keyword parsing ──
-
-    @staticmethod
-    def _parse_dine_type(text: str) -> str | None:
-        t = text.strip()
-        if any(kw in t for kw in ["內用", "這裡吃", "在這吃", "在這裡", "dine"]):
-            return "dine-in"
-        if any(kw in t for kw in ["外帶", "帶走", "打包", "take"]):
-            return "take-out"
-        return None
-
-    @staticmethod
-    def _parse_payment(text: str) -> str | None:
-        t = text.strip()
-        if any(kw in t for kw in ["現金", "cash"]):
-            return "cash"
-        if any(kw in t for kw in ["Line", "line", "行動", "支付", "pay", "Pay", "LINE"]):
-            return "line_pay"
-        return None
-
-    @staticmethod
-    def _has_order_intent(text: str) -> bool:
-        """檢查 text 是否包含點餐意圖關鍵字"""
-        return any(kw in text for kw in _ORDER_INTENT_KEYWORDS)
-
-    @staticmethod
-    def _patch_last_assistant(history: list[dict], content: str) -> None:
-        """覆寫 history 中最後一條 assistant 回覆"""
-        for msg in reversed(history):
-            if msg.get("role") == "assistant":
-                msg["content"] = content
-                return
-
-    def _exit_checkout(self, session: dict, _session_store) -> None:
-        """清除結帳狀態並回寫 session（反悔出口用）"""
-        session.pop("checkout_status", None)
-        session.pop("checkout_dine_type", None)
-        _session_store.set(self._session_id, session)
-
-    async def _shortcircuit_reply(
-        self, text: str, reply: str, session: dict, _session_store, cart: list
-    ):
-        """規則層攔截共用：寫入 history、回寫 session、yield text_delta + done。"""
-        from src.dm import cart_manager
-
-        session["llm_history"].append({"role": "user", "content": text})
-        session["llm_history"].append({"role": "assistant", "content": reply})
-        _session_store.set(self._session_id, session)
-        yield {"type": "text_delta", "content": reply}
-        yield {
-            "type": "done",
-            "cart": cart,
-            "order_payload": {"total_price": cart_manager.calculate_cart_total(cart)},
-            "finalize_result": None,
-            "preview_result": None,
-        }
-
-    async def _checkout_step(self, text: str, session: dict):
-        """結帳狀態機：根據 checkout_status 處理 user input，不經 LLM。
-        未 yield 任何事件 = 反悔退出，caller 應 fallthrough 到 LLM。
-        """
-        from src.services import container
-        from src.dm import cart_manager
-
-        _session_store = container.session_store
-        _tool_registry = container.tool_registry
-        _tool_registry.set_session_id(self._session_id)
-
-        status = session.get("checkout_status")
-
-        reply = None
-        finalize_result = None
-
-        if status == _CK_DINE:
-            dine = self._parse_dine_type(text)
-            if dine:
-                session["checkout_dine_type"] = dine
-                cart = session.get("cart", [])
-                if cart_manager.cart_has_pending(cart):
-                    # 有客製待確認 → 不能先付：跳過付款步驟，直接建「待店員結算」單
-                    result = _tool_registry.finalize_order(dine_type=dine, payment_method="pending")
-                    session.pop("checkout_status", None)
-                    session.pop("checkout_dine_type", None)
-                    if result.get("ok"):
-                        finalize_result = result
-                        order_number = result.get("order_number", "")
-                        reply = (
-                            f"好的，{order_number}號～有客製品項需店員確認價格，"
-                            "請稍候結算，這邊先不收款喔。"
-                        )
-                    else:
-                        reply = result.get("message", "結帳失敗，請再試一次")
-                else:
-                    session["checkout_status"] = _CK_PAY
-                    reply = "現金還是行動支付？"
-            elif self._has_order_intent(text):
-                # 反悔：intent 檢查必須在 parse 失敗後才執行
-                self._exit_checkout(session, _session_store)
-                return
-            else:
-                reply = "請問是內用還是外帶？"
-
-        elif status == _CK_PAY:
-            pay = self._parse_payment(text)
-            if pay:
-                dine = session.get("checkout_dine_type")
-                if dine is None:
-                    logger.warning("[CHECKOUT] checkout_dine_type missing in CHECKOUT_PAY state")
-                    dine = "dine-in"
-                result = _tool_registry.finalize_order(
-                    dine_type=dine,
-                    payment_method=pay,
-                )
-                session.pop("checkout_status", None)
-                session.pop("checkout_dine_type", None)
-                if result.get("ok"):
-                    finalize_result = result
-                    order_number = result.get("order_number", "")
-                    reply = f"好，{order_number}號～"
-                else:
-                    reply = result.get("message", "結帳失敗，請再試一次")
-            elif self._has_order_intent(text):
-                # 反悔：intent 檢查必須在 parse 失敗後才執行
-                self._exit_checkout(session, _session_store)
-                return
-            else:
-                reply = "請問要現金還是行動支付？"
-
-        # 追加對話歷史
-        session["llm_history"].append({"role": "user", "content": text})
-        session["llm_history"].append({"role": "assistant", "content": reply})
-        _session_store.set(self._session_id, session)
-
-        # yield text_delta（給 orchestrator 做 TTS）
-        yield {"type": "text_delta", "content": reply}
-
-        # yield done（僅結帳完成時計算總價）
-        cart = session.get("cart", [])
-        total_price = cart_manager.calculate_cart_total(cart) if finalize_result else 0
-        yield {
-            "type": "done",
-            "cart": cart,
-            "order_payload": {"total_price": total_price},
-            "finalize_result": finalize_result,
-            "preview_result": None,
-        }
-
     async def process_input_stream(self, text: str):
         """串流版：逐 token yield LLM 回應，提供給 orchestrator 做分段 TTS"""
         from src.services import container
@@ -367,22 +184,30 @@ class StreamingDMAdapter:
         session.setdefault("raw_llm_history", [])
 
         # ── 結帳狀態機攔截：不經 LLM ──
-        if session.get("checkout_status") in _CK_STATES:
+        from src.api.checkout_handler import (  # noqa: E402
+            CK_DINE,
+            CK_STATES,
+            checkout_step,
+            patch_last_assistant,
+            shortcircuit_reply,
+        )
+
+        if session.get("checkout_status") in CK_STATES:
             yielded = False
-            async for evt in self._checkout_step(text, session):
+            async for evt in checkout_step(text, self._session_id, session):
                 yielded = True
                 yield evt
             if yielded:
                 return
-            # 反悔出口：_checkout_step 已 in-place 清除狀態並回寫，直接 fallthrough
+            # 反悔出口：checkout_step 已 in-place 清除狀態並回寫，直接 fallthrough
 
         # ── 規則層攔截（pre-LLM）──
         cart = session.get("cart", [])
 
         # 1. 空購物車 + 修改意圖
         if not cart and any(kw in text for kw in _EMPTY_CART_MOD_KEYWORDS):
-            async for evt in self._shortcircuit_reply(
-                text, "購物車是空的，請先點餐喔！", session, _session_store, cart
+            async for evt in shortcircuit_reply(
+                text, "購物車是空的，請先點餐喔！", self._session_id, session, _session_store, cart
             ):
                 yield evt
             return
@@ -405,7 +230,9 @@ class StreamingDMAdapter:
                 reply += "，請問要點什麼呢？"
             else:
                 reply = "抱歉，無法查詢飲品菜單，請再試一次。"
-            async for evt in self._shortcircuit_reply(text, reply, session, _session_store, cart):
+            async for evt in shortcircuit_reply(
+                text, reply, self._session_id, session, _session_store, cart
+            ):
                 yield evt
             return
 
@@ -479,9 +306,9 @@ class StreamingDMAdapter:
                         if not cart:
                             full_text = "購物車是空的，請先點餐喔～"
                         else:
-                            session["checkout_status"] = _CK_DINE
+                            session["checkout_status"] = CK_DINE
                             full_text = full_text.replace(CHECKOUT_TAG, "")
-                        self._patch_last_assistant(session["llm_history"], full_text)
+                        patch_last_assistant(session["llm_history"], full_text)
 
                     # ── [REMOVE:...] 攔截 ──
                     removed_ok = False
@@ -513,7 +340,7 @@ class StreamingDMAdapter:
                             if not full_text:
                                 msg_text = remove_result.get("message", "已移除")
                                 full_text = f"{msg_text}～還需要什麼？"
-                            self._patch_last_assistant(session["llm_history"], full_text)
+                            patch_last_assistant(session["llm_history"], full_text)
 
                     # ── [SET_QTY:品項|qty=N] 攔截 ──
                     if "[SET_QTY:" in full_text:
@@ -540,7 +367,7 @@ class StreamingDMAdapter:
                         full_text = _SET_QTY_RE.sub("", full_text).strip()
                         if not full_text:
                             full_text = f"{sq_result.get('message', '已修改')}～還需要什麼？"
-                        self._patch_last_assistant(session["llm_history"], full_text)
+                        patch_last_assistant(session["llm_history"], full_text)
 
                     # ── 取消意圖兜底 ──
                     # 模型漏發 [REMOVE] tag、或發了但 tag 沒對到品項（移除失敗）時，
@@ -558,7 +385,7 @@ class StreamingDMAdapter:
                             logger.info("[REMOVE fallback] 模型漏發/誤發 tag，依取消意圖補移除")
                             if not full_text.strip():
                                 full_text = "好的，已幫您取消～還需要什麼？"
-                                self._patch_last_assistant(session["llm_history"], full_text)
+                                patch_last_assistant(session["llm_history"], full_text)
 
                     # ── [ADD:品項名|key=value|...] 攔截 ──
                     if "[ADD:" in full_text:
@@ -661,13 +488,14 @@ class StreamingDMAdapter:
                         elif any_ok:
                             session["last_failed_attempt"] = None
 
-                        # add_item 失敗 → 補發 text_delta 讓使用者聽到追問
+                        # add_item 失敗 → LLM 沒回覆時才補發追問（避免重複）
                         failed = [r for r in add_results if not r.get("ok")]
                         if failed:
                             failed_msgs = [r.get("message", "") for r in failed if r.get("message")]
                             if failed_msgs:
                                 followup = "，".join(failed_msgs)
-                                yield {"type": "text_delta", "content": followup}
+                                if not full_text:
+                                    yield {"type": "text_delta", "content": followup}
                                 full_text = (full_text + "，" + followup) if full_text else followup
 
                         # 全成功但 LLM 原文只有 tag（清除後為空）→ 用後端訊息
@@ -681,7 +509,7 @@ class StreamingDMAdapter:
                                 else "好的～還需要什麼？"
                             )
 
-                        self._patch_last_assistant(session["llm_history"], full_text)
+                        patch_last_assistant(session["llm_history"], full_text)
 
                     # ── [QUERY:分類] 攔截 ──
                     if "[QUERY" in full_text:
@@ -699,7 +527,7 @@ class StreamingDMAdapter:
                                 query_result.get("count", 0),
                             )
                         full_text = _QUERY_RE.sub("", full_text).strip()
-                        self._patch_last_assistant(session["llm_history"], full_text)
+                        patch_last_assistant(session["llm_history"], full_text)
 
                     # 訓練資料：append raw LLM pair（user = normalize 後的輸入，assistant = 含 tag 原文）
                     session["raw_llm_history"].append({"role": "user", "content": text})
