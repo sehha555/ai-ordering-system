@@ -113,7 +113,6 @@ async def checkout_step(text: str, session_id: str, session: dict):
 
     status = session.get("checkout_status")
 
-    reply = None
     finalize_result = None
 
     if status == CK_DINE:

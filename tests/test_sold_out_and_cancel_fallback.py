@@ -9,7 +9,10 @@ import pytest
 
 from src.dm.tool_registry import _sold_out_block
 from src.tools.menu import menu_state_service
-from src.api.voice_router import _item_mentioned_in_text, _resolve_cancel_intent
+from src.api.tag_parser import (
+    _item_mentioned_in_text,
+    resolve_cancel_intent as _resolve_cancel_intent,
+)
 
 
 @pytest.fixture(autouse=True)

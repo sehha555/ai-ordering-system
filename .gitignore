@@ -82,6 +82,13 @@ training_data/*.gguf
 training_data/*.safetensors
 training_env/
 
+# TTS 測試音檔
+edge_tw_*.mp3
+
+# 本地參考用 HTML（不追蹤）
+docs/project-overview.html
+docs/system-analysis.html
+
 # Node
 node_modules/
 .gstack/
