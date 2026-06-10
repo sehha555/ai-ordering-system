@@ -125,6 +125,8 @@ async def lifespan(app):
 
     # startup: LLM 定期 keepalive（每 5 分鐘 ping，防止 LM Studio 卸載模型）
     async def _llm_keepalive_loop():
+        import time
+
         from src.dm.tool_priming import get_priming_messages
 
         system_prompt = SystemPromptBuilder().build()
@@ -134,13 +136,41 @@ async def lifespan(app):
             *priming,
             {"role": "user", "content": "你好"},
         ]
+        _SLOW_THRESHOLD_S = 5.0
+        _CONSECUTIVE_SLOW_WARN = 3
+        consecutive_slow = 0
+
         while True:
-            await asyncio.sleep(300)  # 5 分鐘
+            await asyncio.sleep(300)
+            t0 = time.perf_counter()
             try:
                 await _llm_caller.ping(messages=messages)
-                logger.debug("[KEEPALIVE] LLM ping 完成")
+                elapsed = time.perf_counter() - t0
+                if elapsed > _SLOW_THRESHOLD_S:
+                    consecutive_slow += 1
+                    logger.warning(
+                        "[KEEPALIVE] LLM 回應慢: {:.1f}s（連續 {} 次超過 {}s）",
+                        elapsed,
+                        consecutive_slow,
+                        _SLOW_THRESHOLD_S,
+                    )
+                    if consecutive_slow >= _CONSECUTIVE_SLOW_WARN:
+                        logger.error(
+                            "[KEEPALIVE] LLM 連續 {} 次回應超過 {}s，可能需要重啟 llama-server",
+                            consecutive_slow,
+                            _SLOW_THRESHOLD_S,
+                        )
+                else:
+                    if consecutive_slow > 0:
+                        logger.info("[KEEPALIVE] LLM 回應恢復正常: {:.1f}s", elapsed)
+                    consecutive_slow = 0
+                    logger.debug("[KEEPALIVE] LLM ping {:.1f}s", elapsed)
             except Exception as e:
-                logger.warning("[KEEPALIVE] LLM ping 失敗: {}", e)
+                elapsed = time.perf_counter() - t0
+                consecutive_slow += 1
+                logger.warning(
+                    "[KEEPALIVE] LLM ping 失敗 ({:.1f}s, 連續 {}): {}", elapsed, consecutive_slow, e
+                )
 
     keepalive_task = asyncio.create_task(_llm_keepalive_loop())
 
