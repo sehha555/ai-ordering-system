@@ -31,6 +31,57 @@ HEAVY_RICEBALL_PRICES: Dict[str, int] = _price_cfg["riceball"]["heavy_prices"]
 _LARGE_SURCHARGE: int = _price_cfg["riceball"]["large_surcharge"]
 _EXTRA_EGG_SURCHARGE: int = _price_cfg["riceball"]["extra_egg_surcharge"]
 
+# 預排序別名（長字優先匹配）
+_ALIASES_SORTED = tuple(sorted(FLAVOR_ALIASES.keys(), key=len, reverse=True))
+
+
+def resolve_flavor(value: Optional[str]) -> Optional[str]:
+    """別名 → 標準口味名；None 或無匹配原樣回傳"""
+    if value is None:
+        return None
+    for alias in _ALIASES_SORTED:
+        if alias == value or alias in value:
+            return FLAVOR_ALIASES[alias]
+    return value
+
+
+def build_cart_item(
+    flavor: Optional[str] = None,
+    rice: Optional[str] = None,
+    large: bool = False,
+    extra_egg: bool = False,
+    spicy: bool = False,
+    quantity: int = 1,
+    customization: Optional[str] = None,
+) -> Dict[str, Any]:
+    """驗證必填 + 解析別名 + 組裝購物車品項 dict（不含 item_id）"""
+    missing: List[str] = []
+    if not flavor:
+        missing.append("flavor")
+    if not rice:
+        missing.append("rice")
+    if missing:
+        if "flavor" in missing and "rice" in missing:
+            msg = "請問飯糰要什麼口味？紫米白米？"
+        elif "flavor" in missing:
+            msg = "請問飯糰要什麼口味？"
+        else:
+            msg = "飯糰要紫米白米？"
+        return {"ok": False, "missing": missing, "message": msg}
+    resolved = resolve_flavor(flavor)
+    item: Dict[str, Any] = {
+        "itemtype": "riceball",
+        "flavor": resolved,
+        "rice": rice,
+        "large": bool(large),
+        "extra_egg": bool(extra_egg),
+        "spicy": bool(spicy),
+        "quantity": max(1, quantity),
+    }
+    if customization:
+        item["customization"] = customization
+    return {"ok": True, "item": item, "display_name": f"{rice}{resolved}"}
+
 
 # 向下相容別名（其他模組曾 import _chinese_number_to_int from riceball_tool）
 _chinese_number_to_int = chinese_number_to_int

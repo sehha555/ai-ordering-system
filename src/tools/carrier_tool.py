@@ -10,6 +10,40 @@ _cfg = load_json_config("aliases_carrier.json")
 CARRIERS = tuple(_cfg["carriers"])
 
 
+def build_cart_item(
+    carrier: Optional[str] = None,
+    flavor: Optional[str] = None,
+    menu_name: Optional[str] = None,
+    quantity: int = 1,
+    customization: Optional[str] = None,
+) -> Dict[str, Any]:
+    """驗證必填 + 組裝吐司/漢堡/饅頭購物車品項 dict（不含 item_id）"""
+    missing: list = []
+    if not carrier:
+        missing.append("carrier")
+    if not flavor:
+        missing.append("flavor")
+    if missing:
+        parts: list = []
+        if "carrier" in missing:
+            parts.append("載體類型（吐司/漢堡/饅頭）")
+        if "flavor" in missing:
+            parts.append("餡料口味")
+        return {"ok": False, "missing": missing, "message": f"請問{' 和 '.join(parts)}？"}
+    item: Dict[str, Any] = {
+        "itemtype": "carrier",
+        "carrier": carrier,
+        "flavor": flavor,
+        "quantity": max(1, quantity),
+    }
+    if menu_name:
+        item["menu_name"] = menu_name
+    if customization:
+        item["customization"] = customization
+    display_name = menu_name or f"{flavor}{carrier}"
+    return {"ok": True, "item": item, "display_name": display_name}
+
+
 class CarrierTool:
     """
     共用載體品項工具：吐司/漢堡/饅頭

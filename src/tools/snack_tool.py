@@ -10,6 +10,42 @@ SNACK_ALIASES: Dict[str, str] = _snack_cfg["snack_aliases"]
 _DEFAULT_EGG_COOK: str = _snack_cfg["default_egg_cook"]
 _PEPPER_RESTRICTED_ITEMS: list = _snack_cfg["pepper_restricted_items"]
 
+_ALIASES_SORTED = tuple(sorted(SNACK_ALIASES.keys(), key=len, reverse=True))
+
+
+def resolve_flavor(flavor: Optional[str], menu_names: Optional[set] = None) -> Optional[str]:
+    """點心別名 → 標準菜單名；已是菜單名則跳過，避免子串誤匹配。
+    短 alias（<2 字元）不做結尾匹配，避免「起司蛋」匹配「荷包蛋」。
+    """
+    if not flavor:
+        return None
+    if menu_names and flavor in menu_names:
+        return flavor
+    for alias in _ALIASES_SORTED:
+        if alias == flavor:
+            return SNACK_ALIASES[alias]
+        if len(alias) >= 2 and flavor.endswith(alias):
+            return SNACK_ALIASES[alias]
+    return None
+
+
+def build_cart_item(
+    flavor: Optional[str] = None,
+    quantity: int = 1,
+    customization: Optional[str] = None,
+) -> Dict[str, Any]:
+    """組裝點心購物車品項 dict（不含 item_id）。flavor 應為已解析的菜單名。"""
+    if not flavor:
+        return {"ok": False, "missing": ["flavor"], "message": "請問要什麼點心？"}
+    item: Dict[str, Any] = {
+        "itemtype": "snack",
+        "snack": flavor,
+        "quantity": max(1, quantity),
+    }
+    if customization:
+        item["customization"] = customization
+    return {"ok": True, "item": item, "display_name": flavor}
+
 
 class SnackTool:
     def __init__(self):

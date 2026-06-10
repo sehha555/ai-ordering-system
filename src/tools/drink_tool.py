@@ -15,6 +15,105 @@ SUGAR_MAP = _cfg["sugar_map"]
 # temp_size_shortcuts 在 JSON 裡是 array，轉回 tuple
 TEMP_SIZE_SHORTCUTS = {k: tuple(v) for k, v in _cfg["temp_size_shortcuts"].items()}
 
+# 預排序別名（長字優先匹配）
+_ALIASES_SORTED = tuple(sorted(DRINK_ALIASES.keys(), key=len, reverse=True))
+
+_MODIFIER_PREFIXES = tuple(
+    sorted(
+        set(
+            list(TEMP_SIZE_SHORTCUTS.keys())
+            + list(SIZE_MAP.keys())
+            + list(TEMP_MAP.keys())
+            + list(SUGAR_MAP.keys())
+        ),
+        key=len,
+        reverse=True,
+    )
+)
+
+
+def resolve_flavor(value: Optional[str]) -> Optional[str]:
+    """飲料別名 → 標準名"""
+    if value is None:
+        return None
+    for alias in _ALIASES_SORTED:
+        if alias == value or alias in value:
+            return DRINK_ALIASES[alias]
+    return value
+
+
+def resolve_size(value: Optional[str]) -> Optional[str]:
+    """杯型別名 → 標準名"""
+    if value is None:
+        return None
+    for k, v in SIZE_MAP.items():
+        if k == value or k in value:
+            return v
+    return value
+
+
+def resolve_temp(value: Optional[str]) -> Optional[str]:
+    """溫度別名 → 標準名"""
+    if value is None:
+        return None
+    for k, v in TEMP_MAP.items():
+        if k == value or k in value:
+            return v
+    return value
+
+
+def is_valid_drink_input(name: str) -> bool:
+    """驗證 name 是合法飲料輸入，避免子字串誤匹配（如「珍珠奶茶」透過「奶茶」）"""
+    if name in DRINK_ALIASES:
+        return True
+    for prefix in _MODIFIER_PREFIXES:
+        if name.startswith(prefix):
+            remainder = name[len(prefix) :]
+            if remainder and remainder in DRINK_ALIASES:
+                return True
+    return False
+
+
+def build_cart_item(
+    flavor: Optional[str] = None,
+    size: Optional[str] = None,
+    temp: Optional[str] = None,
+    quantity: int = 1,
+    customization: Optional[str] = None,
+) -> Dict[str, Any]:
+    """驗證必填 + 解析別名 + 組裝飲料購物車品項 dict（不含 item_id）"""
+    missing: List[str] = []
+    if not flavor:
+        missing.append("flavor")
+    if not size:
+        missing.append("size")
+    if not temp:
+        missing.append("temp")
+    if missing:
+        parts: List[str] = []
+        if "flavor" in missing:
+            parts.append("飲料品項")
+        if "size" in missing or "temp" in missing:
+            parts.append("規格（中冰/中溫/大冰/大溫）")
+        return {"ok": False, "missing": missing, "message": f"請問{' 和 '.join(parts)}？"}
+    resolved_flavor = resolve_flavor(flavor)
+    resolved_size = resolve_size(size)
+    resolved_temp = resolve_temp(temp)
+    item: Dict[str, Any] = {
+        "itemtype": "drink",
+        "drink": resolved_flavor,
+        "size": resolved_size,
+        "temp": resolved_temp,
+        "quantity": max(1, quantity),
+    }
+    if customization:
+        item["customization"] = customization
+    return {
+        "ok": True,
+        "item": item,
+        "display_name": f"{resolved_size}{resolved_temp}{resolved_flavor}",
+    }
+
 
 class DrinkTool:
     def __init__(self):

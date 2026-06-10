@@ -9,6 +9,38 @@ from src.tools.text_utils import dedupe_keep_order, parse_quantity as _parse_qua
 _ep_cfg = load_json_config("aliases_egg_pancake.json")
 _price_cfg = load_json_config("price_rules.json")
 
+_EP_ALIASES: Dict[str, str] = _ep_cfg["flavor_aliases"]
+_EP_ALIASES_SORTED = tuple(sorted(_EP_ALIASES.keys(), key=len, reverse=True))
+
+
+def resolve_flavor(value: str | None) -> str | None:
+    """蛋餅口味別名 → 標準名"""
+    if value is None:
+        return None
+    for alias in _EP_ALIASES_SORTED:
+        if alias == value or alias in value:
+            return _EP_ALIASES[alias]
+    return value
+
+
+def build_cart_item(
+    flavor: str | None = None,
+    quantity: int = 1,
+    customization: str | None = None,
+) -> Dict[str, Any]:
+    """驗證必填 + 解析別名 + 組裝蛋餅購物車品項 dict（不含 item_id）"""
+    if not flavor:
+        return {"ok": False, "missing": ["flavor"], "message": "請問蛋餅要什麼口味？"}
+    resolved = resolve_flavor(flavor)
+    item: Dict[str, Any] = {
+        "itemtype": "egg_pancake",
+        "flavor": resolved,
+        "quantity": max(1, quantity),
+    }
+    if customization:
+        item["customization"] = customization
+    return {"ok": True, "item": item, "display_name": resolved}
+
 
 class EggPancakeTool:
     FLAVOR_ALIASES: Dict[str, str] = _ep_cfg["flavor_aliases"]

@@ -16,40 +16,31 @@ from src.dm import cart_manager
 from src.tools.menu import menu_price_service, menu_state_service
 from src.config.config_loader import load_json_config
 
-# 導入各工具的別名映射
-from src.tools.riceball_tool import FLAVOR_ALIASES as RICEBALL_ALIASES
-from src.tools.drink_tool import (
-    DRINK_ALIASES,
-    SIZE_MAP as DRINK_SIZE_MAP,
-    TEMP_MAP as DRINK_TEMP_MAP,
-    SUGAR_MAP as _DRINK_SUGAR_MAP,
-    TEMP_SIZE_SHORTCUTS as _DRINK_TEMP_SIZE_SHORTCUTS,
+# 各品類工具：resolve + build_cart_item
+from src.tools.riceball_tool import (
+    resolve_flavor as _riceball_resolve,
+    build_cart_item as _build_riceball,
 )
-from src.tools.egg_pancake_tool import EggPancakeTool
-from src.tools.snack_tool import SNACK_ALIASES
-from src.dm.item_rules import check_combo_required
+from src.tools.drink_tool import (
+    resolve_flavor as _drink_resolve,
+    is_valid_drink_input as _is_valid_drink_input,
+    build_cart_item as _build_drink,
+)
+from src.tools.egg_pancake_tool import (
+    resolve_flavor as _ep_resolve,
+    build_cart_item as _build_egg_pancake,
+)
+from src.tools.snack_tool import (
+    resolve_flavor as _snack_resolve,
+    build_cart_item as _build_snack,
+)
+from src.tools.carrier_tool import build_cart_item as _build_carrier
+from src.tools.combo_tool import build_cart_item as _build_combo
 import asyncio
 from datetime import datetime
 from src.api.order_broadcaster import order_broadcaster, format_order_for_admin
 from src.repository.order_repository import order_repo
 from rapidfuzz import fuzz, process
-
-# 蛋餅別名
-EGG_PANCAKE_ALIASES = EggPancakeTool.FLAVOR_ALIASES
-
-# 飲料已知前綴（用於 _is_valid_drink_input 驗證，長字優先，從 drink_tool 來源組合）
-_DRINK_MODIFIER_PREFIXES = tuple(
-    sorted(
-        set(
-            list(_DRINK_TEMP_SIZE_SHORTCUTS.keys())
-            + list(DRINK_SIZE_MAP.keys())
-            + list(DRINK_TEMP_MAP.keys())
-            + list(_DRINK_SUGAR_MAP.keys())
-        ),
-        key=len,
-        reverse=True,
-    )
-)
 
 # 子字串匹配最低長度比例（step 8 fallback）
 _SUBSTRING_MATCH_MIN_RATIO = 0.6
@@ -66,12 +57,6 @@ def _is_subsequence(short: str, long: str) -> bool:
     it = iter(long)
     return all(c in it for c in short)
 
-
-# 預排序別名 keys（避免每次 _resolve_alias 重新排序）
-_RICEBALL_ALIASES_SORTED = tuple(sorted(RICEBALL_ALIASES.keys(), key=len, reverse=True))
-_DRINK_ALIASES_SORTED = tuple(sorted(DRINK_ALIASES.keys(), key=len, reverse=True))
-_EGG_PANCAKE_ALIASES_SORTED = tuple(sorted(EGG_PANCAKE_ALIASES.keys(), key=len, reverse=True))
-_SNACK_ALIASES_SORTED = tuple(sorted(SNACK_ALIASES.keys(), key=len, reverse=True))
 
 # 從 aliases_registry.json 載入 4 個常數
 _reg_cfg = load_json_config("aliases_registry.json")
@@ -129,6 +114,7 @@ def _build_menu_index() -> Dict[str, Dict[str, Any]]:
 
 # 模組載入時建立一次索引（避免每次 add_item 讀檔）
 _MENU_INDEX: Dict[str, Dict[str, Any]] = _build_menu_index()
+_MENU_NAMES: set = set(_MENU_INDEX.keys())
 
 
 def _augment_with_sold_out_rice(base_msg: str) -> str:
@@ -178,13 +164,6 @@ class ToolRegistry:
     """
 
     def __init__(self, dialogue_manager: DialogueManager, session_store: InMemorySessionStore):
-        """
-        初始化工具註冊表
-
-        Args:
-            dialogue_manager: DialogueManager 實例
-            session_store: SessionStore 實例
-        """
         self.dm = dialogue_manager
         self.store = session_store
 
@@ -203,72 +182,6 @@ class ToolRegistry:
         if not sid:
             raise RuntimeError("Session ID not set")
         return self.store.get(sid)
-
-    # ============ 別名解析輔助方法 ============
-
-    def _resolve_alias(
-        self, value: Optional[str], aliases: dict, sorted_keys: Optional[tuple] = None
-    ) -> Optional[str]:
-        """通用別名解析：在 aliases 中找匹配項，回傳標準名稱；無匹配則原樣回傳。
-        sorted_keys: 預排序的 keys tuple（模組層級快取），省去每次排序開銷。
-        """
-        if value is None:
-            return None
-        candidates = sorted_keys if sorted_keys is not None else aliases.keys()
-        for alias in candidates:
-            if alias == value or alias in value:
-                return aliases[alias]
-        return value
-
-    def _resolve_riceball_flavor(self, flavor: Optional[str]) -> Optional[str]:
-        """將飯糰口味別名轉換為標準名稱"""
-        return self._resolve_alias(flavor, RICEBALL_ALIASES, _RICEBALL_ALIASES_SORTED)
-
-    def _resolve_drink_flavor(self, flavor: Optional[str]) -> Optional[str]:
-        """將飲料別名轉換為標準名稱"""
-        return self._resolve_alias(flavor, DRINK_ALIASES, _DRINK_ALIASES_SORTED)
-
-    def _resolve_drink_size(self, size: Optional[str]) -> Optional[str]:
-        """將飲料杯型轉換為標準名稱"""
-        return self._resolve_alias(size, DRINK_SIZE_MAP)
-
-    def _resolve_drink_temp(self, temp: Optional[str]) -> Optional[str]:
-        """將飲料溫度轉換為標準名稱"""
-        return self._resolve_alias(temp, DRINK_TEMP_MAP)
-
-    def _resolve_egg_pancake_flavor(self, flavor: Optional[str]) -> Optional[str]:
-        """將蛋餅口味別名轉換為標準名稱"""
-        return self._resolve_alias(flavor, EGG_PANCAKE_ALIASES, _EGG_PANCAKE_ALIASES_SORTED)
-
-    @staticmethod
-    def _is_valid_drink_input(name: str) -> bool:
-        """驗證 name 是合法的飲料輸入，避免「珍珠奶茶」透過子字串「奶茶」誤匹配。
-        規則：name 本身是 DRINK_ALIASES key，或去掉已知 temp/size 前綴後是 key。
-        """
-        if name in DRINK_ALIASES:
-            return True
-        for prefix in _DRINK_MODIFIER_PREFIXES:
-            if name.startswith(prefix):
-                remainder = name[len(prefix) :]
-                if remainder and remainder in DRINK_ALIASES:
-                    return True
-        return False
-
-    def _resolve_snack_flavor(self, flavor: Optional[str]) -> Optional[str]:
-        """將點心別名轉換為標準名稱（已是完整菜單名則跳過，避免子串誤匹配）
-        只做完全匹配或 name 結尾是 ≥2 字元的 alias，
-        避免 "起司蛋" 因含單字 "蛋" 被錯誤解析為 "荷包蛋"。
-        """
-        if not flavor:
-            return None
-        if flavor in _MENU_INDEX:
-            return flavor
-        for alias in _SNACK_ALIASES_SORTED:
-            if alias == flavor:
-                return SNACK_ALIASES[alias]
-            if len(alias) >= 2 and flavor.endswith(alias):
-                return SNACK_ALIASES[alias]
-        return None
 
     def _next_item_id(self, session: Dict[str, Any], prefix: str) -> str:
         """分配下一個 item_id，同時遞增計數器"""
@@ -306,20 +219,16 @@ class ToolRegistry:
         # 2. 套餐 startsWith 匹配（「套餐一」→ 找 key 以「套餐一 」開頭的）
         for full_name, info in _MENU_INDEX.items():
             if info["category"] == "套餐" and full_name.startswith(name + " "):
-                # 回傳時提取短名（「套餐一」），方便後續 add_combo 使用
                 return {"category": "套餐", "price": info["price"], "resolved_name": name}
 
         # 3. 套餐本身就是短名（如「套餐一」精確不中但存在套餐）
-        # 注意：套餐別名解析放在這裡一起處理
         resolved_combo = _COMBO_NUMBER_ALIASES.get(name)
         if resolved_combo:
-            # 遞迴查找標準套餐名
             return self._resolve_item_name(resolved_combo)
 
         # 4. 飲料別名解析（得到標準名，不含杯型；杯型由 add_item 外層提供）
-        # 驗證：name 必須是已知別名或 [temp/size 前綴]+別名，避免「珍珠奶茶」誤匹配
-        resolved_drink = self._resolve_drink_flavor(name)
-        if resolved_drink and resolved_drink != name and self._is_valid_drink_input(name):
+        resolved_drink = _drink_resolve(name)
+        if resolved_drink and resolved_drink != name and _is_valid_drink_input(name):
             probe = f"{resolved_drink}(中)"
             if probe in _MENU_INDEX:
                 return {
@@ -338,9 +247,8 @@ class ToolRegistry:
             }
 
         # 5. 飯糰別名解析
-        resolved_riceball = self._resolve_riceball_flavor(name)
+        resolved_riceball = _riceball_resolve(name)
         if resolved_riceball:
-            # 在 menu 中找到以 resolved_riceball 結尾的飯糰品項
             for full_name, info in _MENU_INDEX.items():
                 if info["category"] == "飯糰" and full_name.endswith(resolved_riceball):
                     return {
@@ -348,22 +256,21 @@ class ToolRegistry:
                         "price": info["price"],
                         "resolved_name": resolved_riceball,
                     }
-            # 若 resolved_riceball 本身就是完整菜單名
             if resolved_riceball in _MENU_INDEX:
                 return {**_MENU_INDEX[resolved_riceball], "resolved_name": resolved_riceball}
 
         # 6. 蛋餅別名解析
-        resolved_ep = self._resolve_egg_pancake_flavor(name)
+        resolved_ep = _ep_resolve(name)
         if resolved_ep and resolved_ep != name:
             if resolved_ep in _MENU_INDEX:
                 return {**_MENU_INDEX[resolved_ep], "resolved_name": resolved_ep}
 
         # 7. 點心別名解析
-        resolved_snack = self._resolve_snack_flavor(name)
+        resolved_snack = _snack_resolve(name, _MENU_NAMES)
         if resolved_snack and resolved_snack != name and resolved_snack in _MENU_INDEX:
             return {**_MENU_INDEX[resolved_snack], "resolved_name": resolved_snack}
 
-        # 8. 子字串匹配（去掉規格括號後比較，要求 ≥ 60% 長度比例）
+        # 8. 子字串匹配（去掉規格括號後比較，要求 >= 60% 長度比例）
         for full_name, info in _MENU_INDEX.items():
             base = full_name.split("(")[0] if "(" in full_name else full_name
             if name in base or base in name:
@@ -373,7 +280,6 @@ class ToolRegistry:
                     return {**info, "resolved_name": full_name}
 
         # 9. Subsequence 匹配（漏字場景：「煎吐司」→「煎蛋吐司」、「培根吐司」→「培根蛋吐司」）
-        # name 的字符按順序出現在 menu base 中，且長度比例 ≥ 60%
         for full_name, info in _MENU_INDEX.items():
             base = full_name.split("(")[0] if "(" in full_name else full_name
             if len(name) >= len(base) * _SUBSEQUENCE_MATCH_MIN_RATIO and _is_subsequence(
@@ -421,7 +327,6 @@ class ToolRegistry:
             return {"ok": False, "message": "請告訴我要點什麼品項"}
 
         # 鐵板麵 fast-path：有 noodle 參數 + name 含鐵板麵口味關鍵字 → 直接走 resolver。
-        # 避免「咖哩烏龍麵」「義大利肉醬麵」這類舊名 / 短口味名走不到 _resolve_item_name。
         if noodle and any(alias in name for alias in _IRON_NOODLE_FLAVOR_KEYS):
             menu_name = _resolve_iron_noodle_menu_name(name, noodle)
             if menu_name:
@@ -443,7 +348,6 @@ class ToolRegistry:
         resolved_name = item_info["resolved_name"]
 
         # ── 售完硬攔截：命中今日售完清單就擋下，不准進購物車 ──
-        # （米種售完走 get_rice_options_status / 套餐走 combo_status，不在此清單，不受影響）
         blocked = _sold_out_block(resolved_name)
         if blocked:
             return blocked
@@ -482,7 +386,6 @@ class ToolRegistry:
         # ── 吐司 / 漢堡 / 饅頭（載體） ──
         if category in _CARRIER_CATEGORY_MAP:
             carrier = _CARRIER_CATEGORY_MAP[category]
-            # 從完整品項名稱提取口味（去掉載體後綴）
             extracted_flavor = resolved_name
             for suffix in _CARRIER_SUFFIXES:
                 if extracted_flavor.endswith(suffix):
@@ -490,17 +393,14 @@ class ToolRegistry:
                     break
 
             # 饅頭特殊處理：若 rice 含口味資訊（非真正米種），重建完整品項名
-            # 場景：model 輸出 [ADD:饅頭夾蛋|rice=黑糖]，期望解析為「黑糖饅頭夾蛋」或「黑糖饅頭」
             _RICE_TYPES = {"白米", "紫米", "混米"}
             if category == "饅頭" and rice and rice not in _RICE_TYPES:
-                # 先試 {rice}{原始名稱}（如 黑糖饅頭夾蛋）— 只接受饅頭類 category
                 rebuilt = f"{rice}{resolved_name}"
                 rebuilt_info = self._resolve_item_name(rebuilt)
                 if rebuilt_info is not None and rebuilt_info.get("category") == "饅頭":
                     return self.add_item(
                         name=rebuilt, quantity=quantity, customization=customization
                     )
-                # 再試 {rice}饅頭（如 黑糖饅頭）
                 rebuilt_base = f"{rice}饅頭"
                 rebuilt_base_info = self._resolve_item_name(rebuilt_base)
                 if rebuilt_base_info is not None and rebuilt_base_info.get("category") == "饅頭":
@@ -518,15 +418,12 @@ class ToolRegistry:
 
         # ── 蛋餅 ──
         if category == "蛋餅":
-            # 若只傳入分類名（"蛋餅"）且沒有 flavor 參數，追問口味
             if name == "蛋餅" and not flavor:
                 return {"ok": False, "missing": ["flavor"], "message": "蛋餅要什麼口味？"}
-            # 有 flavor 參數時直接使用（如 add_item(name='蛋餅', flavor='玉米')）
             if name == "蛋餅" and flavor:
                 return self.add_item(
                     name=f"{flavor}蛋餅", quantity=quantity, customization=customization
                 )
-            # 去掉「蛋餅」後綴取得口味
             ep_flavor = resolved_name
             if ep_flavor.endswith("蛋餅"):
                 ep_flavor = ep_flavor[:-2]
@@ -536,9 +433,8 @@ class ToolRegistry:
 
         # ── 果醬吐司 ──
         if category == "果醬吐司":
-            # resolved_name 格式：「果醬吐司(草莓/薄片)」或傳入的 name 帶括號
             jam_flavor = flavor
-            jam_size = size or "薄片"  # 預設薄片
+            jam_size = size or "薄片"
             m = _JAM_TOAST_RE.search(resolved_name)
             if m:
                 jam_flavor = m.group(1)
@@ -584,7 +480,6 @@ class ToolRegistry:
                     "missing": ["noodle"],
                     "message": "油麵還是烏龍麵？",
                 }
-            # 從原始 name（如「黑椒鐵板麵」「義大利肉醬麵」）+ noodle 組出 menu_name
             menu_name = _resolve_iron_noodle_menu_name(name, noodle)
             if not menu_name:
                 return {
@@ -611,294 +506,121 @@ class ToolRegistry:
         # 未知分類 — 回傳錯誤
         return {"ok": False, "message": f"品項「{name}」分類（{category}）不支援，請查詢菜單"}
 
-    # ============ 品項專屬工具 ============
+    # ============ 購物車操作共用 ============
+
+    def _append_to_cart(
+        self, item_data: Dict[str, Any], prefix: str, display_name: str
+    ) -> Dict[str, Any]:
+        """取 session → 分配 item_id → append to cart → 回傳標準成功 dict"""
+        try:
+            session = self.get_current_session()
+            item_id = self._next_item_id(session, prefix)
+            item_data["item_id"] = item_id
+            session["cart"].append(item_data)
+            qty = item_data.get("quantity", 1)
+            return {
+                "ok": True,
+                "item_id": item_id,
+                "message": f"已加入 {qty}份 {display_name}",
+                "cart_count": len(session["cart"]),
+            }
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    # ============ 品項專屬工具（薄包裝，邏輯在 *_tool.build_cart_item）============
 
     def add_riceball(
         self,
-        flavor: Optional[str] = None,
-        rice: Optional[str] = None,
-        large: bool = False,
-        extra_egg: bool = False,
-        spicy: bool = False,
-        quantity: int = 1,
-        customization: Optional[str] = None,
+        flavor=None,
+        rice=None,
+        large=False,
+        extra_egg=False,
+        spicy=False,
+        quantity=1,
+        customization=None,
     ) -> Dict[str, Any]:
-        """加入飯糰到購物車。flavor（口味）和 rice（米種）都必填。"""
-        try:
-            # 缺欄位檢查
-            missing = []
-            if not flavor:
-                missing.append("flavor")
-            if not rice:
-                missing.append("rice")
-            if missing:
-                if "flavor" in missing and "rice" in missing:
-                    msg = "請問飯糰要什麼口味？紫米白米？"
-                elif "flavor" in missing:
-                    msg = "請問飯糰要什麼口味？"
-                else:
-                    msg = "飯糰要紫米白米？"
-                return {"ok": False, "missing": missing, "message": msg}
-
-            session = self.get_current_session()
-            resolved_flavor = self._resolve_riceball_flavor(flavor)
-            item_id = self._next_item_id(session, "riceball")
-
-            item: Dict[str, Any] = {
-                "item_id": item_id,
-                "itemtype": "riceball",
-                "flavor": resolved_flavor,
-                "rice": rice,
-                "large": bool(large),
-                "extra_egg": bool(extra_egg),
-                "spicy": bool(spicy),
-                "quantity": max(1, quantity),
-            }
-            if customization:
-                item["customization"] = customization
-
-            session["cart"].append(item)
-
-            display_name = f"{rice}{resolved_flavor}"
-            return {
-                "ok": True,
-                "item_id": item_id,
-                "message": f"已加入 {quantity}份 {display_name}",
-                "cart_count": len(session["cart"]),
-            }
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
+        result = _build_riceball(
+            flavor=flavor,
+            rice=rice,
+            large=large,
+            extra_egg=extra_egg,
+            spicy=spicy,
+            quantity=quantity,
+            customization=customization,
+        )
+        return (
+            result
+            if not result["ok"]
+            else self._append_to_cart(result["item"], "riceball", result["display_name"])
+        )
 
     def add_drink(
-        self,
-        flavor: Optional[str] = None,
-        size: Optional[str] = None,
-        temp: Optional[str] = None,
-        quantity: int = 1,
-        customization: Optional[str] = None,
+        self, flavor=None, size=None, temp=None, quantity=1, customization=None
     ) -> Dict[str, Any]:
-        """加入飲料到購物車。flavor（品項）、size（杯型）、temp（溫度）都必填。"""
-        try:
-            missing = []
-            if not flavor:
-                missing.append("flavor")
-            if not size:
-                missing.append("size")
-            if not temp:
-                missing.append("temp")
-            if missing:
-                parts = []
-                if "flavor" in missing:
-                    parts.append("飲料品項")
-                if "size" in missing or "temp" in missing:
-                    parts.append("規格（中冰/中溫/大冰/大溫）")
-                msg = f"請問{' 和 '.join(parts)}？"
-                return {"ok": False, "missing": missing, "message": msg}
-
-            session = self.get_current_session()
-            resolved_flavor = self._resolve_drink_flavor(flavor)
-            resolved_size = self._resolve_drink_size(size)
-            resolved_temp = self._resolve_drink_temp(temp)
-            item_id = self._next_item_id(session, "drink")
-
-            item: Dict[str, Any] = {
-                "item_id": item_id,
-                "itemtype": "drink",
-                "drink": resolved_flavor,
-                "size": resolved_size,
-                "temp": resolved_temp,
-                "quantity": max(1, quantity),
-            }
-            if customization:
-                item["customization"] = customization
-
-            session["cart"].append(item)
-
-            display_name = f"{resolved_size}{resolved_temp}{resolved_flavor}"
-            return {
-                "ok": True,
-                "item_id": item_id,
-                "message": f"已加入 {quantity}份 {display_name}",
-                "cart_count": len(session["cart"]),
-            }
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
+        result = _build_drink(
+            flavor=flavor, size=size, temp=temp, quantity=quantity, customization=customization
+        )
+        return (
+            result
+            if not result["ok"]
+            else self._append_to_cart(result["item"], "drink", result["display_name"])
+        )
 
     def add_carrier(
-        self,
-        carrier: Optional[str] = None,
-        flavor: Optional[str] = None,
-        menu_name: Optional[str] = None,
-        quantity: int = 1,
-        customization: Optional[str] = None,
+        self, carrier=None, flavor=None, menu_name=None, quantity=1, customization=None
     ) -> Dict[str, Any]:
-        """加入吐司/漢堡/饅頭系列到購物車。menu_name 為菜單真實品項名（source of truth）。"""
-        try:
-            missing = []
-            if not carrier:
-                missing.append("carrier")
-            if not flavor:
-                missing.append("flavor")
-            if missing:
-                parts = []
-                if "carrier" in missing:
-                    parts.append("載體類型（吐司/漢堡/饅頭）")
-                if "flavor" in missing:
-                    parts.append("餡料口味")
-                msg = f"請問{' 和 '.join(parts)}？"
-                return {"ok": False, "missing": missing, "message": msg}
+        result = _build_carrier(
+            carrier=carrier,
+            flavor=flavor,
+            menu_name=menu_name,
+            quantity=quantity,
+            customization=customization,
+        )
+        return (
+            result
+            if not result["ok"]
+            else self._append_to_cart(result["item"], "carrier", result["display_name"])
+        )
 
-            session = self.get_current_session()
-            item_id = self._next_item_id(session, "carrier")
+    def add_egg_pancake(self, flavor=None, quantity=1, customization=None) -> Dict[str, Any]:
+        result = _build_egg_pancake(flavor=flavor, quantity=quantity, customization=customization)
+        return (
+            result
+            if not result["ok"]
+            else self._append_to_cart(result["item"], "egg_pancake", result["display_name"])
+        )
 
-            item: Dict[str, Any] = {
-                "item_id": item_id,
-                "itemtype": "carrier",
-                "carrier": carrier,
-                "flavor": flavor,
-                "quantity": max(1, quantity),
-            }
-            if menu_name:
-                item["menu_name"] = menu_name
-            if customization:
-                item["customization"] = customization
-
-            session["cart"].append(item)
-
-            display_name = menu_name or f"{flavor}{carrier}"
-            return {
-                "ok": True,
-                "item_id": item_id,
-                "message": f"已加入 {quantity}份 {display_name}",
-                "cart_count": len(session["cart"]),
-            }
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
-
-    def add_egg_pancake(
-        self,
-        flavor: Optional[str] = None,
-        quantity: int = 1,
-        customization: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """加入蛋餅到購物車。flavor（口味）必填。"""
-        try:
-            if not flavor:
-                return {"ok": False, "missing": ["flavor"], "message": "請問蛋餅要什麼口味？"}
-
-            session = self.get_current_session()
-            resolved_flavor = self._resolve_egg_pancake_flavor(flavor)
-            item_id = self._next_item_id(session, "egg_pancake")
-
-            item: Dict[str, Any] = {
-                "item_id": item_id,
-                "itemtype": "egg_pancake",
-                "flavor": resolved_flavor,
-                "quantity": max(1, quantity),
-            }
-            if customization:
-                item["customization"] = customization
-
-            session["cart"].append(item)
-
-            return {
-                "ok": True,
-                "item_id": item_id,
-                "message": f"已加入 {quantity}份 {resolved_flavor}",
-                "cart_count": len(session["cart"]),
-            }
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
-
-    def add_snack(
-        self,
-        flavor: Optional[str] = None,
-        quantity: int = 1,
-        customization: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """加入點心到購物車。flavor（品項名稱）必填；鐵板麵需傳完整 menu_name（含麵體）。"""
-        try:
-            if not flavor:
-                return {"ok": False, "missing": ["flavor"], "message": "請問要什麼點心？"}
-
-            session = self.get_current_session()
-            resolved_flavor = self._resolve_snack_flavor(flavor)
-            item_id = self._next_item_id(session, "snack")
-
-            item: Dict[str, Any] = {
-                "item_id": item_id,
-                "itemtype": "snack",
-                "snack": resolved_flavor,
-                "quantity": max(1, quantity),
-            }
-            if customization:
-                item["customization"] = customization
-
-            session["cart"].append(item)
-
-            return {
-                "ok": True,
-                "item_id": item_id,
-                "message": f"已加入 {quantity}份 {resolved_flavor}",
-                "cart_count": len(session["cart"]),
-            }
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
+    def add_snack(self, flavor=None, quantity=1, customization=None) -> Dict[str, Any]:
+        resolved = _snack_resolve(flavor, _MENU_NAMES) or flavor
+        result = _build_snack(flavor=resolved, quantity=quantity, customization=customization)
+        return (
+            result
+            if not result["ok"]
+            else self._append_to_cart(result["item"], "snack", result["display_name"])
+        )
 
     def add_combo(
         self,
-        combo_name: Optional[str] = None,
-        rice: Optional[str] = None,
-        temp: Optional[str] = None,
-        flavor: Optional[str] = None,
-        customization: Optional[str] = None,
-        quantity: int = 1,
+        combo_name=None,
+        rice=None,
+        temp=None,
+        flavor=None,
+        customization=None,
+        quantity=1,
     ) -> Dict[str, Any]:
-        """加入套餐到購物車。combo_name 必填，其他依套餐要求。"""
-        try:
-            if not combo_name:
-                return {"ok": False, "missing": ["combo_name"], "message": "請問要哪個套餐？"}
-
-            # 用現有函式檢查套餐必填欄位
-            missing_msg, missing_fields = check_combo_required(
-                combo_name, temp, flavor, rice, customization
-            )
-            if missing_msg:
-                if "rice" in missing_fields:
-                    missing_msg = _augment_with_sold_out_rice(missing_msg)
-                return {"ok": False, "missing": missing_fields, "message": missing_msg}
-
-            session = self.get_current_session()
-            item_id = self._next_item_id(session, "combo")
-
-            item: Dict[str, Any] = {
-                "item_id": item_id,
-                "itemtype": "combo",
-                "combo_name": combo_name,
-                "quantity": max(1, quantity),
-            }
-            if temp:
-                item["drink_temp"] = temp
-            if rice:
-                item["rice"] = rice
-            if flavor:
-                item["sub_flavor"] = flavor
-            if customization:
-                item["customization"] = customization
-
-            session["cart"].append(item)
-
-            msg = f"已加入 {quantity}份 {combo_name}"
-            if customization:
-                msg += f"（{customization}）"
-            return {
-                "ok": True,
-                "item_id": item_id,
-                "message": msg,
-                "cart_count": len(session["cart"]),
-            }
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
+        result = _build_combo(
+            combo_name=combo_name,
+            rice=rice,
+            temp=temp,
+            flavor=flavor,
+            customization=customization,
+            quantity=quantity,
+        )
+        if not result["ok"]:
+            if "rice" in result.get("missing", []):
+                result["message"] = _augment_with_sold_out_rice(result["message"])
+            return result
+        return self._append_to_cart(result["item"], "combo", result["display_name"])
 
     # ============ 共用工具 ============
 
@@ -1343,7 +1065,6 @@ class ToolRegistry:
                     },
                 },
             },
-            # remove_from_cart / finalize_order 等由 voice_router 直接呼叫，不暴露給 LLM
             {
                 "type": "function",
                 "function": {
@@ -1363,12 +1084,7 @@ class ToolRegistry:
         ]
 
     def get_tool_map(self) -> Dict[str, Callable[..., Dict[str, Any]]]:
-        """
-        取得工具名到函數的映射
-
-        Returns:
-            工具映射字典
-        """
+        """取得工具名到函數的映射"""
         return {
             "add_item": self.add_item,
             "remove_from_cart": self.remove_from_cart,
@@ -1379,12 +1095,7 @@ class ToolRegistry:
         }
 
     def get_allowed_args(self) -> Dict[str, Set[str]]:
-        """
-        取得每個工具允許的參數集合
-
-        Returns:
-            參數映射字典
-        """
+        """取得每個工具允許的參數集合"""
         return {
             "add_item": {
                 "name",
