@@ -2,7 +2,7 @@ import re
 from collections import OrderedDict
 from typing import Dict, Any, List, Optional
 
-from src.tools.riceball_tool import menu_tool
+from src.tools.riceball_tool import menu_tool, INGREDIENT_SYNONYMS
 from src.tools.text_utils import chinese_number_to_int
 from src.tools.carrier_tool import carrier_tool
 from src.tools.drink_tool import drink_tool
@@ -80,6 +80,11 @@ def get_price_info(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             heavy=item.get("heavy", False),
             extra_egg=item.get("extra_egg", False),
         )
+        # 表內加料（如加起司）併入單品價；待確認品項維持基礎價，由 price_pending 標記
+        if pi.get("ok") and item.get("customization"):
+            addon_total, pending = _riceball_addon_quote(item)
+            if not pending and addon_total:
+                pi["total_price"] += addon_total
     elif rtype == "egg_pancake":
         pi = egg_pancake_tool.quote_egg_pancake_price(item)
     elif rtype == "carrier":
@@ -119,8 +124,8 @@ def is_price_pending_customization(customization: Optional[str]) -> bool:
 
     含未被否定的「加/換/多」類客製（如「加起司」「換醬」）→ True。
     純減料偏好（「不要辣」「去掉香菜」）、免費辣度（「加辣菜脯」）或無客製 → False，不誤標。
-    註：本階段不自動套加料表計價，加料類一律標待確認；
-    「加料表內自動算價（辣菜脯免費、起司算進價）」為後續增量。
+    註：飯糰品項由 _riceball_addon_quote 先套加料表精準計價，
+    本函式作為其餘品項與表外加料的 fallback 粗判。
     """
     if not customization:
         return False
@@ -138,8 +143,47 @@ def is_price_pending_customization(customization: Optional[str]) -> bool:
     return False
 
 
+# 加料同義詞由長到短排序，長字先匹配並從字串移除，避免「加起司片」被「起司」重複吃到
+_INGREDIENT_SYNS_SORTED = sorted(INGREDIENT_SYNONYMS, key=len, reverse=True)
+
+
+def _riceball_addon_quote(item: Dict[str, Any]) -> tuple:
+    """解析飯糰 customization 的「加X」配料並套加料表計價。
+
+    Returns:
+        (addon_total, pending)：表內加料 → (加價金額, False)；
+        表外加料或殘留「換/多」等無法計價的訊號 → (None, True)。
+    """
+    c = (item.get("customization") or "").strip()
+    for phrase in _FREE_SPICY_PHRASES:
+        c = c.replace(phrase, "")
+    add: List[str] = []
+    for syn in _INGREDIENT_SYNS_SORTED:
+        token = "加" + syn
+        if token not in c:
+            continue
+        c = c.replace(token, "")
+        # 加蛋已由 extra_egg 欄位加價，不重複計
+        if INGREDIENT_SYNONYMS[syn] == "蛋" and item.get("extra_egg"):
+            continue
+        add.append(INGREDIENT_SYNONYMS[syn])
+    # 殘留字串仍含加料訊號（換醬、多肉、加表外配料）→ 待確認
+    if is_price_pending_customization(c):
+        return None, True
+    if not add:
+        return 0, False
+    quote = menu_tool.quote_riceball_customization_price(
+        flavor=item.get("flavor") or "", add_ingredients=add
+    )
+    if not quote.get("ok") or quote.get("needs_store_confirm"):
+        return None, True
+    return quote["addon_total"], False
+
+
 def is_item_price_pending(item: Dict[str, Any]) -> bool:
     """購物車品項是否價格待確認（由 customization 推導，不另存欄位）。"""
+    if item.get("itemtype") == "riceball" and item.get("customization"):
+        return _riceball_addon_quote(item)[1]
     return is_price_pending_customization(item.get("customization"))
 
 
