@@ -106,6 +106,24 @@ describe('useStore', () => {
     });
   });
 
+  describe('當新增訊息時', () => {
+    it('addMessage assistant 應清掉 streamingText（即使內容不同）', () => {
+      useStore.setState({ messages: [], streamingText: '好的，飯糰' });
+      useStore.getState().addMessage('assistant', '好的，飯糰要白米紫米？');
+
+      const state = useStore.getState();
+      expect(state.messages).toHaveLength(1);
+      expect(state.streamingText).toBe('');
+    });
+
+    it('addMessage user 不影響 streamingText', () => {
+      useStore.setState({ messages: [], streamingText: '處理中' });
+      useStore.getState().addMessage('user', '我要一個飯糰');
+
+      expect(useStore.getState().streamingText).toBe('處理中');
+    });
+  });
+
   describe('當重置會話時', () => {
     it('resetSession 應重置全部狀態並生成新 sessionId', () => {
       const oldSessionId = useStore.getState().sessionId;

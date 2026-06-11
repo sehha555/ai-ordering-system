@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../store/useStore';
 import { useTypewriter } from '../hooks/useTypewriter';
+import type { ChatMessage } from '../types';
 import storeConfig from '../../config/store_config.json';
 
 const ASSISTANT_BUBBLE_STYLE = {
@@ -13,11 +14,47 @@ const ASSISTANT_BUBBLE_STYLE = {
   borderLeft: '3px solid var(--accent)',
 } as const;
 
+// 訊息氣泡：掛載時逐字打出內容；assistant 氣泡從串流氣泡已顯示的字數接續，不重打
+function MessageBubble({ msg, streamTypedCount }: { msg: ChatMessage; streamTypedCount: number }) {
+  const [initialIndex] = useState(() => (msg.role === 'assistant' ? streamTypedCount : 0));
+  const displayed = useTypewriter(msg.content, 35, initialIndex);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25 }}
+      className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+    >
+      <div
+        className="max-w-[80%] px-4 py-3 text-base"
+        style={
+          msg.role === 'user'
+            ? {
+                backgroundColor: 'var(--accent)',
+                color: 'white',
+                borderRadius: '1rem 1rem 0.25rem 1rem',
+              }
+            : ASSISTANT_BUBBLE_STYLE
+        }
+      >
+        {displayed}
+      </div>
+    </motion.div>
+  );
+}
+
 export default function ChatPanel() {
   const messages = useStore((state) => state.messages);
   const streamingText = useStore((state) => state.streamingText);
   const displayedText = useTypewriter(streamingText);
+  // 串流氣泡已打出的字數：完整訊息接手時從這裡接續（換手 render 讀到的是前一次的值）
+  const streamTypedCountRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    streamTypedCountRef.current = streamingText ? displayedText.length : 0;
+  }, [streamingText, displayedText]);
 
   // 新訊息或 streaming 開始/結束時滾動（!!streamingText 避免每 token 觸發）
   useEffect(() => {
@@ -40,28 +77,7 @@ export default function ChatPanel() {
         <div className="flex flex-col gap-3">
           <AnimatePresence initial={false}>
             {messages.map((msg) => (
-              <motion.div
-                key={msg.id}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.25 }}
-                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className="max-w-[80%] px-4 py-3 text-base"
-                  style={
-                    msg.role === 'user'
-                      ? {
-                          backgroundColor: 'var(--accent)',
-                          color: 'white',
-                          borderRadius: '1rem 1rem 0.25rem 1rem',
-                        }
-                      : ASSISTANT_BUBBLE_STYLE
-                  }
-                >
-                  {msg.content}
-                </div>
-              </motion.div>
+              <MessageBubble key={msg.id} msg={msg} streamTypedCount={streamTypedCountRef.current} />
             ))}
           </AnimatePresence>
           {streamingText && (
