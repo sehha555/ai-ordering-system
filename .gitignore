@@ -86,7 +86,6 @@ training_env/
 edge_tw_*.mp3
 
 # 本地參考用 HTML（不追蹤）
-docs/project-overview.html
 docs/system-analysis.html
 
 # Node

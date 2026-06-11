@@ -1,0 +1,1325 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Ordering System · Workflow Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    --bg: #fafaf9;
+    --surface: #ffffff;
+    --surface-alt: #f7f7f5;
+    --border: #ebebeb;
+    --border-strong: #d4d4d4;
+
+    --text: #37352F;
+    --text-secondary: #787774;
+    --text-muted: #9B9A97;
+    --text-dim: #c4c4c1;
+
+    --src: #DDEBF1;    --src-strong: #0B6E99;
+    --skill: #DDEDEA;  --skill-strong: #0F7B6C;
+    --store: #FAEBDD;  --store-strong: #D9730D;
+    --ext: #EAE4F2;    --ext-strong: #6940A5;
+
+    --highlight: #d9a200;
+    --highlight-soft: #fff4cc;
+    --line: #c4c4c1;
+    --line-ghost: rgba(155, 154, 151, 0.28);
+    --line-active: #d9a200;
+
+    --badge-bg: #ffffff;
+    --node-shadow: rgba(217, 162, 0, 0.22);
+  }
+  :root[data-theme="dark"] {
+    --bg: #18181a;
+    --surface: #232325;
+    --surface-alt: #1d1d1f;
+    --border: #34343a;
+    --border-strong: #4a4a52;
+
+    --text: #e8e8e3;
+    --text-secondary: #a8a8a2;
+    --text-muted: #757571;
+    --text-dim: #555550;
+
+    --src: #173544;    --src-strong: #6cb6d4;
+    --skill: #143630;  --skill-strong: #5fc4af;
+    --store: #3a2814;  --store-strong: #f4a85a;
+    --ext: #2b2240;    --ext-strong: #b8a0e0;
+
+    --highlight: #f4c84a;
+    --highlight-soft: #3a2e10;
+    --line: #4a4a52;
+    --line-ghost: rgba(117, 117, 113, 0.30);
+    --line-active: #f4c84a;
+
+    --badge-bg: #232325;
+    --node-shadow: rgba(244, 200, 74, 0.28);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "PingFang TC", "Microsoft JhengHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.55;
+    font-size: 13px;
+  }
+  .app { display: grid; grid-template-columns: 320px 1fr; min-height: 100vh; }
+
+  /* Sidebar */
+  aside {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 20px 16px;
+    overflow-y: auto;
+    max-height: 100vh;
+    position: sticky;
+    top: 0;
+  }
+  aside h1 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+  aside .subtitle { font-size: 12px; color: var(--text-secondary); margin-bottom: 16px; }
+  aside .header-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .theme-toggle {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+  }
+  .theme-toggle:hover {
+    background: var(--surface-alt);
+    border-color: var(--border-strong);
+    color: var(--text);
+  }
+  aside .legend { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 18px; }
+  aside .legend > div { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+  aside .legend .src { background: var(--src); color: var(--src-strong); }
+  aside .legend .skill { background: var(--skill); color: var(--skill-strong); }
+  aside .legend .store { background: var(--store); color: var(--store-strong); }
+  aside .legend .ext { background: var(--ext); color: var(--ext-strong); }
+  aside h2 { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; font-weight: 600; }
+
+  /* Overview button at top */
+  .overview-btn {
+    width: 100%;
+    padding: 12px;
+    border: 1.5px solid var(--highlight);
+    background: var(--highlight-soft);
+    color: var(--text);
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    margin-bottom: 14px;
+    transition: all 0.18s ease;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .overview-btn:hover { background: var(--highlight); color: white; }
+  .overview-btn.active { background: var(--highlight); color: white; }
+  .overview-btn .meta { font-size: 10.5px; opacity: 0.8; font-weight: 500; }
+
+  .category-filter {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 500;
+    padding: 8px 32px 8px 12px;
+    border-radius: 6px;
+    margin-bottom: 12px;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 4 L5 7 L8 4' fill='none' stroke='%23787774' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 10px;
+    transition: all 0.15s ease;
+  }
+  .category-filter:hover { border-color: var(--border-strong); }
+  .category-filter:focus { outline: none; border-color: var(--highlight); box-shadow: 0 0 0 2px var(--highlight-soft); }
+
+  .flow-item {
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    background: var(--surface);
+  }
+  .flow-item:hover { border-color: var(--border-strong); background: var(--surface-alt); transform: translateX(2px); }
+  .flow-item.active {
+    border-color: var(--highlight);
+    background: var(--highlight-soft);
+    box-shadow: 0 0 0 1px var(--highlight);
+  }
+  .flow-item .name { font-weight: 600; font-size: 12.5px; margin-bottom: 3px; }
+  .flow-item .trigger { font-size: 11px; color: var(--text-secondary); line-height: 1.4; }
+
+  main { padding: 24px 28px; overflow-x: auto; }
+  .flow-header { margin-bottom: 16px; animation: fadeSlide 0.35s ease backwards; }
+  .flow-header h2 { font-size: 20px; font-weight: 600; margin-bottom: 6px; }
+  .flow-header .desc { color: var(--text-secondary); font-size: 13px; max-width: 920px; }
+  .flow-header .trigger-pill {
+    display: inline-block;
+    background: var(--surface-alt);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    padding: 3px 9px;
+    border-radius: 4px;
+    font-size: 11.5px;
+    font-family: ui-monospace, monospace;
+    margin-top: 8px;
+  }
+  .flow-header .stats {
+    display: flex; gap: 14px; font-size: 11.5px; color: var(--text-muted);
+    margin-top: 8px;
+  }
+  .flow-header .stats b { color: var(--text); font-weight: 600; }
+
+  /* === Graph === */
+  .graph-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px 28px 32px;
+    margin-bottom: 20px;
+    position: relative;
+    min-width: 1280px;
+  }
+  .graph {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1.15fr 1fr;
+    gap: 56px;
+    position: relative;
+    z-index: 2;
+  }
+  .col-header {
+    font-size: 11px; font-weight: 600; color: var(--text-secondary);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    text-align: center; margin-bottom: 12px;
+    padding: 6px 8px; border-radius: 4px;
+  }
+  .col-header.src { background: var(--src); color: var(--src-strong); }
+  .col-header.skill { background: var(--skill); color: var(--skill-strong); }
+  .col-header.store { background: var(--store); color: var(--store-strong); }
+  .col-header.ext { background: var(--ext); color: var(--ext-strong); }
+  .col { display: flex; flex-direction: column; gap: 8px; }
+
+  /* Subgroup divider inside a column */
+  .subgroup-header {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    padding: 8px 4px 4px;
+    border-top: 1px dashed var(--border);
+    margin-top: 6px;
+  }
+  .subgroup-header:first-of-type, .col > .subgroup-header:first-child { border-top: none; margin-top: 0; padding-top: 4px; }
+
+  .node {
+    padding: 9px 11px;
+    border: 1.5px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    font-size: 11.5px;
+    font-weight: 500;
+    line-height: 1.3;
+    text-align: center;
+    transition:
+      opacity 0.35s ease,
+      transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+      border-color 0.3s ease,
+      background 0.3s ease,
+      color 0.3s ease,
+      box-shadow 0.3s ease;
+    position: relative;
+  }
+  .node.dim { opacity: 0.22; transform: scale(0.98); }
+  .node.overview { /* overview 模式：所有 node 都顯色但比 active 稍弱 */
+    opacity: 1;
+  }
+  .node.overview.src { border-color: var(--src-strong); background: var(--src); color: var(--src-strong); }
+  .node.overview.skill { border-color: var(--skill-strong); background: var(--skill); color: var(--skill-strong); }
+  .node.overview.store { border-color: var(--store-strong); background: var(--store); color: var(--store-strong); }
+  .node.overview.ext { border-color: var(--ext-strong); background: var(--ext); color: var(--ext-strong); }
+  .node.active {
+    border-width: 2px;
+    transform: scale(1.06);
+    box-shadow: 0 4px 14px var(--node-shadow);
+    animation: nodePop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+  }
+  @keyframes nodePop {
+    0%   { opacity: 0.2; transform: scale(0.85); }
+    60%  { transform: scale(1.1); }
+    100% { opacity: 1; transform: scale(1.06); }
+  }
+  .node.src.active { border-color: var(--src-strong); background: var(--src); color: var(--src-strong); }
+  .node.skill.active { border-color: var(--skill-strong); background: var(--skill); color: var(--skill-strong); }
+  .node.store.active { border-color: var(--store-strong); background: var(--store); color: var(--store-strong); }
+  .node.ext.active { border-color: var(--ext-strong); background: var(--ext); color: var(--ext-strong); }
+
+  .node .step-no {
+    position: absolute;
+    top: -10px; left: -10px;
+    width: 22px; height: 22px;
+    aspect-ratio: 1/1;
+    border-radius: 50%;
+    background: var(--highlight);
+    color: white;
+    font-size: 10.5px; font-weight: 700;
+    display: none;
+    align-items: center; justify-content: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+    border: 2px solid var(--surface);
+  }
+  .node.active .step-no { display: flex; }
+
+  /* === SVG edges === */
+  svg.edges {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 1;
+  }
+  svg.edges .edge-line {
+    fill: none;
+    stroke: var(--line-active);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+  }
+  svg.edges .edge-ghost {
+    fill: none;
+    stroke: var(--line-ghost);
+    stroke-width: 1.2;
+    stroke-linecap: round;
+  }
+  svg.edges .step-badge { fill: var(--badge-bg); stroke: var(--highlight); stroke-width: 2; }
+  svg.edges .step-badge-text {
+    fill: var(--highlight);
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    text-anchor: middle;
+    dominant-baseline: central;
+  }
+
+  /* === Step list === */
+  .steps {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 22px;
+  }
+  .steps h3 { font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; }
+  .step-row {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    animation: fadeSlide 0.45s ease backwards;
+  }
+  .step-row:last-child { border-bottom: none; }
+  .step-num {
+    width: 24px; height: 24px;
+    aspect-ratio: 1/1;
+    border-radius: 50%;
+    background: var(--highlight);
+    color: white;
+    font-size: 11px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .step-body .route { font-family: ui-monospace, monospace; font-size: 12px; color: var(--text); margin-bottom: 3px; }
+  .step-body .route .arrow { color: var(--text-muted); margin: 0 6px; }
+  .step-body .payload {
+    font-size: 11.5px; color: var(--text-secondary);
+    border-left: 2px solid var(--highlight); padding-left: 8px;
+  }
+
+  /* === Overview info pane === */
+  .overview-info {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 24px;
+  }
+  .overview-info h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+  .overview-info .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  @media (max-width: 1300px) { .overview-info .grid { grid-template-columns: repeat(2, 1fr); } }
+  .overview-info .pillar { padding: 14px; border-radius: 6px; }
+  .overview-info .pillar.src { background: var(--src); }
+  .overview-info .pillar.skill { background: var(--skill); }
+  .overview-info .pillar.store { background: var(--store); }
+  .overview-info .pillar.ext { background: var(--ext); }
+  .overview-info .pillar h4 { font-size: 12.5px; font-weight: 700; margin-bottom: 6px; }
+  .overview-info .pillar.src h4 { color: var(--src-strong); }
+  .overview-info .pillar.skill h4 { color: var(--skill-strong); }
+  .overview-info .pillar.store h4 { color: var(--store-strong); }
+  .overview-info .pillar.ext h4 { color: var(--ext-strong); }
+  .overview-info .pillar p { font-size: 11.5px; line-height: 1.45; color: var(--text); opacity: 0.85; }
+  .overview-info .hint {
+    margin-top: 16px; padding: 10px 14px;
+    background: var(--surface-alt); border-radius: 6px;
+    font-size: 12px; color: var(--text-secondary);
+    border-left: 3px solid var(--highlight);
+  }
+
+  /* === 專案進度區塊（Overview 模式） === */
+  .progress { margin-top: 20px; border-top: 1px solid var(--border); padding-top: 16px; }
+  .progress > h4 { font-size: 13px; font-weight: 700; margin-bottom: 12px; }
+  .milestones { margin-bottom: 4px; }
+  .milestone {
+    display: grid;
+    grid-template-columns: 16px 56px 1fr;
+    gap: 8px;
+    padding: 5px 0;
+    font-size: 12px;
+    align-items: start;
+  }
+  .milestone .dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--skill-strong);
+    margin-top: 4px;
+    justify-self: center;
+  }
+  .milestone.latest .dot { background: var(--highlight); box-shadow: 0 0 0 3px var(--highlight-soft); }
+  .milestone .date { color: var(--text-muted); font-family: ui-monospace, monospace; font-size: 11px; padding-top: 1px; white-space: nowrap; }
+  .milestone .what b { font-weight: 600; }
+  .milestone .what .sub { color: var(--text-secondary); font-size: 11.5px; }
+  .progress .row-title {
+    font-size: 11px; font-weight: 600; color: var(--text-secondary);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    margin: 14px 0 7px;
+  }
+  .todo-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+  .todo-pills span {
+    background: var(--store); color: var(--store-strong);
+    font-size: 11.5px; font-weight: 500;
+    padding: 3px 10px; border-radius: 99px;
+  }
+  .todo-pills span.backlog {
+    background: var(--surface-alt); color: var(--text-secondary);
+    border: 1px solid var(--border);
+  }
+  .progress .metrics {
+    display: flex; gap: 18px; flex-wrap: wrap;
+    margin-top: 14px; font-size: 11.5px; color: var(--text-muted);
+  }
+  .progress .metrics b { color: var(--text); font-weight: 600; }
+
+  @keyframes fadeSlide {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes drawLine { to { stroke-dashoffset: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <div class="header-row">
+      <h1>AI Ordering System</h1>
+      <button class="theme-toggle" id="theme-toggle" title="切換亮暗主題">Dark</button>
+    </div>
+    <div class="subtitle">Workflow Map · 軟工架構全景 · 更新 2026-06-11</div>
+    <div class="legend">
+      <div class="src">觸發 / 客戶端</div>
+      <div class="skill">前端 Next.js</div>
+      <div class="store">後端 FastAPI</div>
+      <div class="ext">模型 / 資料</div>
+    </div>
+
+    <button class="overview-btn active" id="overview-btn">
+      <span>全景模式 Overview</span>
+      <span class="meta">所有節點 + 全部資料流</span>
+    </button>
+
+    <h2>Flows · 點擊聚焦</h2>
+    <select id="category-filter" class="category-filter"></select>
+    <div id="flow-list"></div>
+  </aside>
+
+  <main>
+    <div class="flow-header" id="flow-header"></div>
+    <div class="graph-wrap">
+      <div class="graph" id="graph"></div>
+      <svg class="edges" id="edges"></svg>
+    </div>
+    <div id="info-pane"></div>
+  </main>
+</div>
+
+<script>
+const DATA = {
+  "nodes": [
+    /* === 觸發 / 客戶端 === */
+    { "id": "src_customer",   "label": "客人",                "kind": "source", "subgroup": "people" },
+    { "id": "src_boss",       "label": "老闆",                "kind": "source", "subgroup": "people" },
+    { "id": "src_mic",        "label": "麥克風 MediaStream",   "kind": "source", "subgroup": "device" },
+    { "id": "src_keyboard",   "label": "鍵盤輸入",            "kind": "source", "subgroup": "device" },
+    { "id": "src_browser",    "label": "瀏覽器開啟頁面",       "kind": "source", "subgroup": "device" },
+    { "id": "src_session_id", "label": "Session ID (UUID)",   "kind": "source", "subgroup": "identity" },
+
+    /* === 前端 Next.js === */
+    { "id": "fe_page",          "label": "app/page.tsx 主畫面",      "kind": "skill", "subgroup": "ui_main" },
+    { "id": "fe_vc",            "label": "VoiceController.tsx",      "kind": "skill", "subgroup": "ui_main" },
+    { "id": "fe_visual",        "label": "AudioVisualizer 3D 球體",  "kind": "skill", "subgroup": "ui_main" },
+    { "id": "fe_chat",          "label": "ChatPanel 對話氣泡",       "kind": "skill", "subgroup": "ui_main" },
+    { "id": "fe_order",         "label": "OrderPanel 點餐單",        "kind": "skill", "subgroup": "ui_main" },
+    { "id": "fe_checkout",      "label": "CheckoutFlow 結帳",        "kind": "skill", "subgroup": "ui_main" },
+    { "id": "fe_recording",     "label": "useRecording (webm)",      "kind": "skill", "subgroup": "hooks" },
+    { "id": "fe_vad",           "label": "useVAD 1.5s 斷句",         "kind": "skill", "subgroup": "hooks" },
+    { "id": "fe_sse",           "label": "useSSE 接收事件",          "kind": "skill", "subgroup": "hooks" },
+    { "id": "fe_playback",      "label": "useAudioPlayback",         "kind": "skill", "subgroup": "hooks" },
+    { "id": "fe_store",         "label": "Zustand useStore",         "kind": "skill", "subgroup": "state" },
+    { "id": "fe_admin_orders",  "label": "/admin/orders 訂單管理",   "kind": "skill", "subgroup": "admin_ui" },
+    { "id": "fe_admin_menu",    "label": "/admin/menu 售完設定",     "kind": "skill", "subgroup": "admin_ui" },
+    { "id": "fe_admin_monitor", "label": "/admin/monitor Pipeline",  "kind": "skill", "subgroup": "admin_ui" },
+    { "id": "fe_admin_dash",    "label": "/admin/dashboard",         "kind": "skill", "subgroup": "admin_ui" },
+
+    /* === 後端 FastAPI === */
+    { "id": "be_app",             "label": "app.py 伺服器入口",         "kind": "storage", "subgroup": "boot" },
+    { "id": "be_health",          "label": "health.py /healthz",        "kind": "storage", "subgroup": "boot" },
+    { "id": "be_keepalive",       "label": "LLM keepalive 健康監測",    "kind": "storage", "subgroup": "boot" },
+    { "id": "be_voice_router",    "label": "voice_router POST /api/voice-chat", "kind": "storage", "subgroup": "routers" },
+    { "id": "be_text_router",    "label": "voice_router POST /api/text-chat",   "kind": "storage", "subgroup": "routers" },
+    { "id": "be_checkout_router", "label": "checkout_router POST /api/checkout","kind": "storage", "subgroup": "routers" },
+    { "id": "be_menu_router",     "label": "menu GET /api/menu /menu/state",    "kind": "storage", "subgroup": "routers" },
+    { "id": "be_admin_router",    "label": "admin_router 後台 API",     "kind": "storage", "subgroup": "routers" },
+    { "id": "be_dialog",          "label": "DialogueManager",           "kind": "storage", "subgroup": "dm" },
+    { "id": "be_session",         "label": "SessionStore in-memory",    "kind": "storage", "subgroup": "dm" },
+    { "id": "be_prompt",          "label": "system_prompts + priming",  "kind": "storage", "subgroup": "dm" },
+    { "id": "be_stream",          "label": "streaming_orchestrator",    "kind": "storage", "subgroup": "dm" },
+    { "id": "be_tag",             "label": "tag_parser + text_tag_executor", "kind": "storage", "subgroup": "dm" },
+    { "id": "be_checkout_handler","label": "checkout_handler 結帳狀態機","kind": "storage", "subgroup": "dm" },
+    { "id": "be_tool_reg",        "label": "tool_registry + *_tool.py", "kind": "storage", "subgroup": "dm" },
+    { "id": "be_asr_svc",         "label": "asr_service + ffmpeg",      "kind": "storage", "subgroup": "ai_svc" },
+    { "id": "be_post",            "label": "asr_postprocess opencc",    "kind": "storage", "subgroup": "ai_svc" },
+    { "id": "be_llm_svc",         "label": "llm_tool_caller",           "kind": "storage", "subgroup": "ai_svc" },
+    { "id": "be_tts_svc",         "label": "tts_service 分句 base64",   "kind": "storage", "subgroup": "ai_svc" },
+    { "id": "be_broadcast",       "label": "order/pipeline broadcaster","kind": "storage", "subgroup": "support" },
+    { "id": "be_repo",            "label": "order_repository",          "kind": "storage", "subgroup": "support" },
+
+    /* === 模型 / 資料 === */
+    { "id": "ext_qwen_asr", "label": "Qwen3-ASR 1.7B",         "kind": "external", "subgroup": "ai_model" },
+    { "id": "ext_llama",    "label": "llama-server Qwen3.5-9B","kind": "external", "subgroup": "ai_model" },
+    { "id": "ext_omni",     "label": "OmniVoice 0.1.5",        "kind": "external", "subgroup": "ai_model" },
+    { "id": "st_menu",      "label": "menu.json 菜單 + 售完",   "kind": "external", "subgroup": "storage" },
+    { "id": "st_orders",    "label": "SQLite orders.db",        "kind": "external", "subgroup": "storage" },
+    { "id": "st_audio",     "label": "logs/audio/",             "kind": "external", "subgroup": "storage" },
+    { "id": "st_conv",      "label": "logs/conversations/",     "kind": "external", "subgroup": "storage" },
+    { "id": "st_env",       "label": ".env.dev 設定",           "kind": "external", "subgroup": "config" }
+  ],
+  "subgroup_labels": {
+    "people":    "客戶端",
+    "device":    "輸入裝置",
+    "identity":  "識別",
+    "ui_main":   "主畫面元件",
+    "hooks":     "Hooks 邏輯",
+    "state":     "前端狀態",
+    "admin_ui":  "後台頁面",
+    "boot":      "啟動 / 健檢",
+    "routers":   "API Routers",
+    "dm":        "對話腦袋",
+    "ai_svc":    "AI 服務包裝",
+    "support":   "後台支援",
+    "ai_model":  "AI 模型",
+    "storage":   "持久化儲存",
+    "config":    "設定"
+  },
+  "flow_categories": [
+    { "id": "customer",    "label": "客人點餐" },
+    { "id": "ai-pipeline", "label": "AI Pipeline" },
+    { "id": "checkout",    "label": "結帳" },
+    { "id": "admin",       "label": "老闆後台" },
+    { "id": "system",      "label": "系統運作" }
+  ],
+  "flows": [
+    {
+      "id": "flow_voice_chat",
+      "category": "customer",
+      "name": "語音點餐 — 完整一輪",
+      "trigger": "客人按下錄音 → 講話 → 聽到 AI 回應",
+      "description": "從麥克風到 AI 回應的完整管線。中間經過錄音 → VAD 自動斷句 → SSE 上傳 → 後端 ASR/LLM/TTS → 邊產邊推回前端播放。首字延遲 ~1.7 秒。",
+      "steps": [
+        { "from": "src_customer",     "to": "src_mic",          "payload": "按下錄音按鈕 + 講話" },
+        { "from": "src_mic",          "to": "fe_recording",     "payload": "MediaStream 啟動 MediaRecorder" },
+        { "from": "fe_recording",     "to": "fe_vad",           "payload": "音量 + 靜音偵測" },
+        { "from": "fe_vad",           "to": "fe_sse",           "payload": "1.5s 靜音 → 停止 → 上傳" },
+        { "from": "fe_sse",           "to": "be_voice_router",  "payload": "POST FormData(audio.webm, session_id)" },
+        { "from": "be_voice_router",  "to": "be_asr_svc",       "payload": "ffmpeg webm→wav" },
+        { "from": "be_asr_svc",       "to": "be_dialog",        "payload": "繁中文字 (經 opencc 修正)" },
+        { "from": "be_dialog",        "to": "fe_chat",          "payload": "SSE transcription → 藍色氣泡" }
+      ]
+    },
+    {
+      "id": "flow_text_chat",
+      "category": "customer",
+      "name": "純文字點餐 — 跳過 ASR",
+      "trigger": "鍵盤打字 + Enter (或 LLM fallback 自動追問)",
+      "description": "跳過麥克風與 ASR，直接送文字給 DialogueManager。LLM 缺槽位時後端 fallback 也走這條 endpoint。",
+      "steps": [
+        { "from": "src_keyboard",   "to": "fe_vc",          "payload": "鍵盤輸入文字" },
+        { "from": "fe_vc",          "to": "fe_sse",         "payload": "包成 JSON {text, session_id}" },
+        { "from": "fe_sse",         "to": "be_text_router", "payload": "POST /api/text-chat" },
+        { "from": "be_text_router", "to": "be_dialog",      "payload": "handle(text)" },
+        { "from": "be_dialog",      "to": "fe_chat",        "payload": "SSE text_delta + tts_text" }
+      ]
+    },
+    {
+      "id": "flow_ai_response",
+      "category": "customer",
+      "name": "AI 回應 — LLM 邊吐字邊念",
+      "trigger": "ASR 文字進入 DialogueManager 後",
+      "description": "DM 組 prompt → LLM 串流 token → 邊產字邊分句送 TTS → MP3 base64 推前端播放。低延遲關鍵在 streaming_orchestrator 的「邊產邊送」。",
+      "steps": [
+        { "from": "be_dialog",  "to": "be_prompt",   "payload": "載入 system + 9 條 priming + history" },
+        { "from": "be_prompt",  "to": "be_llm_svc",  "payload": "組裝 messages temp 0.2" },
+        { "from": "be_llm_svc", "to": "ext_llama",   "payload": "POST /v1/chat/completions stream" },
+        { "from": "ext_llama",  "to": "be_stream",   "payload": "token 串流 + 句號斷句" },
+        { "from": "be_stream",  "to": "be_tts_svc",  "payload": "每句文字" },
+        { "from": "be_tts_svc", "to": "ext_omni",    "payload": "MP3 bytes" },
+        { "from": "ext_omni",   "to": "fe_playback", "payload": "SSE audio_chunk base64" }
+      ]
+    },
+    {
+      "id": "flow_add_item",
+      "category": "customer",
+      "name": "加品項到購物車",
+      "trigger": "客人說「我要鮪魚飯糰」",
+      "description": "LLM 在回覆裡夾 [ADD:鮪魚飯糰|rice=白米] tag。tag_parser 正則解析 → text_tag_executor 呼 tool_registry.add_item。品項名走 10 步 fallback chain 解析：精確匹配 → 別名 → 拼音同音修正（「委魚飯糰」自動修成「鮪魚飯糰」）→ 子字串 → rapidfuzz。改完 cart 後 SSE 推 cart_update 給前端。",
+      "steps": [
+        { "from": "src_customer", "to": "be_dialog",   "payload": "客人原話 (經 ASR)" },
+        { "from": "be_dialog",    "to": "ext_llama",   "payload": "LLM 推論" },
+        { "from": "ext_llama",    "to": "be_tag",      "payload": "回覆含 [ADD:鮪魚飯糰|rice=白米]" },
+        { "from": "be_tag",       "to": "be_tool_reg", "payload": "呼叫 add_item(品項, 選項)" },
+        { "from": "be_tool_reg",  "to": "be_session",  "payload": "更新 cart" },
+        { "from": "be_session",   "to": "fe_order",    "payload": "SSE cart_update → OrderPanel 更新" }
+      ]
+    },
+    {
+      "id": "flow_remove_item",
+      "category": "customer",
+      "name": "移除購物車品項",
+      "trigger": "客人說「飯糰不要了」「換成蛋餅」",
+      "description": "LLM 用 [REMOVE:品項] tag 觸發移除。「換品項」會同時送 [REMOVE] + [ADD]。priming demo 10 教 LLM 這個模式。",
+      "steps": [
+        { "from": "src_customer", "to": "be_dialog",   "payload": "客人原話" },
+        { "from": "be_dialog",    "to": "ext_llama",   "payload": "LLM 推論" },
+        { "from": "ext_llama",    "to": "be_tag",      "payload": "[REMOVE:鮪魚飯糰]" },
+        { "from": "be_tag",       "to": "be_tool_reg", "payload": "remove_item(品項)" },
+        { "from": "be_tool_reg",  "to": "be_session",  "payload": "刪除 cart 中的 line" },
+        { "from": "be_session",   "to": "fe_order",    "payload": "SSE cart_update" }
+      ]
+    },
+    {
+      "id": "flow_query_menu",
+      "category": "customer",
+      "name": "查詢菜單 / 推薦",
+      "trigger": "客人說「有什麼飯糰」「推薦一個」",
+      "description": "LLM 用 [QUERY:分類] tag 觸發查詢。tool_registry 讀 menu.json 回傳該分類所有品項與售完狀態，LLM 拿到後組自然語言回覆。",
+      "steps": [
+        { "from": "src_customer", "to": "be_dialog",   "payload": "「有什麼飯糰」" },
+        { "from": "be_dialog",    "to": "ext_llama",   "payload": "LLM 推論" },
+        { "from": "ext_llama",    "to": "be_tag",      "payload": "[QUERY:飯糰]" },
+        { "from": "be_tag",       "to": "be_tool_reg", "payload": "query_menu(分類)" },
+        { "from": "be_tool_reg",  "to": "st_menu",     "payload": "讀 menu.json" },
+        { "from": "st_menu",      "to": "be_dialog",   "payload": "回傳該分類品項 + 售完清單" }
+      ]
+    },
+    {
+      "id": "flow_pending_followup",
+      "category": "customer",
+      "name": "缺槽位 — 後端 fallback 追問",
+      "trigger": "LLM 加飯糰沒問米種",
+      "description": "9B 模型偶爾無視「飯糰必問米種」prompt。後端 add_item validation 攔截，回 ok:false + 追問訊息「請問米要白米還是紫米」。priming 配 system prompt 雙保險。",
+      "steps": [
+        { "from": "ext_llama",   "to": "be_tag",      "payload": "[ADD:鮪魚飯糰] 沒 rice=" },
+        { "from": "be_tag",      "to": "be_tool_reg", "payload": "add_item 缺米種" },
+        { "from": "be_tool_reg", "to": "be_session",  "payload": "存 pending_frames" },
+        { "from": "be_session",  "to": "be_dialog",   "payload": "ok:false + msg=米種" },
+        { "from": "be_dialog",   "to": "fe_chat",     "payload": "SSE tts_text 「請問米要白米還是紫米」" }
+      ]
+    },
+
+    {
+      "id": "flow_asr_pipeline",
+      "category": "ai-pipeline",
+      "name": "ASR 管線 — 聲音變繁中文字",
+      "trigger": "voice_router 收到音檔",
+      "description": "webm → wav → Qwen3-ASR 出簡中 → opencc s2twp 簡轉繁 → 領域詞彙修正表（130 條，已凍結：只管非同音錯誤如「內藥」→「內用」、「西餐」→「C餐」）→ 繁中文字進 DM。同音品項錯字不靠修正表，由品項解析層的拼音匹配自動修正。",
+      "steps": [
+        { "from": "be_voice_router", "to": "be_asr_svc",   "payload": "webm bytes" },
+        { "from": "be_asr_svc",      "to": "ext_qwen_asr", "payload": "ffmpeg→wav + invoke 模型" },
+        { "from": "ext_qwen_asr",    "to": "be_post",      "payload": "簡中文字" },
+        { "from": "be_post",         "to": "be_dialog",    "payload": "繁中 + 詞彙修正" },
+        { "from": "be_asr_svc",      "to": "st_audio",     "payload": "存音檔 (訓練資料用)" }
+      ]
+    },
+    {
+      "id": "flow_llm_reasoning",
+      "category": "ai-pipeline",
+      "name": "LLM 推論 — 組 Prompt 到吐字",
+      "trigger": "DM.handle 進入後",
+      "description": "system_prompts + 9 條 tool_priming demo + llm_history + State Summary (cart + pending_frames + 售完清單) 組成 messages。Qwen3.5-9B Q4_K_XL temp 0.2 跑在 llama-server :8080。",
+      "steps": [
+        { "from": "be_dialog",  "to": "be_prompt",  "payload": "讀 system + priming" },
+        { "from": "be_session", "to": "be_prompt",  "payload": "llm_history + cart + 售完" },
+        { "from": "be_prompt",  "to": "be_llm_svc", "payload": "組裝 messages" },
+        { "from": "be_llm_svc", "to": "ext_llama",  "payload": "POST /v1/chat/completions stream" },
+        { "from": "ext_llama",  "to": "be_dialog",  "payload": "token 串流回 content" }
+      ]
+    },
+    {
+      "id": "flow_tts_streaming",
+      "category": "ai-pipeline",
+      "name": "TTS 串流 — 邊產邊播",
+      "trigger": "streaming_orchestrator 收到 LLM token",
+      "description": "依句號 / 問號分句，每完整一句立刻丟 OmniVoice 產 MP3。前端用 new Audio(blobUrl).play() 播放（絕對不能用 decodeAudioData，會破音）。",
+      "steps": [
+        { "from": "ext_llama",  "to": "be_stream",   "payload": "token text_delta" },
+        { "from": "be_stream",  "to": "be_tts_svc",  "payload": "完整一句中文" },
+        { "from": "be_tts_svc", "to": "ext_omni",    "payload": "HTTP /tts" },
+        { "from": "ext_omni",   "to": "be_tts_svc",  "payload": "MP3 bytes" },
+        { "from": "be_tts_svc", "to": "fe_sse",      "payload": "SSE audio_chunk base64" },
+        { "from": "fe_sse",     "to": "fe_playback", "payload": "new Audio(blobUrl).play()" }
+      ]
+    },
+    {
+      "id": "flow_session_state",
+      "category": "ai-pipeline",
+      "name": "對話狀態 — SessionStore 讀寫",
+      "trigger": "每輪 DM.handle 開頭與結尾",
+      "description": "後端記憶體 SessionStore[session_id] 存 cart + history + llm_history + pending_frames + status。重啟後端會清空。Session ID 由前端 crypto.randomUUID() 生，所有 API 都帶。",
+      "steps": [
+        { "from": "src_session_id", "to": "be_voice_router", "payload": "session_id from FormData" },
+        { "from": "be_voice_router","to": "be_session",      "payload": "讀對應 session" },
+        { "from": "be_session",     "to": "be_dialog",       "payload": "cart + history" },
+        { "from": "be_dialog",      "to": "be_session",      "payload": "寫回新狀態" },
+        { "from": "be_dialog",      "to": "st_conv",         "payload": "存對話 JSON (訓練資料)" }
+      ]
+    },
+
+    {
+      "id": "flow_voice_checkout",
+      "category": "checkout",
+      "name": "語音結帳 — [CHECKOUT] 狀態機",
+      "trigger": "客人說「就這樣」「結帳」",
+      "description": "LLM 輸出 [CHECKOUT] tag 進入 checkout_handler 狀態機：CK_DINE 問內用/外帶 → CK_PAY 問付款方式 → 齊全後寫訂單。結帳中講品項關鍵字會自動退出狀態機回 LLM 繼續點餐。購物車有 price_pending（價格待確認）品項時擋下不能先付。",
+      "steps": [
+        { "from": "src_customer",        "to": "be_dialog",            "payload": "「結帳」(經 ASR)" },
+        { "from": "be_dialog",           "to": "ext_llama",            "payload": "LLM 推論" },
+        { "from": "ext_llama",           "to": "be_tag",               "payload": "回覆含 [CHECKOUT]" },
+        { "from": "be_tag",              "to": "be_checkout_handler",  "payload": "進入 CK_DINE 狀態" },
+        { "from": "be_checkout_handler", "to": "fe_chat",              "payload": "「請問內用還是外帶？」→ 答完問付款" },
+        { "from": "be_checkout_handler", "to": "be_repo",              "payload": "資訊齊全 → finalize 寫訂單" }
+      ]
+    },
+    {
+      "id": "flow_checkout",
+      "category": "checkout",
+      "name": "按鈕結帳 — 寫入 SQLite + 推後台",
+      "trigger": "客人按 OrderPanel 結帳按鈕（語音的 fallback）",
+      "description": "CheckoutFlow 三步驟：內用/外帶 → 付款方式 → 完成。提交瞬間後端把 SessionStore.cart 寫進 SQLite，產生取餐號，同時 SSE 推給後台訂單頁「叮咚」一聲。price_pending 品項同樣會擋結帳。",
+      "steps": [
+        { "from": "src_customer",      "to": "fe_checkout",        "payload": "點結帳按鈕" },
+        { "from": "fe_checkout",       "to": "be_checkout_router", "payload": "POST {session_id, 內用/外帶, 付款}" },
+        { "from": "be_checkout_router","to": "be_session",         "payload": "讀 cart" },
+        { "from": "be_checkout_router","to": "be_repo",            "payload": "寫訂單" },
+        { "from": "be_repo",           "to": "st_orders",          "payload": "INSERT SQLite + 產生取餐號" },
+        { "from": "be_checkout_router","to": "be_broadcast",       "payload": "publish 新訂單事件" }
+      ]
+    },
+    {
+      "id": "flow_cart_sync",
+      "category": "checkout",
+      "name": "購物車同步 — 前後端一致",
+      "trigger": "任何 cart 變動",
+      "description": "購物車的 source of truth 是後端 SessionStore，前端 Zustand 是顯示用副本。靠 SSE cart_update 單向同步，前端不會主動 push。",
+      "steps": [
+        { "from": "be_tool_reg", "to": "be_session", "payload": "改 cart" },
+        { "from": "be_session",  "to": "be_stream",  "payload": "emit cart_update event" },
+        { "from": "be_stream",   "to": "fe_sse",     "payload": "SSE event=cart_update" },
+        { "from": "fe_sse",      "to": "fe_store",   "payload": "setCart(payload)" },
+        { "from": "fe_store",    "to": "fe_order",   "payload": "React re-render OrderPanel" }
+      ]
+    },
+
+    {
+      "id": "flow_admin_new_order",
+      "category": "admin",
+      "name": "新訂單即時推播",
+      "trigger": "客人結帳發生時",
+      "description": "checkout_router 寫完 SQLite 後 publish 到 order_broadcaster，所有掛在 /orders/stream SSE 的後台頁面同時收到通知並播音效。",
+      "steps": [
+        { "from": "be_checkout_router", "to": "be_broadcast",    "payload": "publish order_created" },
+        { "from": "be_broadcast",       "to": "be_admin_router", "payload": "GET /orders/stream SSE" },
+        { "from": "be_admin_router",    "to": "fe_admin_orders", "payload": "SSE event=new_order" },
+        { "from": "fe_admin_orders",    "to": "src_boss",        "payload": "叮咚音效 + 訂單卡片" }
+      ]
+    },
+    {
+      "id": "flow_admin_change_status",
+      "category": "admin",
+      "name": "更新訂單狀態",
+      "trigger": "老闆點「製作中」「完成」",
+      "description": "後台訂單卡片點按鈕 → PATCH /orders/{id}/status → 更新 SQLite。也支援改付款狀態 PATCH /orders/{id}/payment。",
+      "steps": [
+        { "from": "src_boss",          "to": "fe_admin_orders", "payload": "點狀態按鈕" },
+        { "from": "fe_admin_orders",   "to": "be_admin_router", "payload": "PATCH /orders/{id}/status" },
+        { "from": "be_admin_router",   "to": "be_repo",         "payload": "update_order_status" },
+        { "from": "be_repo",           "to": "st_orders",       "payload": "UPDATE SQLite" }
+      ]
+    },
+    {
+      "id": "flow_admin_soldout",
+      "category": "admin",
+      "name": "標記品項售完",
+      "trigger": "老闆在 /admin/menu 切換品項開關",
+      "description": "PUT /menu/sold-out/item 改 menu.json。下次 LLM 載 prompt 時會看到「售完：xxx」清單，自然不會推銷售完品。client 對話不需重啟。",
+      "steps": [
+        { "from": "src_boss",         "to": "fe_admin_menu",   "payload": "切換品項售完開關" },
+        { "from": "fe_admin_menu",    "to": "be_admin_router", "payload": "PUT /menu/sold-out/item" },
+        { "from": "be_admin_router",  "to": "st_menu",         "payload": "改 menu.json sold_out 陣列" },
+        { "from": "st_menu",          "to": "be_dialog",       "payload": "下輪 prompt 注入「售完：xxx」" }
+      ]
+    },
+    {
+      "id": "flow_admin_monitor",
+      "category": "admin",
+      "name": "Pipeline 即時監控",
+      "trigger": "老闆開 /admin/monitor 頁",
+      "description": "streaming_orchestrator 在每階段（ASR 完成 / LLM 首字 / TTS 完成）發 event，pipeline_event_broadcaster 同步推給所有 monitor 頁。可即時看到每輪對話的延遲分解。",
+      "steps": [
+        { "from": "be_stream",       "to": "be_broadcast",      "payload": "每階段耗時事件" },
+        { "from": "be_broadcast",    "to": "be_admin_router",   "payload": "GET /monitor/stream SSE" },
+        { "from": "be_admin_router", "to": "fe_admin_monitor",  "payload": "SSE pipeline_event" },
+        { "from": "fe_admin_monitor","to": "src_boss",          "payload": "即時 timeline 圖" }
+      ]
+    },
+    {
+      "id": "flow_admin_dashboard",
+      "category": "admin",
+      "name": "後台首頁 — 效能統計",
+      "trigger": "老闆開 /admin/dashboard 頁",
+      "description": "拉 /api/perf-stats 看平均延遲、token/s、失敗率。/api/perf-history 看趨勢圖。",
+      "steps": [
+        { "from": "src_boss",        "to": "fe_admin_dash",   "payload": "開啟 dashboard 頁" },
+        { "from": "fe_admin_dash",   "to": "be_admin_router", "payload": "GET /api/perf-stats" },
+        { "from": "be_admin_router", "to": "fe_admin_dash",   "payload": "JSON 統計資料" }
+      ]
+    },
+
+    {
+      "id": "flow_app_boot",
+      "category": "system",
+      "name": "後端啟動 — 預熱三模型",
+      "trigger": "uvicorn src.api.app:app 啟動",
+      "description": "app.py 讀 .env.dev 決定要載哪些 ASR/LLM/TTS backend，啟動時各送一次 warmup 請求預熱 KV cache（LLM 必須送完整 system prompt 才有效）。啟動順序重要：Backend(ASR) 先 → llama-server → OmniVoice，否則 VRAM 不夠。",
+      "steps": [
+        { "from": "be_app", "to": "st_env",       "payload": "讀 ASR_BACKEND TTS_BACKEND" },
+        { "from": "be_app", "to": "ext_qwen_asr", "payload": "warmup invoke 模型" },
+        { "from": "be_app", "to": "ext_llama",    "payload": "warmup 完整 system prompt" },
+        { "from": "be_app", "to": "ext_omni",     "payload": "warmup 短句 TTS" },
+        { "from": "be_app", "to": "src_browser",  "payload": "server ready :8001" }
+      ]
+    },
+    {
+      "id": "flow_llm_keepalive",
+      "category": "system",
+      "name": "LLM keepalive — 防 idle + 健康監測",
+      "trigger": "後端啟動後背景常駐（每 5 分鐘）",
+      "description": "lifespan 背景 task 每 5 分鐘 ping llama-server 防 idle，並量測回應時間：連續 3 次 >5s 升 error log 警告（llama-server 推理反覆變慢的已知問題，根因未解，重啟是唯一恢復手段），恢復正常時發通知。",
+      "steps": [
+        { "from": "be_app",       "to": "be_keepalive", "payload": "lifespan 啟動背景迴圈" },
+        { "from": "be_keepalive", "to": "ext_llama",    "payload": "每 5 分鐘 ping (完整 context)" },
+        { "from": "ext_llama",    "to": "be_keepalive", "payload": "回應計時：連續 3 次 >5s → error 警告" }
+      ]
+    },
+    {
+      "id": "flow_page_init",
+      "category": "system",
+      "name": "前端首次載入",
+      "trigger": "客人開啟 http://localhost:3000",
+      "description": "Next.js page.tsx 渲染後，前端產 session_id 存進 Zustand store，並 fetch /api/menu /api/store-config 拿菜單與店家資訊。",
+      "steps": [
+        { "from": "src_browser",    "to": "fe_page",        "payload": "Next.js render page.tsx" },
+        { "from": "fe_page",        "to": "src_session_id", "payload": "crypto.randomUUID()" },
+        { "from": "src_session_id", "to": "fe_store",       "payload": "存進 Zustand" },
+        { "from": "fe_page",        "to": "be_menu_router", "payload": "fetch /api/menu /api/store-config" },
+        { "from": "be_menu_router", "to": "fe_store",       "payload": "菜單 + 店家設定" }
+      ]
+    },
+    {
+      "id": "flow_health_check",
+      "category": "system",
+      "name": "健康檢查",
+      "trigger": "Docker / 監控系統定期 ping",
+      "description": "/healthz 簡單回 200，/readyz 額外檢查三大模型是否都載完。",
+      "steps": [
+        { "from": "src_browser", "to": "be_health",   "payload": "GET /healthz 或 /readyz" },
+        { "from": "be_health",   "to": "src_browser", "payload": "200 ok 或 503 not ready" }
+      ]
+    }
+  ]
+};
+
+const KIND_MAP = { source: 'src', skill: 'skill', storage: 'store', external: 'ext' };
+const KIND_COL_LABEL = { src: '觸發 / 客戶端', skill: '前端 Next.js', store: '後端 FastAPI', ext: '模型 / 資料' };
+const STAGGER_MS = 200;
+
+// === Subgroup order per column ===
+const SUBGROUP_ORDER = {
+  src:   ['people', 'device', 'identity'],
+  skill: ['ui_main', 'hooks', 'state', 'admin_ui'],
+  store: ['boot', 'routers', 'dm', 'ai_svc', 'support'],
+  ext:   ['ai_model', 'storage', 'config']
+};
+
+let currentFlow = null;   // null = overview
+let renderToken = 0;
+
+function isOverview() { return currentFlow === null; }
+
+function renderGraph() {
+  const graph = document.getElementById('graph');
+  const cols = { src: [], skill: [], store: [], ext: [] };
+  DATA.nodes.forEach(n => cols[KIND_MAP[n.kind]].push(n));
+
+  graph.innerHTML = '';
+  Object.entries(cols).forEach(([kind, nodes]) => {
+    const col = document.createElement('div');
+    col.className = 'col';
+    const header = document.createElement('div');
+    header.className = `col-header ${kind}`;
+    header.textContent = KIND_COL_LABEL[kind];
+    col.appendChild(header);
+
+    // 依 subgroup 順序排列
+    const order = SUBGROUP_ORDER[kind] || [];
+    order.forEach(sg => {
+      const inGroup = nodes.filter(n => n.subgroup === sg);
+      if (!inGroup.length) return;
+      const sh = document.createElement('div');
+      sh.className = 'subgroup-header';
+      sh.textContent = DATA.subgroup_labels[sg] || sg;
+      col.appendChild(sh);
+      inGroup.forEach(n => {
+        const div = document.createElement('div');
+        div.className = `node ${kind}`;
+        div.dataset.nodeId = n.id;
+        div.innerHTML = `<span class="step-no" data-step=""></span>${n.label}`;
+        col.appendChild(div);
+      });
+    });
+
+    graph.appendChild(col);
+  });
+}
+
+let currentCategory = DATA.flow_categories[0].id;
+
+function renderCategoryFilter() {
+  const sel = document.getElementById('category-filter');
+  sel.innerHTML = '';
+  DATA.flow_categories.forEach(cat => {
+    const flows = DATA.flows.filter(f => f.category === cat.id);
+    if (!flows.length) return;
+    const opt = document.createElement('option');
+    opt.value = cat.id;
+    opt.textContent = `${cat.label} (${flows.length})`;
+    if (cat.id === currentCategory) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  sel.onchange = () => {
+    currentCategory = sel.value;
+    renderFlowList();
+  };
+}
+
+function renderFlowList() {
+  const list = document.getElementById('flow-list');
+  list.innerHTML = '';
+  DATA.flows
+    .filter(f => f.category === currentCategory)
+    .forEach(f => {
+      const div = document.createElement('div');
+      div.className = 'flow-item' + (currentFlow && f.id === currentFlow.id ? ' active' : '');
+      div.dataset.flowId = f.id;
+      div.innerHTML = `<div class="name">${f.name}</div><div class="trigger">${f.trigger}</div>`;
+      div.onclick = () => { currentFlow = f; renderAll(); };
+      list.appendChild(div);
+    });
+}
+
+function renderFlowHeader() {
+  const h = document.getElementById('flow-header');
+  h.style.animation = 'none';
+  void h.offsetWidth;
+  h.style.animation = '';
+
+  if (isOverview()) {
+    const nodeCount = DATA.nodes.length;
+    const flowCount = DATA.flows.length;
+    const edgeCount = DATA.flows.reduce((sum, f) => sum + f.steps.length, 0);
+    h.innerHTML = `
+      <h2>全景架構 Overview</h2>
+      <div class="desc">整個系統的所有節點與資料流。四欄分別代表觸發來源、前端、後端、模型資料。淺灰線是所有 flow 的合集，左側點任一 flow 即可聚焦看單一情境。</div>
+      <div class="stats">
+        <span><b>${nodeCount}</b> 節點</span>
+        <span><b>${flowCount}</b> Flows</span>
+        <span><b>${edgeCount}</b> 資料流</span>
+        <span><b>5</b> 分類</span>
+      </div>
+    `;
+  } else {
+    h.innerHTML = `
+      <h2>${currentFlow.name}</h2>
+      <div class="desc">${currentFlow.description}</div>
+      <div class="trigger-pill">trigger: ${currentFlow.trigger}</div>
+    `;
+  }
+}
+
+function renderHighlight() {
+  document.querySelectorAll('.node').forEach(el => {
+    const stepNoEl = el.querySelector('.step-no');
+    el.classList.remove('active', 'dim', 'overview');
+    el.style.animationDelay = '';
+    stepNoEl.textContent = '';
+  });
+
+  if (isOverview()) {
+    // 全景模式 — 所有節點顯色
+    document.querySelectorAll('.node').forEach(el => {
+      el.classList.add('overview');
+    });
+    return;
+  }
+
+  const stepMap = {};
+  const firstStepOf = {};
+  currentFlow.steps.forEach((s, i) => {
+    [s.from, s.to].forEach(id => {
+      if (!stepMap[id]) stepMap[id] = [];
+      if (!stepMap[id].includes(i + 1)) stepMap[id].push(i + 1);
+      if (firstStepOf[id] === undefined) firstStepOf[id] = i;
+    });
+  });
+  document.querySelectorAll('.node').forEach(el => {
+    const id = el.dataset.nodeId;
+    const stepNoEl = el.querySelector('.step-no');
+    if (stepMap[id]) {
+      const delay = firstStepOf[id] * STAGGER_MS;
+      el.style.animationDelay = `${delay}ms`;
+      el.classList.add('active');
+      stepNoEl.textContent = stepMap[id].join(',');
+    } else {
+      el.classList.add('dim');
+    }
+  });
+}
+
+function buildOrthoPath(fr, tr, wrapRect) {
+  const x1 = fr.right - wrapRect.left;
+  const y1 = fr.top + fr.height / 2 - wrapRect.top;
+  const x2 = tr.left - wrapRect.left;
+  const y2 = tr.top + tr.height / 2 - wrapRect.top;
+  const r = 8;
+
+  if (x2 > x1) {
+    const midX = (x1 + x2) / 2;
+    if (Math.abs(y1 - y2) < 2) {
+      return `M ${x1} ${y1} L ${x2} ${y2}`;
+    }
+    const goingDown = y2 > y1;
+    const vSign = goingDown ? 1 : -1;
+    return `M ${x1} ${y1}
+            L ${midX - r} ${y1}
+            Q ${midX} ${y1} ${midX} ${y1 + r * vSign}
+            L ${midX} ${y2 - r * vSign}
+            Q ${midX} ${y2} ${midX + r} ${y2}
+            L ${x2} ${y2}`;
+  }
+  const outX1 = (fr.right - wrapRect.left) + 18;
+  const outX2 = (tr.left - wrapRect.left) - 18;
+  if (x2 < x1) {
+    const dropY = Math.max(fr.bottom, tr.bottom) - wrapRect.top + 18;
+    return `M ${x1} ${y1}
+            L ${outX1 - r} ${y1}
+            Q ${outX1} ${y1} ${outX1} ${y1 + r}
+            L ${outX1} ${dropY - r}
+            Q ${outX1} ${dropY} ${outX1 - r} ${dropY}
+            L ${outX2 + r} ${dropY}
+            Q ${outX2} ${dropY} ${outX2} ${dropY - r}
+            L ${outX2} ${y2 + r}
+            Q ${outX2} ${y2} ${outX2 + r} ${y2}
+            L ${x2} ${y2}`;
+  }
+  // x1 == x2 (same column) — 簡單 S 曲線繞外側
+  const outX = (fr.right - wrapRect.left) + 16;
+  return `M ${x1} ${y1}
+          L ${outX - r} ${y1}
+          Q ${outX} ${y1} ${outX} ${y1 + (y2 > y1 ? r : -r)}
+          L ${outX} ${y2 + (y2 > y1 ? -r : r)}
+          Q ${outX} ${y2} ${outX - r} ${y2}
+          L ${x2} ${y2}`;
+}
+
+function pathMidpoint(path) {
+  const len = path.getTotalLength();
+  return path.getPointAtLength(len / 2);
+}
+
+function renderEdges(token) {
+  const svg = document.getElementById('edges');
+  const wrap = document.querySelector('.graph-wrap');
+  const rect = wrap.getBoundingClientRect();
+  svg.setAttribute('viewBox', `0 0 ${rect.width} ${rect.height}`);
+  svg.setAttribute('width', rect.width);
+  svg.setAttribute('height', rect.height);
+  svg.innerHTML = '';
+
+  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+  const ghostColor = getCss('--line-ghost') || 'rgba(155,154,151,0.28)';
+  defs.innerHTML = `
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="${getCss('--line-active')}"/>
+    </marker>
+    <marker id="arrow-ghost" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="${ghostColor}"/>
+    </marker>
+  `;
+  svg.appendChild(defs);
+
+  if (isOverview()) {
+    // 全景模式 — 畫所有 flows 的所有 edges，使用 ghost line（去重）
+    const seen = new Set();
+    DATA.flows.forEach(f => {
+      f.steps.forEach(s => {
+        const key = `${s.from}->${s.to}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        const fromEl = document.querySelector(`[data-node-id="${s.from}"]`);
+        const toEl   = document.querySelector(`[data-node-id="${s.to}"]`);
+        if (!fromEl || !toEl) return;
+        const fr = fromEl.getBoundingClientRect();
+        const tr = toEl.getBoundingClientRect();
+        const d = buildOrthoPath(fr, tr, rect);
+        const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        p.setAttribute('d', d);
+        p.setAttribute('class', 'edge-ghost');
+        p.setAttribute('marker-end', 'url(#arrow-ghost)');
+        svg.appendChild(p);
+      });
+    });
+    return;
+  }
+
+  // Flow 模式 — 畫該 flow 的 active edges + step badge
+  currentFlow.steps.forEach((s, i) => {
+    if (token !== renderToken) return;
+    const fromEl = document.querySelector(`[data-node-id="${s.from}"]`);
+    const toEl   = document.querySelector(`[data-node-id="${s.to}"]`);
+    if (!fromEl || !toEl) return;
+    const fr = fromEl.getBoundingClientRect();
+    const tr = toEl.getBoundingClientRect();
+    const d = buildOrthoPath(fr, tr, rect);
+
+    const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    p.setAttribute('d', d);
+    p.setAttribute('class', 'edge-line');
+    p.setAttribute('marker-end', 'url(#arrow)');
+    svg.appendChild(p);
+
+    const len = p.getTotalLength();
+    p.style.strokeDasharray = `${len}`;
+    p.style.strokeDashoffset = `${len}`;
+    p.style.animation = `drawLine 0.65s cubic-bezier(0.4, 0, 0.2, 1) ${i * STAGGER_MS}ms forwards`;
+
+    const mid = pathMidpoint(p);
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.style.opacity = '0';
+    g.style.animation = `fadeSlide 0.4s ease ${i * STAGGER_MS + 400}ms forwards`;
+
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('cx', mid.x);
+    circle.setAttribute('cy', mid.y);
+    circle.setAttribute('r', 10);
+    circle.setAttribute('class', 'step-badge');
+    g.appendChild(circle);
+
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', mid.x);
+    text.setAttribute('y', mid.y);
+    text.setAttribute('class', 'step-badge-text');
+    text.textContent = String(i + 1);
+    g.appendChild(text);
+
+    svg.appendChild(g);
+  });
+}
+
+function getCss(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#d9a200';
+}
+
+function renderInfoPane() {
+  const c = document.getElementById('info-pane');
+  if (isOverview()) {
+    c.innerHTML = `
+      <div class="overview-info">
+        <h3>四欄分區說明</h3>
+        <div class="grid">
+          <div class="pillar src">
+            <h4>觸發 / 客戶端</h4>
+            <p>事件源頭：客人講話、老闆操作、麥克風裝置、瀏覽器開啟、Session ID 識別。所有資料流的起點。</p>
+          </div>
+          <div class="pillar skill">
+            <h4>前端 Next.js</h4>
+            <p>跑在 :3000。主畫面（VoiceController + AudioVisualizer + ChatPanel + OrderPanel）+ Hooks（錄音 / VAD / SSE / 播放）+ Zustand 狀態 + 四個後台頁。</p>
+          </div>
+          <div class="pillar store">
+            <h4>後端 FastAPI</h4>
+            <p>跑在 :8001。API Routers + DialogueManager 對話腦袋 + AI 服務包裝（ASR / LLM / TTS）+ Tool Registry + SSE Broadcaster。整個系統的中樞。</p>
+          </div>
+          <div class="pillar ext">
+            <h4>模型 / 資料</h4>
+            <p>三個本機 AI 模型（Qwen3-ASR 1.7B、llama-server 跑 Qwen3.5-9B、OmniVoice 0.1.5）+ 持久化儲存（menu.json、SQLite orders、log 檔、.env）。</p>
+          </div>
+        </div>
+        <div class="hint">提示：左側選擇任一 Flow 即可只看該情境的資料流。Flow 分 5 大類：客人點餐、AI Pipeline、結帳、老闆後台、系統運作。</div>
+
+        <div class="progress">
+          <h4>專案進度 · 更新至 2026-06-11</h4>
+          <div class="milestones">
+            <div class="milestone"><div class="dot"></div><div class="date">2026-02</div><div class="what"><b>前後端整合</b> <span class="sub">— FastAPI + Next.js、SSE 串流管線、語音對話 MVP</span></div></div>
+            <div class="milestone"><div class="dot"></div><div class="date">03-28</div><div class="what"><b>Text Tag 架構</b> <span class="sub">— [ADD]/[QUERY] tag 取代 tool calls，benchmark 80% → 93%、延遲減半</span></div></div>
+            <div class="milestone"><div class="dot"></div><div class="date">04-02</div><div class="what"><b>Qwen3-ASR 1.7B + 左右分欄 UI</b> <span class="sub">— ASR 0.25-0.3s；ChatPanel 對話 + OrderPanel 點餐單</span></div></div>
+            <div class="milestone"><div class="dot"></div><div class="date">04-08</div><div class="what"><b>llama-server 切換</b> <span class="sub">— 取代 LM Studio，推理速度 2.2x、準確率持平</span></div></div>
+            <div class="milestone"><div class="dot"></div><div class="date">06-01</div><div class="what"><b>price_pending 計價核心</b> <span class="sub">— 客製化價格待確認、不能先付；修收錯錢 bug</span></div></div>
+            <div class="milestone"><div class="dot"></div><div class="date">06-10</div><div class="what"><b>四階段優化</b> <span class="sub">— voice_router 拆 4 模組、tool_registry 瘦身、前端 +15 tests、LLM keepalive 健康監測</span></div></div>
+            <div class="milestone latest"><div class="dot"></div><div class="date">06-11</div><div class="what"><b>pinyin 同音匹配</b> <span class="sub">— 同音錯字自動修正（委魚飯糰→鮪魚飯糰），ASR 修正表凍結不再膨脹</span></div></div>
+          </div>
+          <div class="row-title">本週優先</div>
+          <div class="todo-pills">
+            <span>price_pending 精準計價（接加料價目表）</span>
+            <span>TTS 台灣腔選型（BreezyVoice / VoxCPM 試聽）</span>
+            <span>結帳 UX 語音驅動打磨</span>
+          </div>
+          <div class="row-title">Backlog</div>
+          <div class="todo-pills">
+            <span class="backlog">Playwright E2E 接 CI</span>
+            <span class="backlog">MVP 功能裁切（砍 VAD 留按鍵說話）</span>
+            <span class="backlog">Pipeline 延遲優化（LLM→TTS 並行）</span>
+            <span class="backlog">部署準備</span>
+            <span class="backlog">LoRA 訓練資料收集</span>
+          </div>
+          <div class="metrics">
+            <span>測試 <b>322 pytest + 64 vitest</b> 全綠</span>
+            <span>點餐 benchmark <b>93%</b>（61 場景）</span>
+            <span>首字延遲 <b>~1.7s</b></span>
+            <span>VRAM <b>~13.7 / 16GB</b>（ASR + LLM + TTS 共存）</span>
+          </div>
+        </div>
+      </div>
+    `;
+  } else {
+    const nodeLabel = id => DATA.nodes.find(n => n.id === id)?.label || id;
+    c.innerHTML = `
+      <div class="steps">
+        <h3>Step-by-Step</h3>
+        ${currentFlow.steps.map((s, i) => `
+          <div class="step-row" style="animation-delay: ${i * STAGGER_MS}ms">
+            <div class="step-num">${i+1}</div>
+            <div class="step-body">
+              <div class="route">${nodeLabel(s.from)}<span class="arrow">→</span>${nodeLabel(s.to)}</div>
+              <div class="payload">傳遞:${s.payload}</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+}
+
+function renderAll() {
+  renderToken += 1;
+  const myToken = renderToken;
+  // overview button state
+  document.getElementById('overview-btn').classList.toggle('active', isOverview());
+  renderCategoryFilter();
+  renderFlowList();
+  renderFlowHeader();
+  renderGraph();
+  renderHighlight();
+  renderInfoPane();
+  requestAnimationFrame(() => renderEdges(myToken));
+}
+
+// Overview button
+document.getElementById('overview-btn').onclick = () => {
+  currentFlow = null;
+  renderAll();
+};
+
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    renderToken += 1;
+    renderEdges(renderToken);
+  }, 100);
+});
+
+const THEME_KEY = 'ai-ordering-flows-theme';
+function applyTheme(t) {
+  if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+  else document.documentElement.removeAttribute('data-theme');
+  document.getElementById('theme-toggle').textContent = t === 'dark' ? 'Light' : 'Dark';
+}
+function initialTheme() {
+  const stored = localStorage.getItem(THEME_KEY);
+  if (stored === 'dark' || stored === 'light') return stored;
+  return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+let theme = initialTheme();
+applyTheme(theme);
+document.getElementById('theme-toggle').onclick = () => {
+  theme = theme === 'dark' ? 'light' : 'dark';
+  localStorage.setItem(THEME_KEY, theme);
+  applyTheme(theme);
+  renderToken += 1;
+  requestAnimationFrame(() => renderEdges(renderToken));
+};
+
+renderAll();
+</script>
+</body>
+</html>
