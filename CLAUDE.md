@@ -33,6 +33,7 @@ BG: `#f4f7f8` / Success: `#4a9d68` / Error: `#c45c5c` / Warning: `#c49a30`
 ## 情境指引
 - 啟動/測試/lint/benchmark 指令 → 先看 `README.md`
 - 設計文件 → `docs/plans/`
+- 架構圖 / 系統健檢等視覺化 HTML → `docs/reports/`
 
 ## Benchmark 護欄
 - 跑之前先確認 LM Studio 模型已載入，詳細規則 → `memory/lm-studio.md`
