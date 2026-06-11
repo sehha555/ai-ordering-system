@@ -41,6 +41,7 @@ from datetime import datetime
 from src.api.order_broadcaster import order_broadcaster, format_order_for_admin
 from src.repository.order_repository import order_repo
 from rapidfuzz import fuzz, process
+from pypinyin import lazy_pinyin
 
 # 子字串匹配最低長度比例（step 8 fallback）
 _SUBSTRING_MATCH_MIN_RATIO = 0.6
@@ -114,6 +115,18 @@ def _build_menu_index() -> Dict[str, Dict[str, Any]]:
 
 # 模組載入時建立一次索引（避免每次 add_item 讀檔）
 _MENU_INDEX: Dict[str, Dict[str, Any]] = _build_menu_index()
+
+
+def _build_pinyin_index() -> Dict[str, str]:
+    """無聲調拼音 → 菜單 base name（去括號規格）。158 品項已驗證零拼音碰撞。"""
+    index: Dict[str, str] = {}
+    for full_name in _MENU_INDEX:
+        base = full_name.split("(")[0]
+        index.setdefault("".join(lazy_pinyin(base)), base)
+    return index
+
+
+_PINYIN_INDEX: Dict[str, str] = _build_pinyin_index()
 
 
 def _augment_with_sold_out_rice(base_msg: str) -> str:
@@ -194,14 +207,17 @@ class ToolRegistry:
         """
         從 name 字串找到對應的菜單品項資訊。
         查詢順序：
+        0. 口語俗稱（「花生厚片」→「果醬吐司(花生/厚片)」）
         1. 精確匹配 _MENU_INDEX（含完整品項名如「有糖豆漿(中)」）
         2. 套餐 startsWith 匹配（「套餐一」→「套餐一 醬燒肉片蛋餅+豆漿(大)」）
-        3. 飲料別名解析後比對（不含杯型，加杯型後再精確匹配）
-        4. 飯糰別名解析後比對
-        5. 蛋餅別名解析後比對
-        6. 點心別名解析後比對
-        7. 套餐數字別名解析（「三號餐」→「套餐三」）
-        8. 子字串匹配（輔助）
+        3. 套餐數字別名解析（「三號餐」→「套餐三」）
+        3.5 拼音同音匹配（ASR 同音錯字：「委魚飯糰」→「鮪魚飯糰」）
+        4. 飲料別名解析後比對（不含杯型，加杯型後再精確匹配）
+        5. 飯糰別名解析後比對
+        6. 蛋餅別名解析後比對
+        7. 點心別名解析後比對
+        8. 子字串 / subsequence 匹配（輔助）
+        9. Rapidfuzz 模糊匹配（最終 fallback）
         回傳 None 表示找不到。
         """
         if not name:
@@ -224,6 +240,12 @@ class ToolRegistry:
         resolved_combo = _COMBO_NUMBER_ALIASES.get(name)
         if resolved_combo:
             return self._resolve_item_name(resolved_combo)
+
+        # 3.5 拼音同音匹配（全名同音才命中，精度高於後續子字串式別名解析，
+        # 須先攔截避免「企司蛋餅」被蛋餅別名吃成原味蛋餅）
+        corrected = _PINYIN_INDEX.get("".join(lazy_pinyin(name)))
+        if corrected and corrected != name:
+            return self._resolve_item_name(corrected)
 
         # 4. 飲料別名解析（得到標準名，不含杯型；杯型由 add_item 外層提供）
         resolved_drink = _drink_resolve(name)
@@ -270,6 +292,9 @@ class ToolRegistry:
             return {**_MENU_INDEX[resolved_snack], "resolved_name": resolved_snack}
 
         # 8. 子字串匹配（去掉規格括號後比較，要求 >= 60% 長度比例）
+        #    + Subsequence 匹配（漏字場景：「煎吐司」→「煎蛋吐司」）
+        #    子字串優先：全 index 掃完無子字串命中，才開始比 subsequence
+        subseq_match: Optional[Dict[str, Any]] = None
         for full_name, info in _MENU_INDEX.items():
             base = full_name.split("(")[0] if "(" in full_name else full_name
             if name in base or base in name:
@@ -277,16 +302,16 @@ class ToolRegistry:
                 longer = max(len(name), len(base))
                 if shorter >= longer * _SUBSTRING_MATCH_MIN_RATIO:
                     return {**info, "resolved_name": full_name}
-
-        # 9. Subsequence 匹配（漏字場景：「煎吐司」→「煎蛋吐司」、「培根吐司」→「培根蛋吐司」）
-        for full_name, info in _MENU_INDEX.items():
-            base = full_name.split("(")[0] if "(" in full_name else full_name
-            if len(name) >= len(base) * _SUBSEQUENCE_MATCH_MIN_RATIO and _is_subsequence(
-                name, base
+            if (
+                subseq_match is None
+                and len(name) >= len(base) * _SUBSEQUENCE_MATCH_MIN_RATIO
+                and _is_subsequence(name, base)
             ):
-                return {**info, "resolved_name": full_name}
+                subseq_match = {**info, "resolved_name": full_name}
+        if subseq_match:
+            return subseq_match
 
-        # 10. Rapidfuzz 模糊匹配（typo / 字面相近場景，cutoff 80% 避免誤匹配）
+        # 9. Rapidfuzz 模糊匹配（typo / 字面相近場景，cutoff 80% 避免誤匹配）
         choices = list(_MENU_INDEX.keys())
         best = process.extractOne(
             name, choices, scorer=fuzz.ratio, score_cutoff=_FUZZY_MATCH_CUTOFF

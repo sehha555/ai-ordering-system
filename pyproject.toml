@@ -34,6 +34,7 @@ dependencies = [
     "slowapi>=0.1.9",
     "redis[hiredis]>=5.0.0",
     "rapidfuzz>=3.14.5",
+    "pypinyin>=0.50.0",
 ]
 
 [project.optional-dependencies]
