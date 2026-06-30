@@ -224,6 +224,28 @@ async def execute_tags(
         elif any_ok:
             session["last_failed_attempt"] = None
 
+        # ── 套餐去重：LLM 修改溫度時重複 ADD 相同套餐 → 保留新的、移除舊的 ──
+        if any_ok:
+            this_turn_ids = {r["item_id"] for r in add_results if r.get("ok") and r.get("item_id")}
+            cart = session.get("cart", [])
+            combo_by_name: dict[str, list] = {}
+            for item in cart:
+                if item.get("itemtype") == "combo":
+                    combo_by_name.setdefault(item["combo_name"], []).append(item)
+            for cn, items in combo_by_name.items():
+                if len(items) < 2:
+                    continue
+                new_items = [i for i in items if i["item_id"] in this_turn_ids]
+                old_items = [i for i in items if i["item_id"] not in this_turn_ids]
+                if new_items and old_items:
+                    for old in old_items:
+                        cart.remove(old)
+                    logger.info(
+                        "[ADD dedup] 移除舊套餐 {} (保留本輪 {})",
+                        [o["item_id"] for o in old_items],
+                        [n["item_id"] for n in new_items],
+                    )
+
         # add_item 失敗 → LLM 沒回覆時才補發追問（避免重複）
         failed = [r for r in add_results if not r.get("ok")]
         if failed:
