@@ -16,6 +16,7 @@ from src.api.tag_parser import (
     ADD_RE,
     QUERY_RE,
     REMOVE_RE,
+    SET_QTY_RE,
 )
 
 from datetime import datetime
@@ -193,6 +194,7 @@ class StreamingDMAdapter:
                     content = ADD_RE.sub("", content)
                     content = QUERY_RE.sub("", content)
                     content = REMOVE_RE.sub("", content)
+                    content = SET_QTY_RE.sub("", content)
                     content = content.replace(CHECKOUT_TAG, "")
                     content = content.strip()
                     if content:
