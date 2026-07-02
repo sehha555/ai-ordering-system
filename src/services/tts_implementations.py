@@ -13,6 +13,10 @@ class EdgeTTSModel(TTSModel):
     def __init__(self, voice: str = "zh-TW-HsiaoChenNeural"):
         self.voice = voice
 
+    @property
+    def cache_voice_key(self) -> str:
+        return f"edge:{self.voice}"
+
     async def run_stream(self, text: str) -> AsyncIterator[bytes]:
         communicate = edge_tts.Communicate(text, self.voice)
         async for chunk in communicate.stream():
@@ -33,6 +37,10 @@ class Qwen3TTSModel(TTSModel):
         self._model = None
         self._fallback = EdgeTTSModel()
         self._load()
+
+    @property
+    def cache_voice_key(self) -> str:
+        return f"qwen3tts:{self._speaker}"
 
     def _load(self):
         try:
@@ -115,18 +123,49 @@ class OmniVoiceTTSModel(TTSModel):
         self._base_url = base_url
         self._client = httpx.AsyncClient(base_url=base_url, timeout=30.0)
         self._fallback = EdgeTTSModel()
+        # voice 模式（"clone" / "instruct" / "unknown"），首次 run_stream 時從 /health 懶查
+        self._voice_mode: str = "unknown"
+        self._voice_mode_fetched: bool = False
+        # fallback flag：True = 上次 run_stream 實際走 Edge TTS，不應入快取
+        self.last_run_used_fallback: bool = False
         logger.info("[TTS] OmniVoice client 初始化 ({})", base_url)
 
+    @property
+    def cache_voice_key(self) -> str:
+        """聲音身分 key：依 /health 回傳的 voice 欄位決定"""
+        return f"omnivoice:{self._voice_mode}"
+
+    async def _fetch_voice_mode(self) -> None:
+        """首次呼叫時查詢 /health 取得 voice 模式（只查一次）"""
+        if self._voice_mode_fetched:
+            return
+        try:
+            resp = await self._client.get("/health", timeout=3.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                self._voice_mode = data.get("voice", "unknown")
+                logger.info("[TTS] OmniVoice voice 模式: {}", self._voice_mode)
+        except Exception as e:
+            logger.debug("[TTS] OmniVoice /health 查詢失敗（voice 模式保留 unknown）: {}", e)
+        self._voice_mode_fetched = True
+
     async def run_stream(self, text: str) -> AsyncIterator[bytes]:
+        self.last_run_used_fallback = False
         now = time.monotonic()
         if now < OmniVoiceTTSModel._circuit_open_until:
+            # circuit breaker 開啟：直接走 fallback
+            self.last_run_used_fallback = True
             async for chunk in self._fallback.run_stream(text):
                 yield chunk
             return
 
+        # 首次呼叫時懶查 voice 模式（circuit breaker 開啟時不查）
+        await self._fetch_voice_mode()
+
         try:
             r = await self._client.post("/synthesize", json={"text": text})
             if r.status_code == 200:
+                # 正常路徑：last_run_used_fallback 保持 False
                 yield r.content
                 return
             logger.warning("[TTS] OmniVoice 合成失敗 ({}), fallback Edge TTS", r.status_code)
@@ -138,6 +177,8 @@ class OmniVoiceTTSModel(TTSModel):
             )
             OmniVoiceTTSModel._circuit_open_until = time.monotonic() + self._CIRCUIT_COOLDOWN
 
+        # fallback 路徑
+        self.last_run_used_fallback = True
         async for chunk in self._fallback.run_stream(text):
             yield chunk
 

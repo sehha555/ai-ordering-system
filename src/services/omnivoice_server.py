@@ -100,7 +100,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            self.wfile.write(json.dumps({"ok": _model is not None}).encode())
+            # voice: clone（有 ref_audio）或 instruct（voice design 模式）
+            voice_mode = "clone" if _voice_prompt else "instruct"
+            self.wfile.write(json.dumps({"ok": _model is not None, "voice": voice_mode}).encode())
             return
         self.send_error(404)
 

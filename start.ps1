@@ -40,7 +40,7 @@ $llm = Start-Process -NoNewWindow -PassThru -FilePath "$Root\tools\llama-server\
 
 # 3. OmniVoice TTS（~1.9GB VRAM）
 Write-Host "Starting OmniVoice TTS (:8100)..."
-$omnivoice = Start-Process -NoNewWindow -PassThru -FilePath "python" -ArgumentList "src/services/omnivoice_server.py" -WorkingDirectory $Root
+$omnivoice = Start-Process -NoNewWindow -PassThru -FilePath "python" -ArgumentList "src/services/omnivoice_server.py","--ref-audio","ref_voice.wav" -WorkingDirectory $Root
 
 # 4. Frontend
 Write-Host "Starting frontend (Next.js :3000)..."

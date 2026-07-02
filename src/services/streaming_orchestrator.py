@@ -104,7 +104,9 @@ class StreamingOrchestrator:
         text = text.replace("*", "").replace("#", "").strip()
         if not text:
             return
-        cached = tts_cache.get(text)
+        # voice_key 用於快取維度，區分 OmniVoice clone / instruct / Edge TTS 等不同聲音
+        voice_key = getattr(self.tts, "cache_voice_key", "default")
+        cached = tts_cache.get(text, voice_key=voice_key)
         if cached:
             b64 = base64.b64encode(cached).decode("utf-8")
             ttfa = None
@@ -120,7 +122,11 @@ class StreamingOrchestrator:
                     chunks.append(chunk)
                 if chunks:
                     audio = b"".join(chunks)
-                    tts_cache.put(text, audio)  # runtime cache：後續相同句子直接命中
+                    # fallback 產物不入快取（避免 Edge 聲音以 OmniVoice key 污染 warmup cache）
+                    if not getattr(self.tts, "last_run_used_fallback", False):
+                        # run_stream 後重取 voice_key：OmniVoice 首次呼叫後才確定 voice 模式
+                        put_voice_key = getattr(self.tts, "cache_voice_key", "default")
+                        tts_cache.put(text, audio, voice_key=put_voice_key)
                     b64 = base64.b64encode(audio).decode("utf-8")
                     ttfa = None
                     if first_audio:
