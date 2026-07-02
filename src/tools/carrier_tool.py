@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from src.config.config_loader import load_json_config
 from src.tools.menu import menu_price_service
 from src.tools.riceball_tool import INGREDIENT_SYNONYMS, menu_tool as riceball_menu_tool
-from src.tools.text_utils import chinese_number_to_int, dedupe_keep_order
+from src.tools.text_utils import chinese_number_to_int, dedupe_keep_order, normalize_quantity
 
 _cfg = load_json_config("aliases_carrier.json")
 CARRIERS = tuple(_cfg["carriers"])
@@ -177,7 +177,9 @@ class CarrierTool:
             else:
                 unknown_add.append(key)
 
-        total_price = int(base_price) + int(addon_total)
+        single_price = int(base_price) + int(addon_total)
+        qty = normalize_quantity(frame.get("quantity"))
+        total_price = single_price * qty
 
         return {
             "ok": True,
@@ -187,6 +189,8 @@ class CarrierTool:
             "addon_total": int(addon_total),
             "unknown_add": unknown_add,
             "needs_store_confirm": len(unknown_add) > 0,
+            "quantity": qty,
+            "single_price": single_price,
             "total_price": total_price,
             "message": f"{flavor}{carrier} 基礎{base_price} + 加料{addon_total} = {total_price}元",
         }

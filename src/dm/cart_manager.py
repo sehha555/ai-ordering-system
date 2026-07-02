@@ -3,7 +3,7 @@ from collections import OrderedDict
 from typing import Dict, Any, List, Optional
 
 from src.tools.riceball_tool import menu_tool, INGREDIENT_SYNONYMS
-from src.tools.text_utils import chinese_number_to_int
+from src.tools.text_utils import chinese_number_to_int, normalize_quantity
 from src.tools.carrier_tool import carrier_tool
 from src.tools.drink_tool import drink_tool
 from src.tools.snack_tool import snack_tool
@@ -13,10 +13,8 @@ from src.tools.combo_tool import combo_tool
 
 
 def _safe_quantity(item: Dict[str, Any]) -> int:
-    """數量正規化：None 或空字串轉為 1，最小值為 1"""
-    raw_qty = item.get("quantity", 1)
-    qty = int(raw_qty) if raw_qty is not None and str(raw_qty) != "" else 1
-    return max(1, qty)
+    """數量正規化：委派 text_utils.normalize_quantity"""
+    return normalize_quantity(item.get("quantity", 1))
 
 
 def format_item(frame: Dict[str, Any]) -> str:
@@ -74,17 +72,19 @@ def get_price_info(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     rtype = item.get("itemtype")
     pi = None
     if rtype == "riceball":
+        qty = _safe_quantity(item)
         pi = menu_tool.quote_riceball_price(
             flavor=item.get("flavor"),
             large=item.get("large", False),
             heavy=item.get("heavy", False),
             extra_egg=item.get("extra_egg", False),
+            quantity=qty,
         )
         # 表內加料（如加起司）併入單品價；待確認品項維持基礎價，由 price_pending 標記
         if pi.get("ok") and item.get("customization"):
             addon_total = _riceball_addon_quote(item)
             if addon_total:
-                pi["total_price"] += addon_total
+                pi["total_price"] += addon_total * qty
     elif rtype == "egg_pancake":
         pi = egg_pancake_tool.quote_egg_pancake_price(item)
     elif rtype == "carrier":
@@ -100,8 +100,8 @@ def get_price_info(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return pi
 
 
-def extract_total(pi: Dict[str, Any], qty: int) -> int:
-    """從價格資訊和數量計算總價"""
+def extract_total(pi: Dict[str, Any]) -> int:
+    """取出報價總價。數量只在各 quote 函式內乘一次，此處不得再乘。"""
     if not pi:
         return 0
     total = pi.get("total_price")
@@ -214,7 +214,7 @@ def build_cart_summary(cart: List[Dict[str, Any]], price_format: str = "dollar")
         name = format_item(item)
         pi = get_price_info(item)
         if pi and pi.get("ok"):
-            item_total = extract_total(pi, qty)
+            item_total = extract_total(pi)
             total_price += item_total
             price_str = f"${item_total}" if price_format == "dollar" else f"{item_total}元"
         else:
@@ -239,10 +239,9 @@ def calculate_cart_total(cart: List[Dict[str, Any]]) -> int:
     """計算購物車總價"""
     total = 0
     for item in cart:
-        qty = _safe_quantity(item)
         pi = get_price_info(item)
         if pi and pi.get("ok"):
-            total += extract_total(pi, qty)
+            total += extract_total(pi)
     return total
 
 
@@ -266,7 +265,7 @@ def get_order_summary(cart: List[Dict[str, Any]]) -> str:
         if key not in groups:
             groups[key] = {"item": item, "count": 0, "subtotal": 0}
         groups[key]["count"] += 1
-        groups[key]["subtotal"] += extract_total(price_cache[id(item)], 1)
+        groups[key]["subtotal"] += extract_total(price_cache[id(item)])
 
     lines = []
     total_count = 0

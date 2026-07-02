@@ -11,12 +11,7 @@ from src.services.streaming_orchestrator import StreamingOrchestrator
 from src.services.tts_implementations import create_tts_model
 from src.config.models import TTS_BACKEND
 from src.api.auth import get_api_key
-from src.dm.tool_priming import CHECKOUT_TAG
-from src.api.tag_parser import (
-    ADD_RE,
-    QUERY_RE,
-    REMOVE_RE,
-)
+from src.api.tag_parser import strip_all_tags
 
 from datetime import datetime
 from pathlib import Path
@@ -189,12 +184,7 @@ class StreamingDMAdapter:
 
                 if evt_type == "text_delta":
                     # text tag mode：strip tags 再送 TTS（tags 在 done 事件處理）
-                    content = event.get("content", "")
-                    content = ADD_RE.sub("", content)
-                    content = QUERY_RE.sub("", content)
-                    content = REMOVE_RE.sub("", content)
-                    content = content.replace(CHECKOUT_TAG, "")
-                    content = content.strip()
+                    content = strip_all_tags(event.get("content", "")).strip()
                     if content:
                         yield {"type": "text_delta", "content": content}
 

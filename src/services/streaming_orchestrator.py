@@ -73,7 +73,7 @@ def _format_cart_items(cart: list) -> list:
         name = cart_manager.format_item(item)
         pi = cart_manager.get_price_info(item)
         if pi and pi.get("ok"):
-            price = cart_manager.extract_total(pi, qty)
+            price = cart_manager.extract_total(pi)
         else:
             price = 0
         items.append(
@@ -104,7 +104,8 @@ class StreamingOrchestrator:
         text = text.replace("*", "").replace("#", "").strip()
         if not text:
             return
-        cached = tts_cache.get(text)
+        # voice_key 用於快取維度，區分 OmniVoice clone / instruct / Edge TTS 等不同聲音
+        cached = tts_cache.get(text, voice_key=self.tts.cache_voice_key)
         if cached:
             b64 = base64.b64encode(cached).decode("utf-8")
             ttfa = None
@@ -120,7 +121,8 @@ class StreamingOrchestrator:
                     chunks.append(chunk)
                 if chunks:
                     audio = b"".join(chunks)
-                    tts_cache.put(text, audio)  # runtime cache：後續相同句子直接命中
+                    # 以實際產出聲音的 key 存入（fallback 產物存 fallback 聲音 key，不污染本尊）
+                    tts_cache.put(text, audio, voice_key=self.tts.last_voice_key)
                     b64 = base64.b64encode(audio).decode("utf-8")
                     ttfa = None
                     if first_audio:

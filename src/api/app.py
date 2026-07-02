@@ -95,13 +95,27 @@ async def lifespan(app):
     # startup: 啟動驗證
     _validate_startup()
 
-    # startup: 背景預熱 TTS 快取
-    from src.services.tts_cache import tts_cache
+    # startup: 背景預熱 TTS 快取（omnivoice 需等 /health 通過才預熱，避免 Edge fallback 聲音入永久快取）
+    from src.services.tts_cache import tts_cache, wait_for_omnivoice_health
     from src.services.tts_implementations import create_tts_model as _create_tts
     from src.config.models import TTS_BACKEND as _tts_backend
 
     _warmup_tts = _create_tts(_tts_backend)
-    asyncio.create_task(tts_cache.warmup(_warmup_tts))
+
+    async def _warmup_with_gate():
+        if _tts_backend == "omnivoice":
+            health_url = settings.OMNIVOICE_BASE_URL.rstrip("/") + "/health"
+            ready = await wait_for_omnivoice_health(health_url, max_wait=180, interval=2.0)
+            if not ready:
+                logger.warning(
+                    "[STARTUP] OmniVoice /health 180s 後仍未就緒，跳過 TTS 預熱"
+                    "（寧可無快取，也不讓 Edge 聲音入永久 warmup cache）"
+                )
+                return
+            logger.info("[STARTUP] OmniVoice /health 通過，開始 TTS 預熱")
+        await tts_cache.warmup(_warmup_tts)
+
+    asyncio.create_task(_warmup_with_gate())
 
     # startup: LLM KV cache 預熱（送完整 system prompt + priming + tools，讓 LM Studio cache 住固定前綴）
     async def _warmup_llm():

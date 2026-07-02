@@ -61,6 +61,13 @@ def dedupe_keep_order(xs: List[str]) -> List[str]:
     return list(dict.fromkeys(xs or []))
 
 
+def normalize_quantity(raw) -> int:
+    """數量正規化：None 或空字串轉為 1，最小值為 1（全 codebase 唯一定義）"""
+    if raw is None or str(raw).strip() == "":
+        return 1
+    return max(1, int(raw))
+
+
 def parse_quantity(text: str, units: tuple = ("個", "顆", "份")) -> int:
     """
     從文字解析數量。

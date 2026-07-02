@@ -296,3 +296,61 @@ class TestVoiceChatSSE:
         assert len(events) == 1
         assert events[0]["event"] == "done"
         assert events[0]["data"]["cart"] == []
+
+
+# ── SET_QTY tag strip 回歸測試 ──
+
+
+class TestSetQtyTagStrip:
+    """回歸測試：streaming text_delta 中 [SET_QTY:...] tag 應被 strip"""
+
+    def setup_method(self):
+        self.client = _make_client()
+        self._tts_patcher = patch("src.services.streaming_orchestrator.tts_cache")
+        mc = self._tts_patcher.start()
+        mc.get.return_value = FAKE_AUDIO
+
+    def teardown_method(self):
+        self._tts_patcher.stop()
+
+    def test_set_qty_tag_not_leaked_to_text_delta(self):
+        """LLM 輸出含 [SET_QTY:薯餅|qty=1] 時，SSE text_delta 不含 tag、後續文字保留"""
+        from unittest.mock import MagicMock
+        from src.services import container as _container
+
+        # 建立假 LLM caller：只回傳含 SET_QTY tag 的 text_delta + done
+        async def _fake_run_turn_stream(*args, **kwargs):
+            yield {"type": "text_delta", "content": "[SET_QTY:薯餅|qty=1]好，薯餅改成一個～"}
+            yield {
+                "type": "done",
+                "assistant_text": "[SET_QTY:薯餅|qty=1]好，薯餅改成一個～",
+                "history": [],
+                "usage": {},
+                "tool_trace": [],
+            }
+
+        mock_llm = MagicMock()
+        mock_llm.run_turn_stream.side_effect = _fake_run_turn_stream
+
+        original_llm = _container.llm_caller
+        _container.llm_caller = mock_llm
+        try:
+            r = self.client.post(
+                "/api/text-chat",
+                json={"text": "薯餅改成一個", "session_id": "test-set-qty-strip-001"},
+            )
+        finally:
+            _container.llm_caller = original_llm
+
+        assert r.status_code == 200
+        events = parse_sse_events(r.text)
+
+        # 找出所有 text_delta SSE 事件
+        text_delta_events = [e for e in events if e["event"] == "text_delta"]
+        assert text_delta_events, "應至少有一個 text_delta SSE 事件"
+
+        combined = "".join(e["data"]["text"] for e in text_delta_events)
+        assert "[SET_QTY:" not in combined, (
+            f"[SET_QTY:...] tag 不應出現在 text_delta 輸出中，實際: {combined!r}"
+        )
+        assert "好，薯餅改成一個" in combined, f"tag 後的文字應保留，實際: {combined!r}"

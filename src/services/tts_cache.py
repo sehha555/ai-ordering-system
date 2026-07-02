@@ -1,10 +1,12 @@
 # src/services/tts_cache.py
 """TTS 預快取層 — 啟動時對高頻固定回覆預生成音檔，命中時 TTFA ≈ 0"""
 
+import asyncio
 import re
 from collections import OrderedDict
 from typing import AsyncIterator, Dict, Optional
 
+import httpx
 from loguru import logger
 
 # 正規化：去除常見標點，統一 lookup key
@@ -77,14 +79,27 @@ class TTSCache:
     設計：
     - _warmup_cache: 永不淘汰的高頻預熱條目（Dict）
     - _runtime_cache: 真 LRU，上限 _MAX_RUNTIME_ENTRIES（OrderedDict）
+    - key 格式："{voice_key}|{text}" 以區分不同聲音身分
     """
 
     def __init__(self):
         self._warmup_cache: Dict[str, bytes] = {}
         self._runtime_cache: OrderedDict[str, bytes] = OrderedDict()
 
+    @staticmethod
+    def _cache_keys(text: str, voice_key: str) -> list[str]:
+        """組合 cache key（原文 + 正規化版，key 格式的唯一定義處）"""
+        keys = [f"{voice_key}|{text}"]
+        norm = _normalize(text)
+        if norm != text:
+            keys.append(f"{voice_key}|{norm}")
+        return keys
+
     async def warmup(self, tts_service) -> None:
-        """啟動時預生成高頻回覆的 TTS 音檔"""
+        """啟動時預生成高頻回覆的 TTS 音檔。
+        以 last_voice_key（實際產出聲音）存入 — fallback 產物存 fallback 聲音的 key，
+        不會污染本尊 backend 的快取。
+        """
         logger.info("[TTS-Cache] 開始預熱 {} 條高頻回覆...", len(HIGH_FREQ_PHRASES))
         success = 0
         for phrase in HIGH_FREQ_PHRASES:
@@ -94,7 +109,7 @@ class TTSCache:
                     chunks.append(chunk)
                 if chunks:
                     audio = b"".join(chunks)
-                    self._store_warmup(phrase, audio)
+                    self._store_warmup(phrase, audio, voice_key=tts_service.last_voice_key)
                     success += 1
             except Exception as e:
                 logger.warning("[TTS-Cache] 預熱失敗: '{}' → {}", phrase, e)
@@ -105,50 +120,41 @@ class TTSCache:
             len(self._warmup_cache),
         )
 
-    def _store_warmup(self, text: str, audio: bytes) -> None:
+    def _store_warmup(self, text: str, audio: bytes, voice_key: str = "default") -> None:
         """存入 warmup cache（含正規化 key，永不淘汰）"""
-        self._warmup_cache[text] = audio
-        norm = _normalize(text)
-        if norm != text:
-            self._warmup_cache[norm] = audio
+        for key in self._cache_keys(text, voice_key):
+            self._warmup_cache[key] = audio
 
-    def get(self, text: str) -> Optional[bytes]:
+    def get(self, text: str, voice_key: str = "default") -> Optional[bytes]:
         """查詢快取：warmup 優先，再查 runtime（命中時移至末尾維持 LRU 順序）"""
-        norm = _normalize(text)
+        keys = self._cache_keys(text, voice_key)
         # warmup（永不淘汰，不更新 LRU 順序）
-        result = self._warmup_cache.get(text)
-        if result is not None:
-            return result
-        result = self._warmup_cache.get(norm)
-        if result is not None:
-            return result
+        for key in keys:
+            result = self._warmup_cache.get(key)
+            if result is not None:
+                return result
         # runtime（命中時移至末尾）
-        result = self._runtime_cache.get(text)
-        if result is not None:
-            self._runtime_cache.move_to_end(text)
-            return result
-        result = self._runtime_cache.get(norm)
-        if result is not None:
-            self._runtime_cache.move_to_end(norm)
-            return result
+        for key in keys:
+            result = self._runtime_cache.get(key)
+            if result is not None:
+                self._runtime_cache.move_to_end(key)
+                return result
         return None
 
-    def put(self, text: str, audio: bytes) -> None:
+    def put(self, text: str, audio: bytes, voice_key: str = "default") -> None:
         """Runtime cache：TTS miss 後存入，真 LRU eviction（移除最久未用條目）"""
-        keys = [text]
-        norm = _normalize(text)
-        if norm != text:
-            keys.append(norm)
-        for key in keys:
+        for key in self._cache_keys(text, voice_key):
             self._runtime_cache[key] = audio
             self._runtime_cache.move_to_end(key)
         # LRU eviction
         while len(self._runtime_cache) > _MAX_RUNTIME_ENTRIES:
             self._runtime_cache.popitem(last=False)
 
-    async def get_stream(self, text: str) -> Optional[AsyncIterator[bytes]]:
+    async def get_stream(
+        self, text: str, voice_key: str = "default"
+    ) -> Optional[AsyncIterator[bytes]]:
         """查詢快取並以串流方式返回（相容 run_stream 介面）"""
-        audio = self.get(text)
+        audio = self.get(text, voice_key=voice_key)
         if audio is None:
             return None
 
@@ -160,6 +166,27 @@ class TTSCache:
     @property
     def size(self) -> int:
         return len(self._warmup_cache) + len(self._runtime_cache)
+
+
+async def wait_for_omnivoice_health(
+    health_url: str, max_wait: int = 180, interval: float = 2.0
+) -> bool:
+    """輪詢 OmniVoice /health，直到回傳 200 或超時。
+    回傳 True = 就緒；False = 超時。
+    供 app.py warmup gate 使用，可在測試中獨立驗證。
+    """
+    iterations = int(max_wait / interval)
+    async with httpx.AsyncClient(timeout=3.0) as hc:
+        for i in range(iterations):
+            try:
+                resp = await hc.get(health_url)
+                if resp.status_code == 200:
+                    return True
+            except Exception:
+                pass
+            if i < iterations - 1:
+                await asyncio.sleep(interval)
+    return False
 
 
 # 全域單例
