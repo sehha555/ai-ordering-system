@@ -74,17 +74,19 @@ def get_price_info(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     rtype = item.get("itemtype")
     pi = None
     if rtype == "riceball":
+        qty = _safe_quantity(item)
         pi = menu_tool.quote_riceball_price(
             flavor=item.get("flavor"),
             large=item.get("large", False),
             heavy=item.get("heavy", False),
             extra_egg=item.get("extra_egg", False),
+            quantity=qty,
         )
         # 表內加料（如加起司）併入單品價；待確認品項維持基礎價，由 price_pending 標記
         if pi.get("ok") and item.get("customization"):
             addon_total = _riceball_addon_quote(item)
             if addon_total:
-                pi["total_price"] += addon_total
+                pi["total_price"] += addon_total * qty
     elif rtype == "egg_pancake":
         pi = egg_pancake_tool.quote_egg_pancake_price(item)
     elif rtype == "carrier":

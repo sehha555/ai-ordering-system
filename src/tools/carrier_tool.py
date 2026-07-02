@@ -177,7 +177,9 @@ class CarrierTool:
             else:
                 unknown_add.append(key)
 
-        total_price = int(base_price) + int(addon_total)
+        single_price = int(base_price) + int(addon_total)
+        qty = max(1, int(frame.get("quantity", 1) or 1))
+        total_price = single_price * qty
 
         return {
             "ok": True,
@@ -187,6 +189,8 @@ class CarrierTool:
             "addon_total": int(addon_total),
             "unknown_add": unknown_add,
             "needs_store_confirm": len(unknown_add) > 0,
+            "quantity": qty,
+            "single_price": single_price,
             "total_price": total_price,
             "message": f"{flavor}{carrier} 基礎{base_price} + 加料{addon_total} = {total_price}元",
         }

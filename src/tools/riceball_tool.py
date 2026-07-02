@@ -189,6 +189,7 @@ class MenuTool:
         large: bool = False,
         heavy: bool = False,
         extra_egg: bool = False,
+        quantity: int = 1,
     ) -> Dict[str, Any]:
         items = self.menu_data.get("items", [])
         base_item = None
@@ -230,6 +231,9 @@ class MenuTool:
         if extra_egg:
             total += _EXTRA_EGG_SURCHARGE
 
+        qty = max(1, int(quantity))
+        total_price = total * qty
+
         return {
             "ok": True,
             "flavor": flavor,
@@ -237,9 +241,11 @@ class MenuTool:
             "large": is_large,
             "heavy": is_heavy,
             "extra_egg": bool(extra_egg),
-            "total_price": total,
+            "quantity": qty,
+            "single_price": total,
+            "total_price": total_price,
             "needs_confirm": False,
-            "message": f"{flavor}{'·加大' if is_large else ''}{'·重量' if is_heavy else ''}{'·加蛋' if extra_egg else ''} = {total}元",
+            "message": f"{flavor}{'·加大' if is_large else ''}{'·重量' if is_heavy else ''}{'·加蛋' if extra_egg else ''} = {total_price}元",
         }
 
     def quote_riceball_customization_price(
