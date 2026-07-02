@@ -28,6 +28,8 @@ interface UseRecordingProps {
   cleanupPlayback: () => void;
   // 可選：把活躍的 AnalyserNode 存入 store，供 AudioVisualizer 頻譜驅動
   setAnalyser?: (a: AnalyserNode | null) => void;
+  // 可選：identity guard 清除（只清自己放進 store 的，避免蓋掉 TTS 的 analyser）
+  clearAnalyser?: (owner: AnalyserNode | null) => void;
 }
 
 export function useRecording({
@@ -38,6 +40,7 @@ export function useRecording({
   sendAudioRef,
   cleanupPlayback,
   setAnalyser,
+  clearAnalyser,
 }: UseRecordingProps) {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -70,9 +73,9 @@ export function useRecording({
       audioContextRef.current.close();
       audioContextRef.current = null;
     }
+    clearAnalyser?.(analyserRef.current);
     analyserRef.current = null;
-    setAnalyser?.(null);
-  }, [cleanupPlayback, setAnalyser]);
+  }, [cleanupPlayback, clearAnalyser]);
 
   const initMicrophone = useCallback(async () => {
     try {
@@ -151,10 +154,10 @@ export function useRecording({
       mediaRecorderRef.current.stop();
       setStatus('processing');
       setVolume(0);
-      // 停止錄音後清除 analyser，processing 狀態用固定動畫
-      setAnalyser?.(null);
+      // 停止錄音後清除 analyser（identity guard），processing 狀態用固定動畫
+      clearAnalyser?.(analyserRef.current);
     }
-  }, [setStatus, setVolume, setAnalyser]);
+  }, [setStatus, setVolume, clearAnalyser]);
 
   const startRecording = useCallback(async () => {
     try {
@@ -213,10 +216,10 @@ export function useRecording({
       mediaRecorderRef.current.stop();
       setStatus('processing');
       setVolume(0);
-      // PTT 停止錄音後清除 analyser，processing 狀態用固定動畫
-      setAnalyser?.(null);
+      // PTT 停止錄音後清除 analyser（identity guard），processing 狀態用固定動畫
+      clearAnalyser?.(analyserRef.current);
     }
-  }, [setStatus, setVolume, setAnalyser]);
+  }, [setStatus, setVolume, clearAnalyser]);
 
   return {
     mediaRecorderRef,

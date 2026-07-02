@@ -56,7 +56,9 @@ def _format_cart(cart_data: dict) -> str:
     return f"cart: {', '.join(parts)} | total ${total}"
 
 
-def _send_turn(base: str, session_id: str, text: str, show_events: bool) -> None:
+def _send_turn(
+    client: httpx.Client, base: str, session_id: str, text: str, show_events: bool
+) -> None:
     """送出一輪對話，解析 SSE 串流並印出結果。"""
     url = f"{base}/api/text-chat"
     payload = {"text": text, "session_id": session_id}
@@ -70,8 +72,7 @@ def _send_turn(base: str, session_id: str, text: str, show_events: bool) -> None
     state: dict = {"event": None, "data": None}
 
     try:
-        # LLM 慢速輪 + TTS cache miss 可達 30-40s，timeout 放寬避免中斷後端 pipeline 汙染 session
-        with httpx.stream("POST", url, json=payload, timeout=120) as resp:
+        with client.stream("POST", url, json=payload) as resp:
             if resp.status_code != 200:
                 print(f"[錯誤] HTTP {resp.status_code}", file=sys.stderr)
                 sys.exit(1)
@@ -122,27 +123,30 @@ def _send_turn(base: str, session_id: str, text: str, show_events: bool) -> None
 def _run(args: argparse.Namespace) -> None:
     session_id = args.session or f"sim-{uuid.uuid4().hex[:8]}"
 
-    if args.text:
-        _send_turn(args.base, session_id, args.text, args.show_events)
-    elif args.script:
-        with open(args.script, encoding="utf-8") as f:
-            for raw in f:
-                line = raw.strip()
-                if not line or line.startswith("#"):
+    # 單一 client 供多輪重用連線；LLM 慢速輪 + TTS cache miss 可達 30-40s，
+    # timeout 放寬避免中斷後端 pipeline 汙染 session
+    with httpx.Client(timeout=120) as client:
+        if args.text:
+            _send_turn(client, args.base, session_id, args.text, args.show_events)
+        elif args.script:
+            with open(args.script, encoding="utf-8") as f:
+                for raw in f:
+                    line = raw.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    _send_turn(client, args.base, session_id, line, args.show_events)
+        else:  # --interactive
+            print(f"模擬點餐（session={session_id}），輸入 exit 結束")
+            while True:
+                try:
+                    text = input("> ").strip()
+                except (EOFError, KeyboardInterrupt):
+                    break
+                if text.lower() in ("exit", "quit"):
+                    break
+                if not text:
                     continue
-                _send_turn(args.base, session_id, line, args.show_events)
-    else:  # --interactive
-        print(f"模擬點餐（session={session_id}），輸入 exit 結束")
-        while True:
-            try:
-                text = input("> ").strip()
-            except (EOFError, KeyboardInterrupt):
-                break
-            if text.lower() in ("exit", "quit"):
-                break
-            if not text:
-                continue
-            _send_turn(args.base, session_id, text, args.show_events)
+                _send_turn(client, args.base, session_id, text, args.show_events)
 
 
 def main() -> None:

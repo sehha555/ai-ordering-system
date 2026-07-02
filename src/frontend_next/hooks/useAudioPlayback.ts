@@ -7,6 +7,8 @@ export function useAudioPlayback(
   onVolumeUpdate?: (volume: number) => void,
   // 可選：把 TTS AnalyserNode 存入 store，供 AudioVisualizer 頻譜驅動
   setAnalyser?: (a: AnalyserNode | null) => void,
+  // 可選：identity guard 清除（只清自己放進 store 的，避免蓋掉 mic 的 analyser）
+  clearAnalyser?: (owner: AnalyserNode | null) => void,
 ) {
   const audioQueueRef = useRef<string[]>([]);
   const isPlayingRef = useRef<boolean>(false);
@@ -25,15 +27,16 @@ export function useAudioPlayback(
   // 停止 TTS 音量監控並重置
   const stopVolumeMonitor = useCallback(() => {
     cancelAnimationFrame(volumeRafRef.current);
+    const owner = ttsAnalyserRef.current;
     ttsAnalyserRef.current = null;
     if (ttsAudioCtxRef.current) {
       ttsAudioCtxRef.current.close();
       ttsAudioCtxRef.current = null;
     }
-    // 清除 store 的 TTS analyser，AudioVisualizer 回到 volume fallback 模式
-    setAnalyser?.(null);
+    // 只清自己放進 store 的 analyser：插話時 store 已換成 mic 的，不能蓋掉
+    clearAnalyser?.(owner);
     onVolumeUpdate?.(0);
-  }, [onVolumeUpdate, setAnalyser]);
+  }, [onVolumeUpdate, clearAnalyser]);
 
   const playNextAudio = useCallback(() => {
     if (audioQueueRef.current.length === 0) {

@@ -77,6 +77,8 @@ export const useStore = create<AppState>((set) => ({
   setVadEnabled: (vadEnabled: boolean) => set({ vadEnabled }),
   setVolume: (volume: number) => set({ volume }),
   setAnalyser: (analyser: AnalyserNode | null) => set({ analyser }),
+  clearAnalyser: (owner: AnalyserNode | null) =>
+    set((s) => (s.analyser === owner ? { analyser: null } : {})),
 
   // Actions - AI 回覆文字
   setAiReply: (aiReply: string) => set({ aiReply }),

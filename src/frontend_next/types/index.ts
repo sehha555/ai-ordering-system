@@ -120,6 +120,8 @@ export interface AppState {
 
   // Actions - 頻譜分析器
   setAnalyser: (a: AnalyserNode | null) => void;
+  // 只在 store 中的 analyser 是 owner 時才清除（防 mic/TTS 兩來源互相蓋掉）
+  clearAnalyser: (owner: AnalyserNode | null) => void;
 
   // Actions - 網路連線
   setConnectionError: (error: string | null) => void;
