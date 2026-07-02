@@ -1,7 +1,9 @@
 # Start AI Ordering System
 # 啟動順序：Backend(ASR) → LLM → OmniVoice → Frontend
 # ASR 必須先載入 GPU，否則 VRAM 被 LLM 佔滿會載入失敗
-# Usage: .\start.ps1
+# Usage: .\start.ps1 [-RefAudio ref_voice.wav]
+#   -RefAudio: OmniVoice voice clone 參考音檔（預設台灣女聲 ref_taiwan.wav，換聲音只要換檔案）
+param([string]$RefAudio = "ref_taiwan.wav")
 
 $Root = $PSScriptRoot
 $ModelPath = "$env:USERPROFILE\.lmstudio\models\unsloth\Qwen3.5-9B-GGUF\Qwen3.5-9B-UD-Q4_K_XL.gguf"
@@ -40,7 +42,7 @@ $llm = Start-Process -NoNewWindow -PassThru -FilePath "$Root\tools\llama-server\
 
 # 3. OmniVoice TTS（~1.9GB VRAM）
 Write-Host "Starting OmniVoice TTS (:8100)..."
-$omnivoice = Start-Process -NoNewWindow -PassThru -FilePath "python" -ArgumentList "src/services/omnivoice_server.py","--ref-audio","ref_voice.wav" -WorkingDirectory $Root
+$omnivoice = Start-Process -NoNewWindow -PassThru -FilePath "python" -ArgumentList "src/services/omnivoice_server.py","--ref-audio",$RefAudio -WorkingDirectory $Root
 
 # 4. Frontend
 Write-Host "Starting frontend (Next.js :3000)..."
