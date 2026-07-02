@@ -26,6 +26,8 @@ interface UseRecordingProps {
   setVadEnabled: (v: boolean) => void;
   sendAudioRef: RefObject<((blob: Blob) => Promise<void>) | undefined>;
   cleanupPlayback: () => void;
+  // 可選：把活躍的 AnalyserNode 存入 store，供 AudioVisualizer 頻譜驅動
+  setAnalyser?: (a: AnalyserNode | null) => void;
 }
 
 export function useRecording({
@@ -35,6 +37,7 @@ export function useRecording({
   setVadEnabled,
   sendAudioRef,
   cleanupPlayback,
+  setAnalyser,
 }: UseRecordingProps) {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -68,7 +71,8 @@ export function useRecording({
       audioContextRef.current = null;
     }
     analyserRef.current = null;
-  }, [cleanupPlayback]);
+    setAnalyser?.(null);
+  }, [cleanupPlayback, setAnalyser]);
 
   const initMicrophone = useCallback(async () => {
     try {
@@ -78,7 +82,8 @@ export function useRecording({
       audioContextRef.current = new AudioContext();
       analyserRef.current = audioContextRef.current.createAnalyser();
       analyserRef.current.fftSize = 256;
-      analyserRef.current.smoothingTimeConstant = 0.8;
+      // 0.6：保留頻譜動態給聲紋視覺化（0.8 會把起伏抹平）
+      analyserRef.current.smoothingTimeConstant = 0.6;
 
       const source = audioContextRef.current.createMediaStreamSource(stream);
       source.connect(analyserRef.current);
@@ -113,6 +118,8 @@ export function useRecording({
     if (isRecordingRef.current || !streamRef.current) return;
     isRecordingRef.current = true;
     setStatus('listening');
+    // 把 mic analyser 存入 store，讓 AudioVisualizer 用真實頻譜驅動動畫
+    setAnalyser?.(analyserRef.current);
 
     const mimeType = getSupportedMimeType();
     const recorderOpts = mimeType ? { mimeType } : undefined;
@@ -144,8 +151,10 @@ export function useRecording({
       mediaRecorderRef.current.stop();
       setStatus('processing');
       setVolume(0);
+      // 停止錄音後清除 analyser，processing 狀態用固定動畫
+      setAnalyser?.(null);
     }
-  }, [setStatus, setVolume]);
+  }, [setStatus, setVolume, setAnalyser]);
 
   const startRecording = useCallback(async () => {
     try {
@@ -160,6 +169,7 @@ export function useRecording({
         audioContextRef.current = new AudioContext();
         analyserRef.current = audioContextRef.current.createAnalyser();
         analyserRef.current.fftSize = 256;
+        analyserRef.current.smoothingTimeConstant = 0.6;
       }
       const source = audioContextRef.current.createMediaStreamSource(stream);
       source.connect(analyserRef.current!);
@@ -177,6 +187,8 @@ export function useRecording({
       recordingStartTimeRef.current = Date.now();
       mediaRecorderRef.current.start();
       setStatus('listening');
+      // PTT 模式：錄音開始時把 mic analyser 存入 store
+      setAnalyser?.(analyserRef.current ?? null);
 
       const dataArray = new Uint8Array(analyserRef.current!.frequencyBinCount);
       let pttFrameCount = 0;
@@ -194,15 +206,17 @@ export function useRecording({
       console.error('Failed to start recording:', error);
       setStatus('idle');
     }
-  }, [setStatus, setVolume, makeOnStopHandler]);
+  }, [setStatus, setVolume, makeOnStopHandler, setAnalyser]);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.stop();
       setStatus('processing');
       setVolume(0);
+      // PTT 停止錄音後清除 analyser，processing 狀態用固定動畫
+      setAnalyser?.(null);
     }
-  }, [setStatus, setVolume]);
+  }, [setStatus, setVolume, setAnalyser]);
 
   return {
     mediaRecorderRef,

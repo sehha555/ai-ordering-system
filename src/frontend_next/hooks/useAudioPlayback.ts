@@ -5,6 +5,8 @@ import { useRef, useCallback, RefObject } from 'react';
 export function useAudioPlayback(
   _audioContextRef: RefObject<AudioContext | null>,
   onVolumeUpdate?: (volume: number) => void,
+  // 可選：把 TTS AnalyserNode 存入 store，供 AudioVisualizer 頻譜驅動
+  setAnalyser?: (a: AnalyserNode | null) => void,
 ) {
   const audioQueueRef = useRef<string[]>([]);
   const isPlayingRef = useRef<boolean>(false);
@@ -28,8 +30,10 @@ export function useAudioPlayback(
       ttsAudioCtxRef.current.close();
       ttsAudioCtxRef.current = null;
     }
+    // 清除 store 的 TTS analyser，AudioVisualizer 回到 volume fallback 模式
+    setAnalyser?.(null);
     onVolumeUpdate?.(0);
-  }, [onVolumeUpdate]);
+  }, [onVolumeUpdate, setAnalyser]);
 
   const playNextAudio = useCallback(() => {
     if (audioQueueRef.current.length === 0) {
@@ -69,12 +73,15 @@ export function useAudioPlayback(
         const ctx = new AudioContext();
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 256;
-        analyser.smoothingTimeConstant = 0.8;
+        // 0.6：保留頻譜動態給聲紋視覺化（0.8 會把起伏抹平）
+        analyser.smoothingTimeConstant = 0.6;
         const source = ctx.createMediaElementSource(audio);
         source.connect(analyser);
         analyser.connect(ctx.destination); // 必須接 destination，否則無聲
         ttsAudioCtxRef.current = ctx;
         ttsAnalyserRef.current = analyser;
+        // 把 TTS analyser 存入 store，讓 AudioVisualizer 在 speaking 時用頻譜驅動
+        setAnalyser?.(analyser);
 
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
         const updateVolume = () => {
@@ -124,7 +131,7 @@ export function useAudioPlayback(
       revokeUrl();
       playNextAudio();
     });
-  }, [onVolumeUpdate, stopVolumeMonitor]);
+  }, [onVolumeUpdate, stopVolumeMonitor, setAnalyser]);
 
   // 清理播放狀態（AudioContext 由 VoiceController 管理，不在此關閉）
   const cleanup = useCallback(() => {

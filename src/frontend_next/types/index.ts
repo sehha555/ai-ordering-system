@@ -90,6 +90,10 @@ export interface AppState {
   // 麥克風音量（0-1，供 AudioVisualizer 使用）
   volume: number;
 
+  // 當前活躍的 AnalyserNode（麥克風或 TTS），供 AudioVisualizer 頻譜驅動
+  // 不寫進 React state，避免每幀重渲染；AudioVisualizer 透過 ref 同步讀取
+  analyser: AnalyserNode | null;
+
   // Actions - 語音和訂購
   setStatus: (s: AppStatus) => void;
   setCart: (items: CartItem[], total: number) => void;
@@ -113,6 +117,9 @@ export interface AppState {
   // Actions - Streaming 文字
   appendStreamingText: (chunk: string) => void;
   clearStreamingText: () => void;
+
+  // Actions - 頻譜分析器
+  setAnalyser: (a: AnalyserNode | null) => void;
 
   // Actions - 網路連線
   setConnectionError: (error: string | null) => void;
