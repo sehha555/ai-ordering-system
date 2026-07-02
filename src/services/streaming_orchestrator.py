@@ -73,7 +73,7 @@ def _format_cart_items(cart: list) -> list:
         name = cart_manager.format_item(item)
         pi = cart_manager.get_price_info(item)
         if pi and pi.get("ok"):
-            price = cart_manager.extract_total(pi, qty)
+            price = cart_manager.extract_total(pi)
         else:
             price = 0
         items.append(
@@ -105,8 +105,7 @@ class StreamingOrchestrator:
         if not text:
             return
         # voice_key 用於快取維度，區分 OmniVoice clone / instruct / Edge TTS 等不同聲音
-        voice_key = getattr(self.tts, "cache_voice_key", "default")
-        cached = tts_cache.get(text, voice_key=voice_key)
+        cached = tts_cache.get(text, voice_key=self.tts.cache_voice_key)
         if cached:
             b64 = base64.b64encode(cached).decode("utf-8")
             ttfa = None
@@ -122,11 +121,8 @@ class StreamingOrchestrator:
                     chunks.append(chunk)
                 if chunks:
                     audio = b"".join(chunks)
-                    # fallback 產物不入快取（避免 Edge 聲音以 OmniVoice key 污染 warmup cache）
-                    if not getattr(self.tts, "last_run_used_fallback", False):
-                        # run_stream 後重取 voice_key：OmniVoice 首次呼叫後才確定 voice 模式
-                        put_voice_key = getattr(self.tts, "cache_voice_key", "default")
-                        tts_cache.put(text, audio, voice_key=put_voice_key)
+                    # 以實際產出聲音的 key 存入（fallback 產物存 fallback 聲音 key，不污染本尊）
+                    tts_cache.put(text, audio, voice_key=self.tts.last_voice_key)
                     b64 = base64.b64encode(audio).decode("utf-8")
                     ttfa = None
                     if first_audio:

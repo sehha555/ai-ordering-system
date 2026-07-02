@@ -10,7 +10,7 @@ from pathlib import Path
 
 from src.config.config_loader import load_json_config
 from src.tools.menu import menu_price_service
-from src.tools.text_utils import chinese_number_to_int, dedupe_keep_order
+from src.tools.text_utils import chinese_number_to_int, dedupe_keep_order, normalize_quantity
 
 MENU_TOOL_VERSION = "2025-12-27-config-v6"
 
@@ -231,7 +231,7 @@ class MenuTool:
         if extra_egg:
             total += _EXTRA_EGG_SURCHARGE
 
-        qty = max(1, int(quantity))
+        qty = normalize_quantity(quantity)
         total_price = total * qty
 
         return {

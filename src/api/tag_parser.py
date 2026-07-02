@@ -10,6 +10,19 @@ ADD_RE = re.compile(r"\[ADD:([^\]]+)\]")
 SET_QTY_RE = re.compile(r"\[SET_QTY:([^\]]+)\]")
 QUERY_RE = re.compile(r"\[QUERY(?::([^\]]*))?\]")
 
+# 所有 tag 的 registry — 新增 tag 時在此登記，strip_all_tags 的 consumer 自動涵蓋
+_ALL_TAG_RES = (ADD_RE, QUERY_RE, REMOVE_RE, SET_QTY_RE)
+
+
+def strip_all_tags(text: str) -> str:
+    """剝除文字中所有 text tag（含 [CHECKOUT]），供 TTS / 前端顯示前清理"""
+    from src.dm.tool_priming import CHECKOUT_TAG
+
+    for tag_re in _ALL_TAG_RES:
+        text = tag_re.sub("", text)
+    return text.replace(CHECKOUT_TAG, "")
+
+
 # last_failed_attempt 中要保留的「客人實際提供的選項」鍵
 PROVIDED_KEYS = ("rice", "size", "temp", "flavor", "noodle", "customization", "spicy", "extra_egg")
 

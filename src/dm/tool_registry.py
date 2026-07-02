@@ -924,7 +924,7 @@ class ToolRegistry:
             for item in cart:
                 qty = int(item.get("quantity", 1) or 1)
                 pi = cart_manager.get_price_info(item)
-                item_total = cart_manager.extract_total(pi, qty)
+                item_total = cart_manager.extract_total(pi)
                 unit_price = item_total // qty if qty > 0 else 0
                 items_payload.append(
                     {
