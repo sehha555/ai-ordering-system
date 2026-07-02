@@ -85,8 +85,6 @@ async def shortcircuit_reply(
     text: str, reply: str, session_id: str, session: dict, session_store, cart: list
 ):
     """規則層攔截共用：寫入 history、回寫 session、yield text_delta + done。"""
-    from src.dm import cart_manager
-
     session["llm_history"].append({"role": "user", "content": text})
     session["llm_history"].append({"role": "assistant", "content": reply})
     session_store.set(session_id, session)
@@ -94,7 +92,6 @@ async def shortcircuit_reply(
     yield {
         "type": "done",
         "cart": cart,
-        "order_payload": {"total_price": cart_manager.calculate_cart_total(cart)},
         "finalize_result": None,
         "preview_result": None,
     }
@@ -178,13 +175,10 @@ async def checkout_step(text: str, session_id: str, session: dict):
     # yield text_delta（給 orchestrator 做 TTS）
     yield {"type": "text_delta", "content": reply}
 
-    # yield done（僅結帳完成時計算總價）
-    cart = session.get("cart", [])
-    total_price = cart_manager.calculate_cart_total(cart) if finalize_result else 0
+    # yield done（cart_update 的 total 由 orchestrator 從 cart 自行加總）
     yield {
         "type": "done",
-        "cart": cart,
-        "order_payload": {"total_price": total_price},
+        "cart": session.get("cart", []),
         "finalize_result": finalize_result,
         "preview_result": None,
     }

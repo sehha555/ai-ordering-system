@@ -20,7 +20,6 @@ async def test_orchestrator_flow():
             "history": [],
             "tool_trace": [],
             "cart": [],
-            "order_payload": {"total_price": 0},
             "finalize_result": None,
         }
 

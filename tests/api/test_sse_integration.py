@@ -92,7 +92,6 @@ class TestTextChatSSE:
             {
                 "type": "done",
                 "cart": [],
-                "order_payload": {"total_price": 0},
                 "finalize_result": None,
                 "preview_result": None,
             },
@@ -125,7 +124,6 @@ class TestTextChatSSE:
             {
                 "type": "done",
                 "cart": [{"itemtype": "snack", "snack": "薯餅(1片)", "quantity": 1}],
-                "order_payload": {"total_price": 25},
                 "finalize_result": None,
                 "preview_result": None,
             },
@@ -144,8 +142,9 @@ class TestTextChatSSE:
 
         assert "audio_chunk" in types
 
+        # total 由 orchestrator 從 cart 實際計價（薯餅(1片) = $20）
         cart = find_event(events, "cart_update")
-        assert cart["data"]["total"] == 25
+        assert cart["data"]["total"] == 20
         assert len(cart["data"]["items"]) == 1
 
     def test_error_yields_sse_error_event(self):
@@ -175,7 +174,6 @@ class TestTextChatSSE:
             {
                 "type": "done",
                 "cart": [{"itemtype": "snack", "snack": "薯餅(1片)", "quantity": 2}],
-                "order_payload": {"total_price": 50},
                 "finalize_result": None,
                 "preview_result": None,
             },
@@ -190,7 +188,8 @@ class TestTextChatSSE:
         data = cart["data"]
         assert "items" in data and "total" in data
         assert isinstance(data["items"], list)
-        assert data["total"] == 50
+        # total 由 orchestrator 從 cart 實際計價（薯餅(1片) x2 = $40）
+        assert data["total"] == 40
 
         if data["items"]:
             item = data["items"][0]
@@ -208,7 +207,6 @@ class TestTextChatSSE:
             {
                 "type": "done",
                 "cart": [],
-                "order_payload": {"total_price": 50},
                 "finalize_result": {
                     "ok": True,
                     "order_number": "01",
