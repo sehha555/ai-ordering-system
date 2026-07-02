@@ -17,7 +17,7 @@ interface VoiceControllerProps {
 export default function VoiceController({ triggerRef }: VoiceControllerProps = {}) {
   const {
     status, setStatus, setCart, setTranscript, transcript,
-    vadEnabled, setVadEnabled, sessionId, setAiReply, setVolume,
+    vadEnabled, setVadEnabled, sessionId, setAiReply, setVolume, setAnalyser, clearAnalyser,
   } = useStore();
 
   // Bridge refs（跨 hook 的循環依賴橋接）
@@ -28,7 +28,7 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
   const {
     audioQueueRef, isPlayingRef, playNextAudio,
     onPlaybackCompleteRef, streamDoneRef, cleanup: cleanupPlayback,
-  } = useAudioPlayback(audioContextRef, setVolume);
+  } = useAudioPlayback(audioContextRef, setVolume, setAnalyser, clearAnalyser);
 
   const {
     analyserRef, isRecordingRef, isListeningRef,
@@ -37,7 +37,7 @@ export default function VoiceController({ triggerRef }: VoiceControllerProps = {
     startRecording, stopRecording,
   } = useRecording({
     audioContextRef, setStatus, setVolume, setVadEnabled,
-    sendAudioRef, cleanupPlayback,
+    sendAudioRef, cleanupPlayback, setAnalyser, clearAnalyser,
   });
 
   const { startVADLoop, calibrateVAD, vadLoopRef } = useVAD({

@@ -266,7 +266,6 @@ class StreamingDMAdapter:
                     yield {
                         "type": "done",
                         "cart": cart,
-                        "order_payload": {"total_price": total_price},
                         "finalize_result": finalize_result,
                         "preview_result": preview_result,
                     }
@@ -277,7 +276,6 @@ class StreamingDMAdapter:
             yield {
                 "type": "done",
                 "cart": session.get("cart", []),
-                "order_payload": {"total_price": 0},
                 "finalize_result": None,
                 "preview_result": None,
             }
@@ -367,7 +365,7 @@ async def voice_chat(
         logger.debug("[VOICE] 音訊過短（估計 {}ms），跳過 ASR", int(estimated_duration_ms))
 
         async def _empty_stream():
-            yield {"event": "done", "data": {"cart": [], "order_payload": {"total_price": 0}}}
+            yield {"event": "done", "data": {"cart": []}}
 
         return StreamingResponse(
             _sse_wrap(_empty_stream(), "empty"),

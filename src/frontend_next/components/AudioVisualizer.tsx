@@ -3,6 +3,11 @@
 import { useRef, useEffect, useCallback } from 'react';
 
 import { AppStatus } from '../types';
+import { useStore } from '../store/useStore';
+
+// 頻譜聚合參數：fftSize=256 → 128 bin，取前 96 bin 涵蓋語音/TTS 常見頻段
+const BAND_COUNT = 14;
+const VALID_BINS = 96;
 
 interface AudioVisualizerProps {
   status: AppStatus;
@@ -25,7 +30,7 @@ function rgba(hex: string, a: number): string {
 }
 
 export default function AudioVisualizer({ status, volume = 0, size = 'large' }: AudioVisualizerProps) {
-  // isSmall 只用於控制繪圖細節（高光、經緯線、點數），不影響 canvas 尺寸
+  // isSmall 只用於控制繪圖細節（頻譜條數量），不影響 canvas 尺寸
   const isSmall = size === 'small';
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>(0);
@@ -33,11 +38,22 @@ export default function AudioVisualizer({ status, volume = 0, size = 'large' }: 
   const colorRef = useRef({ r: 114, g: 157, b: 173 });
   // 平滑音量（避免跳動）
   const smoothVolumeRef = useRef(0);
+  // 光暈亮度平滑（避免逐幀閃爍）
+  const smoothGlowRef = useRef(0.08);
   // 用 ref 持有動態數據，讓 draw callback 不因 props 變化而重建
   const statusRef = useRef(status);
   const volumeRef = useRef(volume);
   useEffect(() => { statusRef.current = status; }, [status]);
   useEffect(() => { volumeRef.current = volume; }, [volume]);
+
+  // 頻譜驅動：從 store 讀取 AnalyserNode，同步到 ref（rAF 迴圈直接讀 ref，不訂閱 store）
+  const storeAnalyser = useStore(s => s.analyser);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  useEffect(() => { analyserRef.current = storeAnalyser; }, [storeAnalyser]);
+  // 頻率資料陣列（重用，不每幀 new）：fftSize=256 → 128 bin
+  const freqDataRef = useRef(new Uint8Array(128));
+  // 每個 band 的平滑後能量（上升快、衰減慢，講話停頓時長條緩緩落下）
+  const smoothBandsRef = useRef(new Float32Array(BAND_COUNT));
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -81,217 +97,116 @@ export default function AudioVisualizer({ status, volume = 0, size = 'large' }: 
     const t = phaseRef.current;
     phaseRef.current += 0.016;
 
-    const baseR = Math.min(w, h) * 0.25;
+    // 頻譜讀取：listening/speaking 時從 AnalyserNode 取得頻率資料
+    let hasSpectrum = false;
+    const bands = smoothBandsRef.current;
+    const currentAnalyser = analyserRef.current;
+    if (currentAnalyser && (currentStatus === 'listening' || currentStatus === 'speaking')) {
+      try {
+        currentAnalyser.getByteFrequencyData(freqDataRef.current);
+        hasSpectrum = true;
+        for (let b = 0; b < BAND_COUNT; b++) {
+          const startBin = Math.floor(b * VALID_BINS / BAND_COUNT);
+          const endBin = Math.floor((b + 1) * VALID_BINS / BAND_COUNT);
+          let sum = 0;
+          for (let j = startBin; j < endBin; j++) sum += freqDataRef.current[j];
+          const raw = sum / ((endBin - startBin) * 255); // 正規化 0-1
+          // 去噪底 + 提高對比
+          const shaped = Math.pow(Math.max(0, raw - 0.06) / 0.94, 1.3);
+          const prev = bands[b];
+          // 上升較快（0.5）、衰減慢（0.12）：跟得上音節又不會逐幀抖動
+          bands[b] = shaped > prev ? prev + (shaped - prev) * 0.5 : prev + (shaped - prev) * 0.12;
+        }
+      } catch {
+        // analyser 已分離（AudioContext 關閉等），安靜降級回音量模式
+        hasSpectrum = false;
+      }
+    } else {
+      // 無頻譜時長條緩緩歸零
+      for (let b = 0; b < BAND_COUNT; b++) bands[b] *= 0.9;
+    }
 
     // 狀態參數
-    let noiseAmp = 0;      // 表面噪點振幅
-    let breathAmp = 0;     // 呼吸振幅
-    let breathSpeed = 0;
-    let waveCount = 6;     // 表面波浪數
+    let glowTarget = 0.08;
+    let idleWave = false;    // idle/processing 的長條波浪動畫
     let waveSpeed = 1;
-    let glowAlpha = 0.1;
-    let scaleFactor = 1;   // 整體大小隨音量
-    let rimAlpha = 0.3;    // 邊緣亮度
 
     switch (currentStatus) {
       case 'idle':
-        noiseAmp = 3 * scale;
-        breathAmp = 6 * scale;
-        breathSpeed = 0.8;
-        waveCount = 5;
-        waveSpeed = 0.6;
-        glowAlpha = 0.08;
-        rimAlpha = 0.2;
+        glowTarget = 0.08;
+        idleWave = true;
+        waveSpeed = 1.2;
         break;
       case 'listening':
-        noiseAmp = (5 + vol * 25) * scale;
-        breathAmp = (4 + vol * 15) * scale;
-        breathSpeed = 1.2;
-        waveCount = 7;
-        waveSpeed = 1.5 + vol * 2;
-        glowAlpha = 0.1 + vol * 0.2;
-        scaleFactor = 1 + vol * 0.25;
-        rimAlpha = 0.3 + vol * 0.4;
+        glowTarget = 0.12 + vol * 0.15;
         break;
       case 'processing':
-        noiseAmp = 12 * scale;
-        breathAmp = 8 * scale;
-        breathSpeed = 2;
-        waveCount = 8;
-        waveSpeed = 3;
-        glowAlpha = 0.18;
-        scaleFactor = 1.05 + Math.sin(t * 3) * 0.05;
-        rimAlpha = 0.4;
+        glowTarget = 0.16;
+        idleWave = true;
+        waveSpeed = 4;
         break;
       case 'speaking':
-        noiseAmp = (5 + vol * 22 + Math.sin(t * 2.5) * 3) * scale;
-        breathAmp = (6 + vol * 14) * scale;
-        breathSpeed = 1.5;
-        waveCount = 6;
-        waveSpeed = 1.5 + vol * 2.5;
-        glowAlpha = 0.12 + vol * 0.15;
-        scaleFactor = 1.05 + vol * 0.15;
-        rimAlpha = 0.3 + vol * 0.3;
+        glowTarget = 0.12 + vol * 0.12;
         break;
     }
 
-    const breath = Math.sin(t * breathSpeed) * breathAmp;
-    const effectiveR = (baseR + breath) * scaleFactor;
+    // 光暈亮度用慢速 lerp（0.08），避免逐幀閃爍
+    smoothGlowRef.current += (glowTarget - smoothGlowRef.current) * 0.08;
+    const glowAlpha = smoothGlowRef.current;
 
-    // ====== 外層光暈 ======
-    const glowR = effectiveR + 40 * scale;
-    const glow = ctx.createRadialGradient(cx, cy, effectiveR * 0.3, cx, cy, glowR);
+    // ====== 背景光暈 ======
+    const glowR = Math.min(w, h) * 0.42;
+    const glow = ctx.createRadialGradient(cx, cy, glowR * 0.15, cx, cy, glowR);
     glow.addColorStop(0, rgba(hex, glowAlpha));
-    glow.addColorStop(0.5, rgba(hex, glowAlpha * 0.3));
+    glow.addColorStop(0.6, rgba(hex, glowAlpha * 0.35));
     glow.addColorStop(1, 'transparent');
     ctx.beginPath();
     ctx.arc(cx, cy, glowR, 0, Math.PI * 2);
     ctx.fillStyle = glow;
     ctx.fill();
 
-    // ====== 球體表面（帶噪點變形的圓）======
-    // 計算變形後的輪廓點
-    const points: Array<{ x: number; y: number; r: number }> = [];
-    const pointCount = isSmall ? 60 : 120;
+    // ====== 中央對稱頻譜條 ======
+    // 排列：中央低頻、往兩側漸高頻（鏡像對稱）；小尺寸減少條數
+    const halfCount = isSmall ? 8 : BAND_COUNT;
+    const totalBars = halfCount * 2 - 1;
+    const areaW = w * 0.72;
+    const gap = areaW / totalBars;
+    const barW = Math.max(gap * 0.55, 2);
+    const minH = 4 * scale;
+    const maxH = Math.min(h * 0.68, 175 * scale);
 
-    for (let i = 0; i < pointCount; i++) {
-      const angle = (i / pointCount) * Math.PI * 2;
-      // 多層噪點疊加模擬球體表面
-      const n1 = Math.sin(angle * waveCount + t * waveSpeed) * noiseAmp;
-      const n2 = Math.sin(angle * (waveCount + 3) - t * waveSpeed * 0.7) * noiseAmp * 0.4;
-      const n3 = Math.sin(angle * (waveCount * 2) + t * waveSpeed * 1.3) * noiseAmp * 0.2;
-      const localR = effectiveR + n1 + n2 + n3;
-      points.push({
-        x: cx + Math.cos(angle) * localR,
-        y: cy + Math.sin(angle) * localR,
-        r: localR,
-      });
-    }
+    for (let i = 0; i < totalBars; i++) {
+      // 距中心的顯示位置 → 對應 band：中央 bar = band 0（低頻）
+      const dist = Math.abs(i - (halfCount - 1));
+      const bandIdx = Math.min(Math.floor(dist * BAND_COUNT / halfCount), BAND_COUNT - 1);
 
-    // 球體填充：放射漸層模擬 3D 光照
-    // 光源偏左上，營造球體立體感
-    const lightOffX = -effectiveR * 0.25;
-    const lightOffY = -effectiveR * 0.25;
-    const sphereGrad = ctx.createRadialGradient(
-      cx + lightOffX, cy + lightOffY, effectiveR * 0.1,
-      cx, cy, effectiveR + noiseAmp,
-    );
-    sphereGrad.addColorStop(0, rgba(hex, 0.35));
-    sphereGrad.addColorStop(0.4, rgba(hex, 0.2));
-    sphereGrad.addColorStop(0.75, rgba(hex, 0.1));
-    sphereGrad.addColorStop(1, rgba(hex, 0.03));
+      let level: number;
+      if (hasSpectrum) {
+        level = bands[bandIdx];
+      } else if (idleWave) {
+        // idle：緩慢波浪；processing：快速跑動波
+        level = 0.08 + 0.06 * (1 + Math.sin(t * waveSpeed - bandIdx * 0.7));
+      } else {
+        // 無頻譜的 listening/speaking fallback：音量 + 每條相位差
+        level = vol * (0.5 + 0.5 * Math.sin(t * 3 + bandIdx * 0.9));
+      }
 
-    // 繪製填充
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let i = 1; i < points.length; i++) {
-      const prev = points[i - 1];
-      const curr = points[i];
-      const cpx = (prev.x + curr.x) / 2;
-      const cpy = (prev.y + curr.y) / 2;
-      ctx.quadraticCurveTo(prev.x, prev.y, cpx, cpy);
-    }
-    ctx.closePath();
-    ctx.fillStyle = sphereGrad;
-    ctx.fill();
+      // 中央高、兩側漸低的包絡（cos 曲線），亮度同步漸暗
+      const centerFrac = 1 - Math.abs(i - (totalBars - 1) / 2) / ((totalBars - 1) / 2);
+      const envelope = 0.25 + 0.75 * Math.sin(centerFrac * Math.PI / 2);
+      const bh = minH + level * envelope * (maxH - minH);
+      const bx = cx - areaW / 2 + gap * (i + 0.5);
 
-    // 邊緣線（rim light 效果）
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let i = 1; i < points.length; i++) {
-      const prev = points[i - 1];
-      const curr = points[i];
-      const cpx = (prev.x + curr.x) / 2;
-      const cpy = (prev.y + curr.y) / 2;
-      ctx.quadraticCurveTo(prev.x, prev.y, cpx, cpy);
-    }
-    ctx.closePath();
-    ctx.strokeStyle = rgba(hex, rimAlpha);
-    ctx.lineWidth = isSmall ? 1 : 2;
-    ctx.stroke();
+      const alpha = 0.35 + centerFrac * 0.5;
 
-    // ====== 球體內部高光（模擬反射）======
-    if (!isSmall) {
-      // 主高光（左上方）
-      const hlR = effectiveR * 0.35;
-      const hlGrad = ctx.createRadialGradient(
-        cx + lightOffX * 1.2, cy + lightOffY * 1.2, 0,
-        cx + lightOffX * 1.2, cy + lightOffY * 1.2, hlR,
-      );
-      hlGrad.addColorStop(0, 'rgba(255,255,255,0.15)');
-      hlGrad.addColorStop(0.5, 'rgba(255,255,255,0.05)');
-      hlGrad.addColorStop(1, 'transparent');
+      ctx.fillStyle = rgba(hex, alpha);
+      // 長條主體 + 上下圓頭（不用 roundRect，維持廣泛相容）
+      ctx.fillRect(bx - barW / 2, cy - bh / 2, barW, bh);
       ctx.beginPath();
-      ctx.arc(cx + lightOffX * 1.2, cy + lightOffY * 1.2, hlR, 0, Math.PI * 2);
-      ctx.fillStyle = hlGrad;
-      ctx.fill();
-
-      // 底部邊緣反光
-      const rimGrad = ctx.createRadialGradient(
-        cx + effectiveR * 0.15, cy + effectiveR * 0.3, 0,
-        cx + effectiveR * 0.15, cy + effectiveR * 0.3, effectiveR * 0.3,
-      );
-      rimGrad.addColorStop(0, rgba(hex, 0.12));
-      rimGrad.addColorStop(1, 'transparent');
-      ctx.beginPath();
-      ctx.arc(cx + effectiveR * 0.15, cy + effectiveR * 0.3, effectiveR * 0.3, 0, Math.PI * 2);
-      ctx.fillStyle = rimGrad;
+      ctx.arc(bx, cy - bh / 2, barW / 2, 0, Math.PI * 2);
+      ctx.arc(bx, cy + bh / 2, barW / 2, 0, Math.PI * 2);
       ctx.fill();
     }
-
-    // ====== 表面經緯線（增加球體感）======
-    if (!isSmall) {
-      ctx.save();
-      // 用 clip 限制在球體輪廓內
-      ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
-      for (let i = 1; i < points.length; i++) {
-        const prev = points[i - 1];
-        const curr = points[i];
-        ctx.quadraticCurveTo(prev.x, prev.y, (prev.x + curr.x) / 2, (prev.y + curr.y) / 2);
-      }
-      ctx.closePath();
-      ctx.clip();
-
-      // 緯線（水平橢圓）
-      const latCount = 5;
-      for (let i = 1; i < latCount; i++) {
-        const frac = i / latCount;
-        const latY = cy - effectiveR + frac * effectiveR * 2;
-        const dist = Math.abs(latY - cy) / effectiveR;
-        const latRx = effectiveR * Math.sqrt(1 - dist * dist);
-        const latRy = latRx * 0.15; // 壓扁成橢圓
-
-        ctx.beginPath();
-        ctx.ellipse(cx, latY, latRx, latRy, 0, 0, Math.PI * 2);
-        ctx.strokeStyle = rgba(hex, 0.06 + (1 - dist) * 0.04);
-        ctx.lineWidth = 0.5;
-        ctx.stroke();
-      }
-
-      // 經線（垂直橢圓）
-      const lonCount = 6;
-      for (let i = 0; i < lonCount; i++) {
-        const lonAngle = (i / lonCount) * Math.PI + t * 0.1;
-        const lonRx = effectiveR * Math.abs(Math.sin(lonAngle));
-        const lonRy = effectiveR;
-
-        ctx.beginPath();
-        ctx.ellipse(cx, cy, lonRx, lonRy, 0, 0, Math.PI * 2);
-        ctx.strokeStyle = rgba(hex, 0.05);
-        ctx.lineWidth = 0.5;
-        ctx.stroke();
-      }
-
-      ctx.restore();
-    }
-
-    // ====== 中心亮點 ======
-    const dotR = Math.max(2.5 * scale, 1);
-    ctx.beginPath();
-    ctx.arc(cx, cy, dotR, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.fill();
 
     animationRef.current = requestAnimationFrame(draw);
   }, [isSmall]);
@@ -332,7 +247,6 @@ export default function AudioVisualizer({ status, volume = 0, size = 'large' }: 
 
   // canvas 不設固定 width/height attribute，完全填滿父容器
   // 由父層（motion.div）控制尺寸動畫，ResizeObserver 自動跟進
-  // 這樣 Framer Motion layout 動畫時不會有瞬間跳變造成球體扁掉
   return (
     <canvas
       ref={canvasRef}

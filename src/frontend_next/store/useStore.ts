@@ -36,6 +36,9 @@ export const useStore = create<AppState>((set) => ({
   // 麥克風音量
   volume: 0,
 
+  // 當前活躍的 AnalyserNode（null = 無頻譜，fallback 到 volume 模式）
+  analyser: null,
+
   // Actions - 語音和訂購
   setStatus: (status: AppStatus) => set({ status }),
   setCart: (cart: CartItem[], total: number) => set({ cart, total }),
@@ -69,9 +72,13 @@ export const useStore = create<AppState>((set) => ({
     messages: [],
     streamingText: '',
     volume: 0,
+    analyser: null,
   }),
   setVadEnabled: (vadEnabled: boolean) => set({ vadEnabled }),
   setVolume: (volume: number) => set({ volume }),
+  setAnalyser: (analyser: AnalyserNode | null) => set({ analyser }),
+  clearAnalyser: (owner: AnalyserNode | null) =>
+    set((s) => (s.analyser === owner ? { analyser: null } : {})),
 
   // Actions - AI 回覆文字
   setAiReply: (aiReply: string) => set({ aiReply }),

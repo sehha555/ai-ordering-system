@@ -1,7 +1,5 @@
 import pytest
 import uuid
-import os
-import time
 from fastapi.testclient import TestClient
 from src.repository.order_repository import OrderRepository
 
@@ -11,14 +9,10 @@ import src.api.app as api_mod
 import src.api.checkout_router as checkout_mod
 
 
-def get_unique_test_db():
-    return f"test_orders_{uuid.uuid4().hex[:8]}.db"
-
-
 @pytest.fixture
-def test_env():
-    """測試環境 fixture - 設定獨立的測試資料庫"""
-    db_path = get_unique_test_db()
+def test_env(tmp_path):
+    """測試環境 fixture - 設定獨立的測試資料庫（tmp_path 由 pytest 自動清理）"""
+    db_path = str(tmp_path / "orders.db")
     test_repo = OrderRepository(db_path=db_path)
 
     # 備份原始單例
@@ -39,15 +33,6 @@ def test_env():
     repo_mod.order_repo = old_repos["repo"]
     api_mod.order_repo = old_repos["api"]
     checkout_mod.order_repo = old_repos["checkout"]
-
-    # 清理檔案 (retry Windows 鎖定)
-    for _ in range(10):
-        try:
-            if os.path.exists(db_path):
-                os.remove(db_path)
-            break
-        except PermissionError:
-            time.sleep(0.1)
 
 
 @pytest.fixture

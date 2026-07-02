@@ -34,6 +34,7 @@ BG: `#f4f7f8` / Success: `#4a9d68` / Error: `#c45c5c` / Warning: `#c49a30`
 - 啟動/測試/lint/benchmark 指令 → 先看 `README.md`
 - 設計文件 → `docs/plans/`
 - 架構圖 / 系統健檢等視覺化 HTML → `docs/reports/`
+- 模擬點餐對話（不經語音）→ `uv run python tools/order_sim.py --text "我要一個飯糰"`（多輪用 --script 或 --interactive，同 --session 共享購物車）
 
 ## Benchmark 護欄
 - 跑之前先確認 LM Studio 模型已載入，詳細規則 → `memory/lm-studio.md`

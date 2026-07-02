@@ -268,11 +268,12 @@ class StreamingOrchestrator:
                 if ttfa is not None:
                     ttfa_elapsed = ttfa
 
-        # Cart Update
+        # Cart Update — total 由 items 加總，與顯示同源（不依賴 done 事件各生產者自算）
         cart = context_snapshot.get("cart", [])
-        total = context_snapshot.get("order_payload", {}).get("total_price", 0)
+        items = _format_cart_items(cart)
+        total = sum(i["price"] for i in items)
         # has_pending 不另送：前端/腳本由 items 的 price_pending 自行 derive，單一來源
-        yield {"event": "cart_update", "data": {"items": _format_cart_items(cart), "total": total}}
+        yield {"event": "cart_update", "data": {"items": items, "total": total}}
 
         # Order Complete
         finalize_result = context_snapshot.get("finalize_result")
