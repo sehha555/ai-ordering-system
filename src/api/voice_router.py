@@ -248,7 +248,8 @@ class StreamingDMAdapter:
                         },
                     )
 
-                    # 檢查 finalize_order（tag 同句結帳推進優先，tool_trace 為舊路徑）
+                    # 檢查 finalize_order（tag 同句結帳推進優先；tool_trace 為 tool_calls
+                    # 舊路徑，text tag 模式不會命中——若未來重啟 tools 參數需防雙重 finalize）
                     finalize_result = tag_result.finalize_result
                     preview_result = None
                     for trace in event.get("tool_trace", []):

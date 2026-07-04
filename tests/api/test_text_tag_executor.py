@@ -143,7 +143,49 @@ async def test_add_failed_skips_advance(registry):
     )
 
     registry.finalize_order.assert_not_called()
-    assert session["checkout_status"] == CK_DINE
+    # 結帳狀態必須撤回：否則下輪補槽回答（如「紫米」）會被結帳狀態機吃掉
+    assert "checkout_status" not in session
+    assert result.finalize_result is None
+
+
+@pytest.mark.asyncio
+async def test_empty_cart_add_success_checkout_finalizes(registry):
+    """空車起單：ADD 成功入車 + 同句外帶現金 → 一次到位 finalize"""
+    session = _make_session(cart=[])
+
+    def _add_item(**kwargs):
+        session["cart"].append({"itemtype": "drink", "flavor": kwargs["name"], "quantity": 1})
+        return {"ok": True, "item_id": "i1", "message": "已加入豆漿"}
+
+    registry.add_item.side_effect = _add_item
+
+    result = await execute_tags(
+        "[ADD:豆漿|size=大杯|temp=冰][CHECKOUT]好～",
+        "一杯大杯冰豆漿 結帳 外帶 現金",
+        session,
+        "s1",
+    )
+
+    registry.finalize_order.assert_called_once_with(dine_type="take-out", payment_method="cash")
+    assert result.finalize_result is not None
+    assert "01號" in result.full_text
+
+
+@pytest.mark.asyncio
+async def test_empty_cart_add_failed_checkout_retracted(registry):
+    """空車放行進結帳但 ADD 未入車（品項不存在）→ 結帳狀態撤回"""
+    registry.add_item.return_value = {"ok": False, "message": "我們沒有賣珍珠奶茶喔"}
+    session = _make_session(cart=[])
+
+    result = await execute_tags(
+        "[ADD:珍珠奶茶][CHECKOUT]好～",
+        "一杯珍珠奶茶 結帳 外帶 現金",
+        session,
+        "s1",
+    )
+
+    registry.finalize_order.assert_not_called()
+    assert "checkout_status" not in session
     assert result.finalize_result is None
 
 

@@ -295,12 +295,19 @@ async def execute_tags(
 
     # ── 複合單句結帳推進：同句已帶內用外帶（/付款）→ 直接推進狀態機 ──
     # 放在 [ADD:...] 執行之後，確保同句加點的品項已入 cart 才 finalize。
-    # 有補槽失敗（last_failed_attempt）時不推進，讓缺欄位追問先走。
     finalize_result = None
-    if checkout_entered and not session.get("last_failed_attempt"):
+    if checkout_entered and session.get("last_failed_attempt"):
+        # ADD 補槽失敗：撤回結帳狀態讓缺欄位追問先走，
+        # 否則下輪補槽回答（如「紫米」）會被結帳狀態機吃掉造成死路
+        session.pop("checkout_status", None)
+        session.pop("checkout_dine_type", None)
+    elif checkout_entered:
         dine = parse_dine_type(text)
         cart = session.get("cart", [])
-        if dine and cart:
+        if not cart:
+            # 空車放行進結帳但 ADD 最終未入車（如品項不存在）→ 撤回結帳狀態
+            session.pop("checkout_status", None)
+        elif dine:
             from src.dm import cart_manager  # noqa: PLC0415
 
             # 有客製待確認 → 不能先付走 pending；否則同句有付款就直接 finalize
