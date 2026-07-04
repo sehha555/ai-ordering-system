@@ -23,25 +23,17 @@ def _make_session(cart=None):
     }
 
 
-def _make_registry(cart_after_add=None, order_number="01"):
-    """建立 mock tool_registry：add_item 成功並模擬品項入車，finalize_order 成功出單。"""
-    registry = MagicMock()
-    registry.add_item.return_value = {
-        "ok": True,
-        "item_id": "i1",
-        "message": "已加入豆漿",
-    }
-    registry.finalize_order.return_value = {
-        "ok": True,
-        "order_number": order_number,
-        "total": 90,
-    }
-    return registry
+def _session_with_item():
+    """含一項點心的 session（非空車場景共用）"""
+    return _make_session([{"itemtype": "snack", "snack": "薯餅(1片)", "quantity": 1}])
 
 
 @pytest.fixture
 def registry():
-    reg = _make_registry()
+    """mock tool_registry：add_item 成功、finalize_order 成功出 01 號單"""
+    reg = MagicMock()
+    reg.add_item.return_value = {"ok": True, "item_id": "i1", "message": "已加入豆漿"}
+    reg.finalize_order.return_value = {"ok": True, "order_number": "01", "total": 90}
     with patch("src.services.container.tool_registry", reg):
         yield reg
 
@@ -49,8 +41,7 @@ def registry():
 @pytest.mark.asyncio
 async def test_checkout_with_dine_and_payment_finalizes(registry):
     """同句帶外帶+現金 → 直接 finalize，回覆帶單號"""
-    cart = [{"itemtype": "snack", "snack": "薯餅(1片)", "quantity": 1}]
-    session = _make_session(cart)
+    session = _session_with_item()
 
     result = await execute_tags("[CHECKOUT]好～", "結帳 外帶 現金", session, "s1")
 
@@ -63,8 +54,7 @@ async def test_checkout_with_dine_and_payment_finalizes(registry):
 @pytest.mark.asyncio
 async def test_checkout_with_dine_only_advances_to_pay(registry):
     """同句只帶外帶 → 進 CK_PAY 問付款方式"""
-    cart = [{"itemtype": "snack", "snack": "薯餅(1片)", "quantity": 1}]
-    session = _make_session(cart)
+    session = _session_with_item()
 
     result = await execute_tags("[CHECKOUT]好～", "結帳 外帶", session, "s1")
 
@@ -78,8 +68,7 @@ async def test_checkout_with_dine_only_advances_to_pay(registry):
 @pytest.mark.asyncio
 async def test_checkout_without_dine_stays_in_dine_state(registry):
     """同句沒帶內用外帶 → 維持 CK_DINE（既有行為，下輪狀態機接手）"""
-    cart = [{"itemtype": "snack", "snack": "薯餅(1片)", "quantity": 1}]
-    session = _make_session(cart)
+    session = _session_with_item()
 
     result = await execute_tags("[CHECKOUT]內用還是外帶？", "結帳", session, "s1")
 
@@ -91,8 +80,7 @@ async def test_checkout_without_dine_stays_in_dine_state(registry):
 @pytest.mark.asyncio
 async def test_compound_add_and_checkout_adds_before_finalize(registry):
     """複合句 [ADD][CHECKOUT] → 先 add_item 再 finalize（品項不漏單）"""
-    cart = [{"itemtype": "snack", "snack": "薯餅(1片)", "quantity": 1}]
-    session = _make_session(cart)
+    session = _session_with_item()
 
     result = await execute_tags(
         "[ADD:豆漿|size=大杯|temp=冰][CHECKOUT]好～",
@@ -145,8 +133,7 @@ async def test_add_failed_skips_advance(registry):
         "missing": ["rice"],
         "message": "飯糰要紫米白米？",
     }
-    cart = [{"itemtype": "snack", "snack": "薯餅(1片)", "quantity": 1}]
-    session = _make_session(cart)
+    session = _session_with_item()
 
     result = await execute_tags(
         "[ADD:鮪魚飯糰][CHECKOUT]好～",

@@ -19,8 +19,10 @@ from typing import Any, Dict, List, Optional
 from loguru import logger
 
 from src.api.checkout_handler import (
+    ASK_PAYMENT,
     CK_DINE,
     CK_PAY,
+    finalize_and_reply,
     parse_dine_type,
     parse_payment,
     patch_last_assistant,
@@ -301,33 +303,14 @@ async def execute_tags(
         if dine and cart:
             from src.dm import cart_manager  # noqa: PLC0415
 
-            if cart_manager.cart_has_pending(cart):
-                # 有客製待確認 → 不能先付，直接建「待店員結算」單（同 checkout_step）
-                result = _tool_registry.finalize_order(dine_type=dine, payment_method="pending")
-                session.pop("checkout_status", None)
-                if result.get("ok"):
-                    finalize_result = result
-                    order_number = result.get("order_number", "")
-                    full_text = (
-                        f"好的，{order_number}號～有客製品項需店員確認價格，"
-                        "請稍候結算，這邊先不收款喔。"
-                    )
-                else:
-                    full_text = result.get("message", "結帳失敗，請再試一次")
+            # 有客製待確認 → 不能先付走 pending；否則同句有付款就直接 finalize
+            pay = "pending" if cart_manager.cart_has_pending(cart) else parse_payment(text)
+            if pay:
+                full_text, finalize_result = finalize_and_reply(dine, pay, session, _tool_registry)
             else:
-                pay = parse_payment(text)
-                if pay:
-                    result = _tool_registry.finalize_order(dine_type=dine, payment_method=pay)
-                    session.pop("checkout_status", None)
-                    if result.get("ok"):
-                        finalize_result = result
-                        full_text = f"好，{result.get('order_number', '')}號～"
-                    else:
-                        full_text = result.get("message", "結帳失敗，請再試一次")
-                else:
-                    session["checkout_dine_type"] = dine
-                    session["checkout_status"] = CK_PAY
-                    full_text = "現金還是行動支付？"
+                session["checkout_dine_type"] = dine
+                session["checkout_status"] = CK_PAY
+                full_text = ASK_PAYMENT
             logger.info(
                 "[CHECKOUT 同句推進] dine={} finalize={}", dine, finalize_result is not None
             )
