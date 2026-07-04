@@ -66,6 +66,30 @@ def has_order_intent(text: str) -> bool:
     return any(kw in text for kw in _ORDER_INTENT_KEYWORDS)
 
 
+ASK_PAYMENT = "現金還是行動支付？"
+
+
+def finalize_and_reply(
+    dine: str, pay: str, session: dict, tool_registry
+) -> tuple[str, dict | None]:
+    """執行 finalize_order 並清結帳狀態，回傳 (話術, finalize_result)。
+
+    話術三態：pending（待店員結算）/ 成功（報單號）/ 失敗（後端訊息）。
+    checkout_step 與 text_tag_executor 同句推進共用，話術與 finalize 序列單一出處。
+    """
+    result = tool_registry.finalize_order(dine_type=dine, payment_method=pay)
+    session.pop("checkout_status", None)
+    session.pop("checkout_dine_type", None)
+    if not result.get("ok"):
+        return result.get("message", "結帳失敗，請再試一次"), None
+    order_number = result.get("order_number", "")
+    if pay == "pending":
+        reply = f"好的，{order_number}號～有客製品項需店員確認價格，請稍候結算，這邊先不收款喔。"
+    else:
+        reply = f"好，{order_number}號～"
+    return reply, result
+
+
 def patch_last_assistant(history: list[dict], content: str) -> None:
     """覆寫 history 中最後一條 assistant 回覆"""
     for msg in reversed(history):
@@ -119,21 +143,12 @@ async def checkout_step(text: str, session_id: str, session: dict):
             cart = session.get("cart", [])
             if cart_manager.cart_has_pending(cart):
                 # 有客製待確認 → 不能先付：跳過付款步驟，直接建「待店員結算」單
-                result = _tool_registry.finalize_order(dine_type=dine, payment_method="pending")
-                session.pop("checkout_status", None)
-                session.pop("checkout_dine_type", None)
-                if result.get("ok"):
-                    finalize_result = result
-                    order_number = result.get("order_number", "")
-                    reply = (
-                        f"好的，{order_number}號～有客製品項需店員確認價格，"
-                        "請稍候結算，這邊先不收款喔。"
-                    )
-                else:
-                    reply = result.get("message", "結帳失敗，請再試一次")
+                reply, finalize_result = finalize_and_reply(
+                    dine, "pending", session, _tool_registry
+                )
             else:
                 session["checkout_status"] = CK_PAY
-                reply = "現金還是行動支付？"
+                reply = ASK_PAYMENT
         elif has_order_intent(text):
             # 反悔：intent 檢查必須在 parse 失敗後才執行
             exit_checkout(session_id, session, _session_store)
@@ -148,18 +163,7 @@ async def checkout_step(text: str, session_id: str, session: dict):
             if dine is None:
                 logger.warning("[CHECKOUT] checkout_dine_type missing in CHECKOUT_PAY state")
                 dine = "dine-in"
-            result = _tool_registry.finalize_order(
-                dine_type=dine,
-                payment_method=pay,
-            )
-            session.pop("checkout_status", None)
-            session.pop("checkout_dine_type", None)
-            if result.get("ok"):
-                finalize_result = result
-                order_number = result.get("order_number", "")
-                reply = f"好，{order_number}號～"
-            else:
-                reply = result.get("message", "結帳失敗，請再試一次")
+            reply, finalize_result = finalize_and_reply(dine, pay, session, _tool_registry)
         elif has_order_intent(text):
             # 反悔：intent 檢查必須在 parse 失敗後才執行
             exit_checkout(session_id, session, _session_store)

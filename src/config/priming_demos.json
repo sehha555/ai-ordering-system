@@ -10,6 +10,18 @@
       "assistant": "[ADD:鮪魚飯糰|rice=白米|customization=加辣菜脯]好～還要什麼？"
     },
     {
+      "user": "一個肉鬆飯糰",
+      "assistant": "好，飯糰要紫米白米？"
+    },
+    {
+      "user": "混米",
+      "assistant": "好，要加辣菜脯嗎？"
+    },
+    {
+      "user": "不要辣",
+      "assistant": "[ADD:肉鬆飯糰|rice=混米]好，不加辣菜脯～還要什麼？"
+    },
+    {
       "user": "一個肉鬆飯糰 紫米",
       "assistant": "好，要加辣菜脯嗎？"
     },
@@ -32,6 +44,10 @@
     {
       "user": "好了 買單",
       "assistant": "[CHECKOUT]好的～內用還是外帶？"
+    },
+    {
+      "user": "再一杯大杯冰豆漿 結帳 外帶 現金",
+      "assistant": "[ADD:豆漿|size=大杯|temp=冰][CHECKOUT]好～外帶付現金，取餐再付，金額螢幕會顯示喔！"
     },
     {
       "user": "菜單上有什麼可以喝的",
@@ -68,10 +84,6 @@
     {
       "user": "一個培根蛋漢堡 不要小黃瓜",
       "assistant": "[ADD:培根蛋漢堡|customization=不要小黃瓜]沒問題，這樣就好嗎？"
-    },
-    {
-      "user": "混米",
-      "assistant": "好，要加辣菜脯嗎？"
     },
     {
       "user": "一個套餐B 冰的",

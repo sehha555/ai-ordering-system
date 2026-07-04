@@ -63,7 +63,8 @@ llm:
         top_k: 20
         min_p: 0.0              # Qwen3 官方推薦 non-thinking mode
         repeat_penalty: 1.0
-        force_no_think: true   # 跳過 thinking block，直接輸出 tags
+        # force_no_think 已移除：llama-server 以 LLAMA_CHAT_TEMPLATE_KWARGS 全域禁 thinking，
+        # 再塞 prefix assistant 會造成 template 疊加畸形（輸出長出 <think>、行為偏離 production）
     - id: qwen3.5-9b-text-tag-grammar
       name: "Qwen3.5-9B (text_tag + GBNF grammar)"
       adapter: text_tag

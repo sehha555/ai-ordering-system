@@ -18,7 +18,15 @@ from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-from src.api.checkout_handler import CK_DINE, patch_last_assistant
+from src.api.checkout_handler import (
+    ASK_PAYMENT,
+    CK_DINE,
+    CK_PAY,
+    finalize_and_reply,
+    parse_dine_type,
+    parse_payment,
+    patch_last_assistant,
+)
 from src.api.tag_parser import (
     ADD_RE,
     PROVIDED_KEYS,
@@ -38,6 +46,7 @@ class TagExecutionResult:
 
     full_text: str  # 處理後準備送 TTS 的最終回覆文字
     followup_text: str = ""  # 需要額外 yield 的 text_delta（失敗追問）
+    finalize_result: Optional[dict] = None  # 同句結帳推進直接 finalize 的結果
 
 
 async def execute_tags(
@@ -62,11 +71,14 @@ async def execute_tags(
     cart = session.get("cart", [])
 
     # ── [CHECKOUT] 攔截 ──
+    checkout_entered = False  # 本輪剛進結帳狀態（供尾端同句推進判斷）
     if CHECKOUT_TAG in full_text:
-        if not cart:
+        # 空車但同句帶 [ADD:...]（複合句點餐+結帳）→ 品項即將入車，照常進結帳
+        if not cart and "[ADD:" not in full_text:
             full_text = "購物車是空的，請先點餐喔～"
         else:
             session["checkout_status"] = CK_DINE
+            checkout_entered = True
             full_text = full_text.replace(CHECKOUT_TAG, "")
         patch_last_assistant(session["llm_history"], full_text)
 
@@ -281,7 +293,38 @@ async def execute_tags(
         full_text = QUERY_RE.sub("", full_text).strip()
         patch_last_assistant(session["llm_history"], full_text)
 
+    # ── 複合單句結帳推進：同句已帶內用外帶（/付款）→ 直接推進狀態機 ──
+    # 放在 [ADD:...] 執行之後，確保同句加點的品項已入 cart 才 finalize。
+    finalize_result = None
+    if checkout_entered and session.get("last_failed_attempt"):
+        # ADD 補槽失敗：撤回結帳狀態讓缺欄位追問先走，
+        # 否則下輪補槽回答（如「紫米」）會被結帳狀態機吃掉造成死路
+        session.pop("checkout_status", None)
+        session.pop("checkout_dine_type", None)
+    elif checkout_entered:
+        dine = parse_dine_type(text)
+        cart = session.get("cart", [])
+        if not cart:
+            # 空車放行進結帳但 ADD 最終未入車（如品項不存在）→ 撤回結帳狀態
+            session.pop("checkout_status", None)
+        elif dine:
+            from src.dm import cart_manager  # noqa: PLC0415
+
+            # 有客製待確認 → 不能先付走 pending；否則同句有付款就直接 finalize
+            pay = "pending" if cart_manager.cart_has_pending(cart) else parse_payment(text)
+            if pay:
+                full_text, finalize_result = finalize_and_reply(dine, pay, session, _tool_registry)
+            else:
+                session["checkout_dine_type"] = dine
+                session["checkout_status"] = CK_PAY
+                full_text = ASK_PAYMENT
+            logger.info(
+                "[CHECKOUT 同句推進] dine={} finalize={}", dine, finalize_result is not None
+            )
+            patch_last_assistant(session["llm_history"], full_text)
+
     return TagExecutionResult(
         full_text=full_text,
         followup_text=followup_text,
+        finalize_result=finalize_result,
     )

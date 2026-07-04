@@ -198,7 +198,10 @@ def _apply_response_template(model_text: str, tool_calls: list, exec_results: li
         tool_msg = first_ok.get("message", "")
         if not tool_msg:
             return model_text
-        return f"好，{tool_msg}～還要什麼？"
+        # 保留 [CHECKOUT]：production 中結帳 tag 於 ADD 之前已被攔截處理，
+        # template 覆蓋不應吞掉模型的結帳意圖（複合單句點餐+結帳場景）
+        prefix = "[CHECKOUT]" if "[CHECKOUT]" in model_text else ""
+        return f"{prefix}好，{tool_msg}～還要什麼？"
 
     # 全部 ok:false：用最後一個 ok:false 的 tool_msg 構建追問
     last_exec = exec_results[-1]
