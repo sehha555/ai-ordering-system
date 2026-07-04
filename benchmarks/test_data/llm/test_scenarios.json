@@ -254,22 +254,12 @@
         "content": "紫米"
       }
     ],
-    "expected_tools": [
-      "add_item"
-    ],
+    "expected_tools": [],
     "expected_response_contains": [
-      "傳統"
+      "辣菜脯"
     ],
-    "expected_behavior": "米種補齊後，預設不加辣，應 call add_item 或追問辣菜脯",
-    "expected_args": [
-      {
-        "name": "add_item",
-        "args": {
-          "name": "源味傳統",
-          "rice": "紫米"
-        }
-      }
-    ]
+    "expected_behavior": "米種補齊後依 R2 必問加料（辣菜脯），不應直接 add_item；收尾行為由 B4/T9 驗證",
+    "expected_args": []
   },
   {
     "id": "u_riceball_full_flow",
@@ -1871,5 +1861,84 @@
       "螢幕"
     ],
     "expected_behavior": "外帶+現金應提示「取餐再付，金額螢幕顯示」（R13）"
+  },
+  {
+    "id": "u_riceball_decline_spicy_colloquial",
+    "description": "T9: 飯糰追問鏈口語否定收尾 — 「不要辣」應出 ADD 不重複問",
+    "category": "multi_round",
+    "messages": [
+      {
+        "role": "user",
+        "content": "我要一個鮪魚飯糰"
+      },
+      {
+        "role": "assistant",
+        "content": "好，要白米還是紫米？"
+      },
+      {
+        "role": "user",
+        "content": "紫米"
+      },
+      {
+        "role": "assistant",
+        "content": "好，要加辣菜脯嗎？"
+      },
+      {
+        "role": "user",
+        "content": "不要辣"
+      }
+    ],
+    "expected_tools": [
+      "add_item"
+    ],
+    "expected_args": [
+      {
+        "name": "add_item",
+        "args": {
+          "name": "鮪魚",
+          "rice": "紫米"
+        }
+      }
+    ],
+    "expected_response_contains": [],
+    "expected_behavior": "辣菜脯追問收到口語否定（不要辣）後，應從上文組出完整 add_item(name含鮪魚, rice=紫米)，不得重複追問辣菜脯"
+  },
+  {
+    "id": "u_compound_add_checkout",
+    "description": "T10: 複合單句點餐+結帳 — [ADD] 與 [CHECKOUT] 同時輸出",
+    "category": "checkout",
+    "session_context": {
+      "cart_items": [
+        "紫米鮪魚飯糰 x1"
+      ],
+      "cart_count": 1
+    },
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "好～還要什麼？"
+      },
+      {
+        "role": "user",
+        "content": "再一杯大杯冰豆漿 結帳 外帶 現金"
+      }
+    ],
+    "expected_tools": [
+      "add_item"
+    ],
+    "expected_args": [
+      {
+        "name": "add_item",
+        "args": {
+          "name": "豆漿",
+          "size": "大杯",
+          "temp": "冰"
+        }
+      }
+    ],
+    "expected_response_contains": [
+      "[CHECKOUT]"
+    ],
+    "expected_behavior": "複合句同時帶點餐與結帳意圖：應輸出 [ADD:豆漿|size=大杯|temp=冰] 且回覆帶 [CHECKOUT]，結帳意圖不得被吞"
   }
 ]

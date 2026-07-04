@@ -18,7 +18,13 @@ from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-from src.api.checkout_handler import CK_DINE, patch_last_assistant
+from src.api.checkout_handler import (
+    CK_DINE,
+    CK_PAY,
+    parse_dine_type,
+    parse_payment,
+    patch_last_assistant,
+)
 from src.api.tag_parser import (
     ADD_RE,
     PROVIDED_KEYS,
@@ -38,6 +44,7 @@ class TagExecutionResult:
 
     full_text: str  # 處理後準備送 TTS 的最終回覆文字
     followup_text: str = ""  # 需要額外 yield 的 text_delta（失敗追問）
+    finalize_result: Optional[dict] = None  # 同句結帳推進直接 finalize 的結果
 
 
 async def execute_tags(
@@ -62,11 +69,14 @@ async def execute_tags(
     cart = session.get("cart", [])
 
     # ── [CHECKOUT] 攔截 ──
+    checkout_entered = False  # 本輪剛進結帳狀態（供尾端同句推進判斷）
     if CHECKOUT_TAG in full_text:
-        if not cart:
+        # 空車但同句帶 [ADD:...]（複合句點餐+結帳）→ 品項即將入車，照常進結帳
+        if not cart and "[ADD:" not in full_text:
             full_text = "購物車是空的，請先點餐喔～"
         else:
             session["checkout_status"] = CK_DINE
+            checkout_entered = True
             full_text = full_text.replace(CHECKOUT_TAG, "")
         patch_last_assistant(session["llm_history"], full_text)
 
@@ -281,7 +291,50 @@ async def execute_tags(
         full_text = QUERY_RE.sub("", full_text).strip()
         patch_last_assistant(session["llm_history"], full_text)
 
+    # ── 複合單句結帳推進：同句已帶內用外帶（/付款）→ 直接推進狀態機 ──
+    # 放在 [ADD:...] 執行之後，確保同句加點的品項已入 cart 才 finalize。
+    # 有補槽失敗（last_failed_attempt）時不推進，讓缺欄位追問先走。
+    finalize_result = None
+    if checkout_entered and not session.get("last_failed_attempt"):
+        dine = parse_dine_type(text)
+        cart = session.get("cart", [])
+        if dine and cart:
+            from src.dm import cart_manager  # noqa: PLC0415
+
+            if cart_manager.cart_has_pending(cart):
+                # 有客製待確認 → 不能先付，直接建「待店員結算」單（同 checkout_step）
+                result = _tool_registry.finalize_order(dine_type=dine, payment_method="pending")
+                session.pop("checkout_status", None)
+                if result.get("ok"):
+                    finalize_result = result
+                    order_number = result.get("order_number", "")
+                    full_text = (
+                        f"好的，{order_number}號～有客製品項需店員確認價格，"
+                        "請稍候結算，這邊先不收款喔。"
+                    )
+                else:
+                    full_text = result.get("message", "結帳失敗，請再試一次")
+            else:
+                pay = parse_payment(text)
+                if pay:
+                    result = _tool_registry.finalize_order(dine_type=dine, payment_method=pay)
+                    session.pop("checkout_status", None)
+                    if result.get("ok"):
+                        finalize_result = result
+                        full_text = f"好，{result.get('order_number', '')}號～"
+                    else:
+                        full_text = result.get("message", "結帳失敗，請再試一次")
+                else:
+                    session["checkout_dine_type"] = dine
+                    session["checkout_status"] = CK_PAY
+                    full_text = "現金還是行動支付？"
+            logger.info(
+                "[CHECKOUT 同句推進] dine={} finalize={}", dine, finalize_result is not None
+            )
+            patch_last_assistant(session["llm_history"], full_text)
+
     return TagExecutionResult(
         full_text=full_text,
         followup_text=followup_text,
+        finalize_result=finalize_result,
     )

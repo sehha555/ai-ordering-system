@@ -248,8 +248,8 @@ class StreamingDMAdapter:
                         },
                     )
 
-                    # 檢查 finalize_order
-                    finalize_result = None
+                    # 檢查 finalize_order（tag 同句結帳推進優先，tool_trace 為舊路徑）
+                    finalize_result = tag_result.finalize_result
                     preview_result = None
                     for trace in event.get("tool_trace", []):
                         tc = trace.get("tool_call", {})
