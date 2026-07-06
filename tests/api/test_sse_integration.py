@@ -296,6 +296,55 @@ class TestVoiceChatSSE:
         assert events[0]["data"]["cart"] == []
 
 
+# ── fake LLM helper（mock container.llm_caller，走真 execute_tags/tag strip 路徑）──
+
+
+def _post_with_fake_llm(client, llm_text: str, user_text: str, session_id: str):
+    """以假 LLM 輸出（單一 text_delta + done）POST /api/text-chat"""
+    from unittest.mock import MagicMock
+    from src.services import container as _container
+
+    async def _fake_run_turn_stream(*args, **kwargs):
+        yield {"type": "text_delta", "content": llm_text}
+        yield {
+            "type": "done",
+            "assistant_text": llm_text,
+            "history": [],
+            "usage": {},
+            "tool_trace": [],
+        }
+
+    mock_llm = MagicMock()
+    mock_llm.run_turn_stream.side_effect = _fake_run_turn_stream
+
+    original_llm = _container.llm_caller
+    _container.llm_caller = mock_llm
+    try:
+        return client.post("/api/text-chat", json={"text": user_text, "session_id": session_id})
+    finally:
+        _container.llm_caller = original_llm
+
+
+def _seed_session(session_id: str, cart: list):
+    from src.services import container as _container
+
+    session = _container.session_store.get(session_id)
+    session["cart"] = cart
+    session["llm_history"] = []
+    _container.session_store.set(session_id, session)
+
+
+_RICEBALL_CART = [
+    {
+        "item_id": "rb-1",
+        "itemtype": "riceball",
+        "flavor": "源味傳統",
+        "rice": "紫米",
+        "quantity": 1,
+    }
+]
+
+
 # ── SET_QTY tag strip 回歸測試 ──
 
 
@@ -313,32 +362,12 @@ class TestSetQtyTagStrip:
 
     def test_set_qty_tag_not_leaked_to_text_delta(self):
         """LLM 輸出含 [SET_QTY:薯餅|qty=1] 時，SSE text_delta 不含 tag、後續文字保留"""
-        from unittest.mock import MagicMock
-        from src.services import container as _container
-
-        # 建立假 LLM caller：只回傳含 SET_QTY tag 的 text_delta + done
-        async def _fake_run_turn_stream(*args, **kwargs):
-            yield {"type": "text_delta", "content": "[SET_QTY:薯餅|qty=1]好，薯餅改成一個～"}
-            yield {
-                "type": "done",
-                "assistant_text": "[SET_QTY:薯餅|qty=1]好，薯餅改成一個～",
-                "history": [],
-                "usage": {},
-                "tool_trace": [],
-            }
-
-        mock_llm = MagicMock()
-        mock_llm.run_turn_stream.side_effect = _fake_run_turn_stream
-
-        original_llm = _container.llm_caller
-        _container.llm_caller = mock_llm
-        try:
-            r = self.client.post(
-                "/api/text-chat",
-                json={"text": "薯餅改成一個", "session_id": "test-set-qty-strip-001"},
-            )
-        finally:
-            _container.llm_caller = original_llm
+        r = _post_with_fake_llm(
+            self.client,
+            "[SET_QTY:薯餅|qty=1]好，薯餅改成一個～",
+            "薯餅改成一個",
+            "test-set-qty-strip-001",
+        )
 
         assert r.status_code == 200
         events = parse_sse_events(r.text)
@@ -369,45 +398,12 @@ class TestCheckoutTurnSurface:
     def teardown_method(self):
         self._tts_patcher.stop()
 
-    def _post_with_fake_llm(self, llm_text: str, user_text: str, session_id: str):
-        from unittest.mock import MagicMock
-        from src.services import container as _container
-
-        async def _fake_run_turn_stream(*args, **kwargs):
-            yield {"type": "text_delta", "content": llm_text}
-            yield {
-                "type": "done",
-                "assistant_text": llm_text,
-                "history": [],
-                "usage": {},
-                "tool_trace": [],
-            }
-
-        mock_llm = MagicMock()
-        mock_llm.run_turn_stream.side_effect = _fake_run_turn_stream
-
-        original_llm = _container.llm_caller
-        _container.llm_caller = mock_llm
-        try:
-            return self.client.post(
-                "/api/text-chat", json={"text": user_text, "session_id": session_id}
-            )
-        finally:
-            _container.llm_caller = original_llm
-
     def test_checkout_first_question_replaced_by_confirm(self):
         """進結帳沒帶內用外帶 → SSE 是後端確認句（品項+金額），非 LLM 原話"""
-        from src.services import container as _container
-
         session_id = "test-ck-surface-001"
-        session = _container.session_store.get(session_id)
-        session["cart"] = [
-            {"itemtype": "riceball", "flavor": "源味傳統", "rice": "紫米", "quantity": 1}
-        ]
-        session["llm_history"] = []
-        _container.session_store.set(session_id, session)
+        _seed_session(session_id, list(_RICEBALL_CART))
 
-        r = self._post_with_fake_llm("[CHECKOUT]好的～內用還是外帶？", "結帳", session_id)
+        r = _post_with_fake_llm(self.client, "[CHECKOUT]好的～內用還是外帶？", "結帳", session_id)
 
         assert r.status_code == 200
         events = parse_sse_events(r.text)
@@ -422,17 +418,12 @@ class TestCheckoutTurnSurface:
 
     def test_checkout_same_sentence_finalize_reply_surfaced(self):
         """同句帶外帶+現金 → SSE 是 finalize 報號帶金額，非 LLM 原話"""
-        from src.services import container as _container
-
         session_id = "test-ck-surface-002"
-        session = _container.session_store.get(session_id)
-        session["cart"] = [
-            {"itemtype": "riceball", "flavor": "源味傳統", "rice": "紫米", "quantity": 1}
-        ]
-        session["llm_history"] = []
-        _container.session_store.set(session_id, session)
+        _seed_session(session_id, list(_RICEBALL_CART))
 
-        r = self._post_with_fake_llm("[CHECKOUT]好～外帶付現金喔！", "結帳 外帶 現金", session_id)
+        r = _post_with_fake_llm(
+            self.client, "[CHECKOUT]好～外帶付現金喔！", "結帳 外帶 現金", session_id
+        )
 
         assert r.status_code == 200
         events = parse_sse_events(r.text)
@@ -440,3 +431,17 @@ class TestCheckoutTurnSurface:
 
         assert "號" in combined and "元" in combined, f"應報單號+金額，實際: {combined!r}"
         assert find_event(events, "order_complete") is not None
+
+    def test_tag_only_remove_backend_message_surfaced(self):
+        """LLM 只輸出 [REMOVE:...] 無 prose → 後端訊息（已移除）仍送到 SSE/TTS"""
+        session_id = "test-ck-surface-003"
+        _seed_session(session_id, list(_RICEBALL_CART))
+
+        r = _post_with_fake_llm(self.client, "[REMOVE:源味傳統]", "飯糰不要了", session_id)
+
+        assert r.status_code == 200
+        events = parse_sse_events(r.text)
+        combined = "".join(e["data"]["text"] for e in events if e["event"] == "text_delta")
+
+        assert combined.strip(), "tag-only 輪不應無聲"
+        assert "移除" in combined or "取消" in combined, f"應送出後端移除訊息，實際: {combined!r}"
