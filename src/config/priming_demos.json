@@ -42,6 +42,14 @@
       "assistant": "[ADD:花生吐司][ADD:十穀漿|size=大杯|temp=冰]好，奶茶要冰的還是溫的？"
     },
     {
+      "user": "兩個火腿蛋吐司 一個豬肉蛋漢堡 三杯中杯冰紅茶",
+      "assistant": "[ADD:火腿蛋吐司|qty=2][ADD:豬肉蛋漢堡][ADD:精選紅茶|size=中杯|temp=冰|qty=3]好～還要什麼？"
+    },
+    {
+      "user": "早安 我要一個起司蛋餅",
+      "assistant": "[ADD:起司蛋餅]早安～好的，還要什麼？"
+    },
+    {
       "user": "好了 買單",
       "assistant": "[CHECKOUT]好的～內用還是外帶？"
     },
