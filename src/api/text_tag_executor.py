@@ -111,6 +111,12 @@ def _has_checkout_intent(text: str) -> bool:
     )
 
 
+def _pending_checkout_reply(attempt: dict) -> str:
+    """結帳遇 pending 補槽 → 重放追問（槽位補齊後由 pending_checkout 接回結帳）"""
+    question = attempt.get("message") or f"{attempt.get('item_name', '品項')}的選項還沒選好喔"
+    return f"好的～先跟您確認：{question}"
+
+
 def _modify_dedup_key(item: dict) -> Optional[str]:
     """品項基底 key（itemtype+主名稱，不含客製選項）；combo 走專屬去重回 None"""
     t = item.get("itemtype")
@@ -152,6 +158,8 @@ async def execute_tags(
     followup_text = ""
     add_results: List[dict] = []
     cart = session.get("cart", [])
+    # 上輪結帳被補槽追問擋下的接續 flag（一輪 TTL：本輪沒接上就消失）
+    pending_checkout = session.pop("pending_checkout", False)
 
     # ── [CHECKOUT] 攔截 ──
     checkout_entered = False  # 本輪剛進結帳狀態（供尾端同句推進判斷）
@@ -159,7 +167,14 @@ async def execute_tags(
     if CHECKOUT_TAG in full_text:
         # 空車但同句帶 [ADD:...]（複合句點餐+結帳）→ 品項即將入車，照常進結帳
         if not cart and "[ADD:" not in full_text:
-            full_text = "購物車是空的，請先點餐喔～"
+            prev_pending = session.get("last_failed_attempt")
+            if prev_pending:
+                # 套餐追問鏈中結帳（整單還沒入車）→ 重放追問而非「空的」，
+                # 記 flag 讓補齊槽位那輪接回結帳（模擬 E 族：整單蒸發）
+                session["pending_checkout"] = True
+                full_text = _pending_checkout_reply(prev_pending)
+            else:
+                full_text = "購物車是空的，請先點餐喔～"
         else:
             session["checkout_status"] = CK_DINE
             checkout_entered = True
@@ -171,6 +186,13 @@ async def execute_tags(
         checkout_entered = True
         checkout_fallback = True
         logger.info("[CHECKOUT fallback] LLM 漏發 tag，依結帳意圖兜底推進")
+    elif session.get("last_failed_attempt") and _has_checkout_intent(text):
+        # 同 E 族但 LLM 連 tag 都沒發（空車 prose 常自答「購物車是空的」）：
+        # prose 已 streaming，追問經 followup 補送
+        session["pending_checkout"] = True
+        full_text = _pending_checkout_reply(session["last_failed_attempt"])
+        followup_text = full_text
+        patch_last_assistant(session["llm_history"], full_text)
 
     # ── [REMOVE:...] 攔截 ──
     removed_ok = False
@@ -291,6 +313,8 @@ async def execute_tags(
                         "item_name": item_name,
                         "missing": add_result["missing"],
                         "provided": {k: v for k, v in kwargs.items() if k in PROVIDED_KEYS},
+                        # 追問句原文：追問鏈中客人說結帳時重放用
+                        "message": add_result.get("message", ""),
                     }
         full_text = ADD_RE.sub("", full_text).strip()
 
@@ -472,12 +496,25 @@ async def execute_tags(
         full_text = QUERY_RE.sub("", full_text).strip()
         patch_last_assistant(session["llm_history"], full_text)
 
+    # ── pending 結帳接續：上輪結帳被補槽追問擋下，本輪槽位補齊 → 接回結帳 ──
+    # 一輪 TTL：本輪仍缺槽就延續 flag；客人改口加點就放掉（回一般點餐流程）
+    if pending_checkout and not checkout_entered:
+        if session.get("last_failed_attempt"):
+            session["pending_checkout"] = True
+        elif session.get("cart") and not _has_add_more_intent(text):
+            session["checkout_status"] = CK_DINE
+            checkout_entered = True
+            checkout_fallback = True
+            logger.info("[CHECKOUT pending] 補槽完成，接回上輪結帳意圖")
+
     # ── 複合單句結帳推進：同句已帶內用外帶（/付款）→ 直接推進狀態機 ──
     # 放在 [ADD:...] 執行之後，確保同句加點的品項已入 cart 才 finalize。
     finalize_result = None
     if checkout_entered and session.get("last_failed_attempt"):
         # ADD 補槽失敗：撤回結帳狀態讓缺欄位追問先走，
-        # 否則下輪補槽回答（如「紫米」）會被結帳狀態機吃掉造成死路
+        # 否則下輪補槽回答（如「紫米」）會被結帳狀態機吃掉造成死路。
+        # 記 pending flag：補齊後接回結帳（追問句本身已在 failed followup 補送）
+        session["pending_checkout"] = True
         session.pop("checkout_status", None)
         session.pop("checkout_dine_type", None)
     elif checkout_entered:
