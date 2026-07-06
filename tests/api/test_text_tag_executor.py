@@ -591,6 +591,18 @@ def _pending_attempt():
     }
 
 
+def _cart_appending_add(session, item_id):
+    """add_item side_effect：把品項塞進 session cart 並回成功"""
+
+    def _add(**kwargs):
+        session["cart"].append(
+            {"itemtype": "snack", "snack": kwargs["name"], "quantity": 1, "item_id": item_id}
+        )
+        return {"ok": True, "item_id": item_id, "message": f"已加入{kwargs['name']}"}
+
+    return _add
+
+
 @pytest.mark.asyncio
 async def test_checkout_during_slot_chain_replays_question(registry):
     """空車 + pending 追問 + [CHECKOUT] → 重放追問而非「空的」，記 pending flag"""
@@ -626,12 +638,7 @@ async def test_pending_checkout_resumes_after_slot_filled(registry):
     session["last_failed_attempt"] = _pending_attempt()
     session["pending_checkout"] = True
 
-    def _add_item(**kwargs):
-        item = {"itemtype": "snack", "snack": "套餐C", "quantity": 1, "item_id": "c1"}
-        session["cart"].append(item)
-        return {"ok": True, "item_id": "c1", "message": "已加入套餐C"}
-
-    registry.add_item.side_effect = _add_item
+    registry.add_item.side_effect = _cart_appending_add(session, "c1")
 
     result = await execute_tags("[ADD:套餐C|temp=冰]好～", "冰的", session, "s1")
 
@@ -649,12 +656,7 @@ async def test_pending_checkout_dropped_on_add_more(registry):
     session["last_failed_attempt"] = _pending_attempt()
     session["pending_checkout"] = True
 
-    def _add_item(**kwargs):
-        item = {"itemtype": "snack", "snack": kwargs["name"], "quantity": 1, "item_id": "s9"}
-        session["cart"].append(item)
-        return {"ok": True, "item_id": "s9", "message": "已加入薯餅"}
-
-    registry.add_item.side_effect = _add_item
+    registry.add_item.side_effect = _cart_appending_add(session, "s9")
 
     result = await execute_tags("[ADD:薯餅(1片)]好～", "等等 我還要一份薯餅", session, "s1")
 
@@ -696,6 +698,20 @@ async def test_checkout_retracted_on_slot_missing_sets_pending(registry):
     assert "checkout_status" not in session
     assert session["pending_checkout"] is True
     assert "飲料要冰的還是溫的" in result.full_text
+
+
+@pytest.mark.asyncio
+async def test_checkout_with_cart_and_pending_slot_replays_question(registry):
+    """車上有品項但另一品項還在補槽 → 結帳撤回 + 重放追問（非空車路徑同樣接住）"""
+    session = _session_with_item()
+    session["last_failed_attempt"] = _pending_attempt()
+
+    result = await execute_tags("[CHECKOUT]內用還是外帶？", "結帳", session, "s1")
+
+    assert "checkout_status" not in session
+    assert session["pending_checkout"] is True
+    assert "飲料要冰的還是溫的" in result.full_text
+    assert "飲料要冰的還是溫的" in result.followup_text
 
 
 @pytest.mark.asyncio
