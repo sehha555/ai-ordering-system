@@ -285,8 +285,11 @@ async def execute_tags(
 
             # ── 修改去重：客人改屬性（不要辣/換白米）LLM 誤發新 ADD → 同款舊品項移除 ──
             # 保守觸發：user text 含修改語意且無加點語意，且同款新舊各恰 1 個（1↔1 修改）。
+            # 舊品項只限「上一輪剛成功 ADD 的」——修改語意天然接在剛點完的下一句，
+            # 更早輪的同款是別筆訂單（多人合點），不可誤刪。
             # 補槽 retry 品項排除：槽位補答（如「換紫米的」）是完成前輪加點，非修改既有品項
             if _has_modify_intent(text):
+                prev_turn_add_ids = set(session.get("last_turn_add_ids", []))
                 modify_new_ids = this_turn_ids - retried_ids
                 by_key: dict[str, list] = {}
                 for item in cart:
@@ -295,7 +298,12 @@ async def execute_tags(
                         by_key.setdefault(key, []).append(item)
                 for items in by_key.values():
                     new_items = [i for i in items if i.get("item_id") in modify_new_ids]
-                    old_items = [i for i in items if i.get("item_id") not in this_turn_ids]
+                    old_items = [
+                        i
+                        for i in items
+                        if i.get("item_id") not in this_turn_ids
+                        and i.get("item_id") in prev_turn_add_ids
+                    ]
                     if len(new_items) == 1 and len(old_items) == 1:
                         cart.remove(old_items[0])
                         logger.info(
@@ -303,6 +311,9 @@ async def execute_tags(
                             old_items[0].get("item_id"),
                             new_items[0].get("item_id"),
                         )
+
+            # 供下一輪修改去重辨識「上一輪剛加的品項」
+            session["last_turn_add_ids"] = list(this_turn_ids)
 
         # add_item 失敗 → 追問一律補發：LLM prose（已 streaming）不含後端追問，
         # 不設 followup_text 客人會聽不到「缺什麼」死等（voice_router 對

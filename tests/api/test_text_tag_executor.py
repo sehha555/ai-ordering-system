@@ -218,6 +218,7 @@ async def test_modify_intent_dedups_same_item(registry):
         "quantity": 1,
     }
     session = _make_session(cart=[old_item])
+    session["last_turn_add_ids"] = ["riceball_1"]  # 上一輪剛加的（修改窗口內）
 
     def _add_item(**kwargs):
         new_item = {
@@ -240,6 +241,43 @@ async def test_modify_intent_dedups_same_item(registry):
     cart = session["cart"]
     assert len(cart) == 1, f"同款品項應去重為 1 個，實際 {len(cart)} 個"
     assert cart[0]["item_id"] == "riceball_2"
+
+
+@pytest.mark.asyncio
+async def test_modify_intent_spares_earlier_turn_items(registry):
+    """多人合點：更早輪的同款品項不在上一輪 ADD 窗口 → 修改語意不誤刪"""
+    old_item = {
+        "item_id": "riceball_1",
+        "itemtype": "riceball",
+        "flavor": "鮪魚飯糰",
+        "rice": "白米",
+        "quantity": 1,
+    }
+    session = _make_session(cart=[old_item])
+    session["last_turn_add_ids"] = ["drink_9"]  # 上一輪加的是別的品項
+
+    def _add_item(**kwargs):
+        new_item = {
+            "item_id": "riceball_2",
+            "itemtype": "riceball",
+            "flavor": "鮪魚飯糰",
+            "rice": "紫米",
+            "customization": "不要辣菜脯",
+            "quantity": 1,
+        }
+        session["cart"].append(new_item)
+        return {"ok": True, "item_id": "riceball_2", "message": "已加入"}
+
+    registry.add_item.side_effect = _add_item
+
+    await execute_tags(
+        "[ADD:鮪魚飯糰|rice=紫米|customization=不要辣菜脯]好～",
+        "我要一份鮪魚飯糰不要辣",
+        session,
+        "s1",
+    )
+
+    assert len(session["cart"]) == 2, "更早輪的同款品項（別人的訂單）不應被誤刪"
 
 
 @pytest.mark.asyncio
@@ -283,6 +321,7 @@ async def test_slot_fill_retry_not_treated_as_modify(registry):
         "quantity": 1,
     }
     session = _make_session(cart=[old_item])
+    session["last_turn_add_ids"] = ["riceball_1"]  # 即使在修改窗口內，retry 品項也不觸發
     session["last_failed_attempt"] = {
         "item_name": "鮪魚飯糰",
         "missing": ["rice"],
