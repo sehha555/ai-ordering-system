@@ -666,6 +666,25 @@ async def test_pending_checkout_dropped_on_add_more(registry):
 
 
 @pytest.mark.asyncio
+async def test_pending_checkout_dropped_on_negate_with_slot_answer(registry):
+    """補槽同句否定結帳（「先不要結帳 熱的好了」）→ 不搶跑進結帳，flag 丟棄"""
+    session = _make_session(cart=[])
+    session["last_failed_attempt"] = _pending_attempt()
+    session["pending_checkout"] = True
+
+    registry.add_item.side_effect = _cart_appending_add(session, "c1")
+
+    result = await execute_tags(
+        "[ADD:套餐C|temp=熱]好～", "先不要結帳 那溫度就熱的好了", session, "s1"
+    )
+
+    assert "checkout_status" not in session
+    assert "pending_checkout" not in session
+    assert result.finalize_result is None
+    assert "跟您確認" not in result.full_text
+
+
+@pytest.mark.asyncio
 async def test_pending_checkout_persists_while_slot_still_missing(registry):
     """pending flag 輪補槽又失敗 → flag 延續到下一輪"""
     registry.add_item.return_value = {

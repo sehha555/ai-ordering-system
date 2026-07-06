@@ -159,7 +159,8 @@ async def execute_tags(
     add_results: List[dict] = []
     add_kwargs_list: List[Dict[str, Any]] = []
     cart = session.get("cart", [])
-    # 上輪結帳被補槽追問擋下的接續 flag（一輪 TTL：本輪沒接上就消失）；
+    # 上輪結帳被補槽追問擋下的接續 flag：補槽期間每輪由尾端收斂點延續，
+    # attempt 解除當輪接回結帳或（客人改口/否定結帳）丟棄；
     # attempt 品項名先 snapshot（本輪補槽成功會清掉 attempt）
     pending_checkout = session.pop("pending_checkout", False)
     pending_item_name = (session.get("last_failed_attempt") or {}).get("item_name")
@@ -491,8 +492,14 @@ async def execute_tags(
     # ── pending 結帳接續：上輪結帳被補槽追問擋下，本輪槽位補齊 → 接回結帳 ──
     # 對 attempt 品項的 ADD（含 LLM 重發全參數）是補槽；出現其他新品項
     # = 客人改口加點，放掉結帳意圖回一般流程。zip 截斷剛好排除補槽 retry
-    # 的 append（retry 只進 add_results，不進 add_kwargs_list）
-    if pending_checkout and not checkout_entered and not session.get("last_failed_attempt"):
+    # 的 append（retry 只進 add_results，不進 add_kwargs_list）。
+    # 補槽同句否定結帳（「先不要結帳 熱的好了」）→ 放掉 flag，不搶跑
+    if (
+        pending_checkout
+        and not checkout_entered
+        and not session.get("last_failed_attempt")
+        and not any(w in text for w in _CHECKOUT_NEGATE_WORDS)
+    ):
         added_other_item = any(
             r.get("ok") and ak.get("name") != pending_item_name
             for r, ak in zip(add_results, add_kwargs_list)
