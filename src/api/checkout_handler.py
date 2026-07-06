@@ -167,9 +167,14 @@ async def checkout_step(text: str, session_id: str, session: dict):
                     dine, "pending", session, _tool_registry
                 )
             else:
-                # 金額已在進結帳的確認句複述過，此處短問即可
-                session["checkout_status"] = CK_PAY
-                reply = ASK_PAYMENT
+                # 同句已帶付款方式（「外帶 現金」）→ 直接出單，不再多問一輪
+                pay = parse_payment(text)
+                if pay:
+                    reply, finalize_result = finalize_and_reply(dine, pay, session, _tool_registry)
+                else:
+                    # 金額已在進結帳的確認句複述過，此處短問即可
+                    session["checkout_status"] = CK_PAY
+                    reply = ASK_PAYMENT
         elif has_order_intent(text):
             # 反悔：intent 檢查必須在 parse 失敗後才執行
             exit_checkout(session_id, session, _session_store)

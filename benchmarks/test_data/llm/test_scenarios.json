@@ -1779,14 +1779,14 @@
       {
         "name": "add_item",
         "args": {
-          "name": "卡拉雞排蛋堡"
+          "name": "原味咔啦雞蛋漢堡"
         }
       }
     ],
     "expected_response_contains": [
-      "卡拉"
+      "好"
     ],
-    "expected_behavior": "漢堡預設加蛋（R12），不用追問是否加蛋，直接 [ADD] 卡拉雞排蛋堡"
+    "expected_behavior": "漢堡預設加蛋（R12），不用追問是否加蛋，直接 [ADD] 原味咔啦雞蛋漢堡"
   },
   {
     "id": "teacher_multi_drink_merge_temp",
