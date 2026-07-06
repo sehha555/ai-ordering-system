@@ -61,7 +61,8 @@ def _is_subsequence(short: str, long: str) -> bool:
 
 # 從 aliases_registry.json 載入 4 個常數
 _reg_cfg = load_json_config("aliases_registry.json")
-_COMBO_NUMBER_ALIASES: Dict[str, str] = _reg_cfg["combo_number_aliases"]
+# 公開：text_tag_executor 的 slot-strip 需要用別名比對品項是否被 text 點名
+COMBO_NUMBER_ALIASES: Dict[str, str] = _reg_cfg["combo_number_aliases"]
 _COLLOQUIAL_ALIASES: Dict[str, str] = _reg_cfg["colloquial_aliases"]
 _CARRIER_SUFFIXES: List[str] = _reg_cfg["carrier_suffixes"]
 _CARRIER_CATEGORY_MAP: Dict[str, str] = _reg_cfg["carrier_category_map"]
@@ -237,7 +238,7 @@ class ToolRegistry:
                 return {"category": "套餐", "price": info["price"], "resolved_name": name}
 
         # 3. 套餐本身就是短名（如「套餐一」精確不中但存在套餐）
-        resolved_combo = _COMBO_NUMBER_ALIASES.get(name)
+        resolved_combo = COMBO_NUMBER_ALIASES.get(name)
         if resolved_combo:
             return self._resolve_item_name(resolved_combo)
 

@@ -60,9 +60,18 @@ _SLOT_TEXT_MARKERS = {
 
 
 def _name_in_text(name: str, text: str) -> bool:
-    """品項名（或其 2+ 字片段）是否在 user text 被點名"""
+    """品項名（或其 2+ 字片段、套餐俗稱）是否在 user text 被點名。
+
+    套餐必查別名：LLM 發正規名（套餐一）而客人說俗稱（一號餐），
+    滑窗對不上會被誤判成 context 輪、腦補屬性逃過 slot-strip 入車錯單
+    """
     if name in text:
         return True
+    from src.dm.tool_registry import COMBO_NUMBER_ALIASES  # noqa: PLC0415
+
+    for alias, canonical in COMBO_NUMBER_ALIASES.items():
+        if canonical == name and alias in text:
+            return True
     for n in (4, 3, 2):
         for i in range(len(name) - n + 1):
             if name[i : i + n] in text:

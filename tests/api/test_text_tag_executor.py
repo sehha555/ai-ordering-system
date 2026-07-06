@@ -850,3 +850,31 @@ async def test_followup_sent_on_common_char_false_positive(registry):
     )
 
     assert "中杯還是大杯" in result.followup_text
+
+
+# ── B2：slot-strip 品名俗稱對齊 ──
+
+
+@pytest.mark.asyncio
+async def test_combo_alias_turn_slot_stripped(registry):
+    """text 用俗稱「一號餐」、LLM 發正規名「套餐一」腦補 temp → 仍屬新點單輪，strip"""
+    registry.add_item.return_value = {
+        "ok": False,
+        "missing": ["temp"],
+        "message": "飲料冰的還是溫的",
+    }
+    session = _make_session(cart=[])
+
+    await execute_tags("[ADD:套餐一|temp=冰]好～", "一個一號餐", session, "s1")
+
+    registry.add_item.assert_called_once_with(name="套餐一")
+
+
+@pytest.mark.asyncio
+async def test_combo_alias_context_turn_slot_kept(registry):
+    """text 沒點名任何品項（真 context 輪）→ 屬性豁免不 strip（既有行為不變）"""
+    session = _make_session(cart=[])
+
+    await execute_tags("[ADD:套餐一|temp=冰]好～", "冰的就好", session, "s1")
+
+    registry.add_item.assert_called_once_with(name="套餐一", temp="冰")
