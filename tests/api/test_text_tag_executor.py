@@ -437,6 +437,48 @@ async def test_checkout_restate_dedups_new_item(registry):
 
 
 @pytest.mark.asyncio
+async def test_hallucinated_slot_stripped(registry):
+    """text 沒提米種但 ADD 帶 rice → strip 讓 missing 機制追問（不擅自入車）"""
+    session = _make_session(cart=[])
+    registry.add_item.return_value = {"ok": False, "missing": ["rice"], "message": "要紫米白米？"}
+
+    await execute_tags("[ADD:鮪魚飯糰|rice=白米]好～", "鮪魚飯糰一個", session, "s1")
+
+    registry.add_item.assert_called_once()
+    assert "rice" not in registry.add_item.call_args.kwargs, "腦補的 rice 應被 strip"
+
+
+@pytest.mark.asyncio
+async def test_text_backed_slot_kept(registry):
+    """text 有講「紫」→ rice 保留正常入車"""
+    session = _make_session(cart=[])
+
+    await execute_tags("[ADD:鮪魚飯糰|rice=紫米]好～", "一個鮪魚飯糰紫米", session, "s1")
+
+    assert registry.add_item.call_args.kwargs.get("rice") == "紫米"
+
+
+@pytest.mark.asyncio
+async def test_modify_turn_slot_exempt(registry):
+    """修改輪（不要辣）屬性來自 context 記憶 → 不 strip"""
+    session = _make_session(cart=list(_make_session()["cart"]))
+
+    await execute_tags("[ADD:鮪魚飯糰|rice=紫米|spicy=false]好～", "不要辣 這樣就好", session, "s1")
+
+    assert registry.add_item.call_args.kwargs.get("rice") == "紫米", "修改輪不應 strip context 屬性"
+
+
+@pytest.mark.asyncio
+async def test_context_turn_slot_exempt(registry):
+    """context 輪（要辣，沒點名品項）→ 不 strip"""
+    session = _make_session(cart=[])
+
+    await execute_tags("[ADD:鮪魚飯糰|rice=紫米|spicy=true]好～", "要辣 謝謝", session, "s1")
+
+    assert registry.add_item.call_args.kwargs.get("rice") == "紫米", "context 輪不應 strip"
+
+
+@pytest.mark.asyncio
 async def test_add_one_more_qty_corrected(registry):
     """「再加一份」LLM 誤發 qty=2 → 後端修正為 +1"""
     old_item = {

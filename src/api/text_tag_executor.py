@@ -47,6 +47,29 @@ from src.tools.order_router import CHECKOUT_KEYWORDS
 # 「再X一份」增量句：明確 +1，LLM 常把目標總量當增量發 qty>1（見模擬 b4-03 錯單）
 _ADD_ONE_MORE_RE = re.compile(r"再(?:加|來|點)?一(?:份|個|杯|顆|片)")
 
+# 槽位屬性腦補檢查：新點單輪（text 點名品項且無修改詞）ADD 帶的屬性值
+# 必須在 user text 有字面佐證，否則是 LLM 腦補（「鮪魚飯糰一個」誤帶
+# rice=白米 → 錯單），strip 掉讓 add_item 的 missing 機制追問。
+# 豁免：修改輪（不要辣/換大杯）與 context 輪（「要辣」沒點名品項）的
+# 屬性來自合法記憶；補槽 retry 由 provided merge 補回，不受影響
+_SLOT_TEXT_MARKERS = {
+    "rice": ("紫", "白", "混"),
+    "temp": ("冰", "溫", "熱"),
+    "size": ("大", "中", "小"),
+}
+
+
+def _name_in_text(name: str, text: str) -> bool:
+    """品項名（或其 2+ 字片段）是否在 user text 被點名"""
+    if name in text:
+        return True
+    for n in (4, 3, 2):
+        for i in range(len(name) - n + 1):
+            if name[i : i + n] in text:
+                return True
+    return False
+
+
 # 修改語意判斷：客人在改既有品項屬性（而非加點新品項）的訊號詞
 _MODIFY_WORDS = ("不要", "不加", "改", "換", "去掉")
 _ADD_MORE_WORDS = ("再", "還要", "多一", "加一", "另外", "加購", "加點", "也")
@@ -236,6 +259,15 @@ async def execute_tags(
                         kwargs[key] = value
                     elif key in ("spicy", "extra_egg"):
                         kwargs[key] = value.lower() == "true"
+            if _name_in_text(item_name, text) and not any(w in text for w in _MODIFY_WORDS):
+                for slot, markers in _SLOT_TEXT_MARKERS.items():
+                    if slot in kwargs and not any(m in text for m in markers):
+                        logger.info(
+                            "[ADD slot-strip] text 無佐證，strip 腦補屬性 {}={}",
+                            slot,
+                            kwargs[slot],
+                        )
+                        kwargs.pop(slot)
             add_kwargs_list.append(kwargs)
             add_result = _tool_registry.add_item(**kwargs)
             add_results.append(add_result)
