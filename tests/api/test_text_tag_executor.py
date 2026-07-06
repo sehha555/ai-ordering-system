@@ -817,3 +817,36 @@ async def test_followup_sent_when_prose_has_no_question_mark(registry):
     result = await execute_tags("[ADD:套餐C]我們有冰的和溫的喔", "一個三號餐", session, "s1")
 
     assert "冰的還是溫的" in result.followup_text
+
+
+@pytest.mark.asyncio
+async def test_followup_sent_when_multiple_items_share_missing_slot(registry):
+    """兩品項同缺 temp、prose 只問一杯 → 全部照補（不誤吞第二杯的追問）"""
+    registry.add_item.side_effect = [
+        {"ok": False, "missing": ["temp"], "message": "紅茶冰的還是溫的"},
+        {"ok": False, "missing": ["temp"], "message": "奶茶冰的還是溫的"},
+    ]
+    session = _make_session(cart=[])
+
+    result = await execute_tags(
+        "[ADD:精選紅茶][ADD:純鮮奶茶]紅茶要冰的還是溫的？", "一杯紅茶一杯奶茶", session, "s1"
+    )
+
+    assert "奶茶冰的還是溫的" in result.followup_text
+
+
+@pytest.mark.asyncio
+async def test_followup_sent_on_common_char_false_positive(registry):
+    """prose 含常用字 大+中+問號 但非追問尺寸 → followup 照補"""
+    registry.add_item.return_value = {
+        "ok": False,
+        "missing": ["size"],
+        "message": "要中杯還是大杯",
+    }
+    session = _make_session(cart=[])
+
+    result = await execute_tags(
+        "[ADD:精選紅茶]好的，這道大概中午前都有現做，還需要什麼呢？", "一杯紅茶", session, "s1"
+    )
+
+    assert "中杯還是大杯" in result.followup_text

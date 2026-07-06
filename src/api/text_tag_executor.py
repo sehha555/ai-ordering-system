@@ -112,13 +112,20 @@ def _has_checkout_intent(text: str) -> bool:
 
 
 def _prose_already_asks(prose: str, missing) -> bool:
-    """LLM prose 已在追問全部缺槽（該 slot ≥2 個選項詞同現 + 問號）→ 後端不疊問。
+    """LLM prose 已在追問全部缺槽 → 後端不疊問。
+    判準：該 slot 兩個選項詞在同一子句以「還是/或」相連（「冰的還是溫的」），
+    防常用字假陽性（「大概中午」含 大+中 但非追問）。
     不在 _SLOT_TEXT_MARKERS 的槽（noodle/flavor）無法確認 → 保守回 False 照補"""
     if not missing or ("？" not in prose and "?" not in prose):
         return False
     for slot in missing:
         markers = _SLOT_TEXT_MARKERS.get(slot, ())
-        if sum(1 for m in markers if m in prose) < 2:
+        if not any(
+            re.search(f"{a}[^，。？?!！]*?(?:還是|或)[^，。？?!！]*?{b}", prose)
+            for a in markers
+            for b in markers
+            if a != b
+        ):
             return False
     return True
 
@@ -468,14 +475,15 @@ async def execute_tags(
         # add_item 失敗 → 追問補發：LLM prose（已 streaming）不含後端追問，
         # 不設 followup_text 客人會聽不到「缺什麼」死等（voice_router 對
         # not streamed_anything 輪改 yield full_text，該路徑不會重複）。
-        # 例外：prose 已在問同一缺槽（V9 疊問「冰的還是溫的？飲料冰的還是溫的」）
+        # 例外：prose 已在問同一缺槽（V9 疊問「冰的還是溫的？飲料冰的還是溫的」）。
+        # 只限單一失敗品項——多品項失敗時 prose 的追問無法對應到是問哪一項
+        # （兩杯都缺 temp、prose 只問第一杯 → 第二杯追問被吞成死等），一律照補
         failed = [r for r in add_results if not r.get("ok")]
         if failed:
-            failed_msgs = [
-                r.get("message", "")
-                for r in failed
-                if r.get("message") and not _prose_already_asks(full_text, r.get("missing"))
-            ]
+            suppress = len(failed) == 1 and _prose_already_asks(full_text, failed[0].get("missing"))
+            failed_msgs = (
+                [] if suppress else [r.get("message", "") for r in failed if r.get("message")]
+            )
             if failed_msgs:
                 followup = "，".join(failed_msgs)
                 followup_text = followup
