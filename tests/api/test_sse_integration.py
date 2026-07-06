@@ -432,6 +432,19 @@ class TestCheckoutTurnSurface:
         assert "號" in combined and "元" in combined, f"應報單號+金額，實際: {combined!r}"
         assert find_event(events, "order_complete") is not None
 
+    def test_plain_prose_turn_not_duplicated(self):
+        """純 prose 輪（無 tag）→ streamed 文字不被 done 後補送機制重複 yield"""
+        session_id = "test-ck-surface-004"
+        _seed_session(session_id, list(_RICEBALL_CART))
+
+        r = _post_with_fake_llm(self.client, "好的，還需要什麼嗎？", "謝謝", session_id)
+
+        assert r.status_code == 200
+        events = parse_sse_events(r.text)
+        combined = "".join(e["data"]["text"] for e in events if e["event"] == "text_delta")
+
+        assert combined.count("還需要什麼嗎") == 1, f"prose 不應重複送出，實際: {combined!r}"
+
     def test_tag_only_remove_backend_message_surfaced(self):
         """LLM 只輸出 [REMOVE:...] 無 prose → 後端訊息（已移除）仍送到 SSE/TTS"""
         session_id = "test-ck-surface-003"

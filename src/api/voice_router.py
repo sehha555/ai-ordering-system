@@ -193,6 +193,7 @@ class StreamingDMAdapter:
                     if checkout_turn:
                         continue
                     raw_content = event.get("content", "")
+                    # 前提：priming 示範 [CHECKOUT] 恆在句首，tag 前不會有 prose 已先播出
                     if CHECKOUT_TAG in raw_content:
                         checkout_turn = True
                         continue
