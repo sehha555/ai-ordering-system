@@ -115,6 +115,7 @@ class StreamingDMAdapter:
             shortcircuit_reply,
         )
         from src.api.text_tag_executor import execute_tags  # noqa: E402
+        from src.dm.tool_priming import CHECKOUT_TAG  # noqa: E402
 
         if session.get("checkout_status") in CK_STATES:
             yielded = False
@@ -169,6 +170,12 @@ class StreamingDMAdapter:
 
         full_text = ""
         tool_trace = []
+        # [CHECKOUT] 輪：LLM 話術會被 execute_tags 取代（確認句/finalize 報號），
+        # hold streaming 不逐句送 TTS，done 後由最終話術一次送出
+        checkout_turn = False
+        # tag-only 輪（LLM 只輸出 tag 無 prose）strip 後無字可 stream，
+        # execute_tags 的後端訊息（已移除/已修改/已加入）需在 done 後補送
+        streamed_anything = False
 
         try:
             async for event in _llm_caller.run_turn_stream(
@@ -183,9 +190,17 @@ class StreamingDMAdapter:
                 evt_type = event.get("type")
 
                 if evt_type == "text_delta":
+                    if checkout_turn:
+                        continue
+                    raw_content = event.get("content", "")
+                    # 前提：priming 示範 [CHECKOUT] 恆在句首，tag 前不會有 prose 已先播出
+                    if CHECKOUT_TAG in raw_content:
+                        checkout_turn = True
+                        continue
                     # text tag mode：strip tags 再送 TTS（tags 在 done 事件處理）
-                    content = strip_all_tags(event.get("content", "")).strip()
+                    content = strip_all_tags(raw_content).strip()
                     if content:
+                        streamed_anything = True
                         yield {"type": "text_delta", "content": content}
 
                 elif evt_type == "early_tts":
@@ -222,7 +237,13 @@ class StreamingDMAdapter:
                     # ── Tag 執行（CHECKOUT / REMOVE / SET_QTY / ADD / QUERY）──
                     tag_result = await execute_tags(full_text, text, session, self._session_id)
                     full_text = tag_result.full_text
-                    if tag_result.followup_text:
+                    if checkout_turn or not streamed_anything:
+                        # streaming 被 hold（CHECKOUT 輪）或 tag-only 輪無字可 stream
+                        # → 最終話術（確認句/finalize 報號/後端訊息）一次送出；
+                        # followup 已併入 full_text，不另 yield 避免重複
+                        if full_text:
+                            yield {"type": "text_delta", "content": full_text}
+                    elif tag_result.followup_text:
                         yield {"type": "text_delta", "content": tag_result.followup_text}
 
                     # 訓練資料：append raw LLM pair（user = normalize 後的輸入，assistant = 含 tag 原文）
