@@ -41,6 +41,28 @@ from src.api.tag_parser import (
 from src.dm.tool_priming import CHECKOUT_TAG
 
 
+# 修改語意判斷：客人在改既有品項屬性（而非加點新品項）的訊號詞
+_MODIFY_WORDS = ("不要", "不加", "改", "換", "去掉")
+_ADD_MORE_WORDS = ("再", "還要", "多一", "加一", "另外", "加購", "加點")
+
+
+def _has_modify_intent(text: str) -> bool:
+    """user text 含修改語意且無加點語意（供同款重複 ADD 去重判斷）"""
+    return any(w in text for w in _MODIFY_WORDS) and not any(w in text for w in _ADD_MORE_WORDS)
+
+
+def _modify_dedup_key(item: dict) -> Optional[str]:
+    """品項基底 key（itemtype+主名稱，不含客製選項）；combo 走專屬去重回 None"""
+    t = item.get("itemtype")
+    if t == "combo":
+        return None
+    if t == "carrier":
+        name = item.get("menu_name") or f"{item.get('flavor', '')}{item.get('carrier', '')}"
+    else:
+        name = item.get("flavor") or item.get("drink") or item.get("snack") or item.get("jam_toast")
+    return f"{t}:{name}" if name else None
+
+
 @dataclass
 class TagExecutionResult:
     """tag 執行後的統一回傳結構"""
@@ -259,14 +281,34 @@ async def execute_tags(
                         [n["item_id"] for n in new_items],
                     )
 
-        # add_item 失敗 → LLM 沒回覆時才補發追問（避免重複）
+            # ── 修改去重：客人改屬性（不要辣/換白米）LLM 誤發新 ADD → 同款舊品項移除 ──
+            # 保守觸發：user text 含修改語意且無加點語意，且同款新舊各恰 1 個（1↔1 修改）
+            if _has_modify_intent(text):
+                by_key: Dict[str, Dict[str, list]] = {}
+                for item in cart:
+                    key = _modify_dedup_key(item)
+                    if key is None:
+                        continue
+                    group = by_key.setdefault(key, {"new": [], "old": []})
+                    group["new" if item.get("item_id") in this_turn_ids else "old"].append(item)
+                for key, group in by_key.items():
+                    if len(group["new"]) == 1 and len(group["old"]) == 1:
+                        cart.remove(group["old"][0])
+                        logger.info(
+                            "[ADD modify-dedup] 修改語意移除舊品項 {} (保留本輪 {})",
+                            group["old"][0].get("item_id"),
+                            group["new"][0].get("item_id"),
+                        )
+
+        # add_item 失敗 → 追問一律補發：LLM prose（已 streaming）不含後端追問，
+        # 不設 followup_text 客人會聽不到「缺什麼」死等（voice_router 對
+        # not streamed_anything 輪改 yield full_text，該路徑不會重複）
         failed = [r for r in add_results if not r.get("ok")]
         if failed:
             failed_msgs = [r.get("message", "") for r in failed if r.get("message")]
             if failed_msgs:
                 followup = "，".join(failed_msgs)
-                if not full_text:
-                    followup_text = followup
+                followup_text = followup
                 full_text = (full_text + "，" + followup) if full_text else followup
 
         # 全成功但 LLM 原文只有 tag（清除後為空）→ 用後端訊息
