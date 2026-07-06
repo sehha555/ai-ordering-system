@@ -10,7 +10,7 @@ import pytest
 from src.dm.tool_registry import _sold_out_block
 from src.tools.menu import menu_state_service
 from src.api.tag_parser import (
-    _item_mentioned_in_text,
+    item_mentioned_in_text,
     resolve_cancel_intent as _resolve_cancel_intent,
 )
 
@@ -93,5 +93,5 @@ def test_empty_cart_no_match():
 
 def test_item_mentioned_tail_match():
     """尾字類別名詞比對：句子提到「飯糰」對應到「紫米·鮪魚飯糰」。"""
-    assert _item_mentioned_in_text(_CART[0], "那個飯糰拿掉") is True
-    assert _item_mentioned_in_text(_CART[1], "那個飯糰拿掉") is False
+    assert item_mentioned_in_text(_CART[0], "那個飯糰拿掉") is True
+    assert item_mentioned_in_text(_CART[1], "那個飯糰拿掉") is False

@@ -34,12 +34,13 @@ from src.api.tag_parser import (
     QUERY_RE,
     REMOVE_RE,
     SET_QTY_RE,
-    _item_mentioned_in_text,
+    item_mentioned_in_text,
     find_cart_item_id,
     parse_set_qty_tag,
     resolve_cancel_intent,
 )
 from src.dm.tool_priming import CHECKOUT_TAG
+from src.tools.order_router import CHECKOUT_KEYWORDS
 
 
 # 修改語意判斷：客人在改既有品項屬性（而非加點新品項）的訊號詞
@@ -57,8 +58,10 @@ def _has_modify_intent(text: str) -> bool:
     return any(w in text for w in _MODIFY_WORDS) and not _has_add_more_intent(text)
 
 
-# 結帳兜底：LLM 漏發 [CHECKOUT] 時依 user text 意圖後端推進
-_CHECKOUT_INTENT_WORDS = ("結帳", "買單", "下單", "送出", "就這些")
+# 結帳兜底：LLM 漏發 [CHECKOUT] 時依 user text 意圖後端推進。
+# 詞表派生自 order_router 單一來源；排除「結案」「沒了」——語意模糊
+# （沒了可指售完），silent fallback 需要高精確度
+_CHECKOUT_INTENT_WORDS = tuple(w for w in CHECKOUT_KEYWORDS if w not in ("結案", "沒了"))
 _CHECKOUT_NEGATE_WORDS = ("先不", "不用結", "不結", "還沒", "等一下再", "晚點再", "先別")
 
 
@@ -336,7 +339,7 @@ async def execute_tags(
                     if (
                         len(new_items) == 1
                         and len(old_items) == 1
-                        and (has_modify_words or not _item_mentioned_in_text(new_items[0], text))
+                        and (has_modify_words or not item_mentioned_in_text(new_items[0], text))
                     ):
                         cart.remove(old_items[0])
                         logger.info(
