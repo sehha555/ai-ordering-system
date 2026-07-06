@@ -69,6 +69,17 @@ def has_order_intent(text: str) -> bool:
 ASK_PAYMENT = "現金還是行動支付？"
 
 
+def build_checkout_confirm(cart: list) -> str:
+    """進結帳第一問：複述品項+總金額後才問內用外帶（金額由後端計算，不靠 LLM）"""
+    from src.dm import cart_manager
+
+    summary = cart_manager.get_short_summary(cart)
+    if cart_manager.cart_has_pending(cart):
+        return f"跟您確認：{summary}，部分品項價格待店員確認，請問內用還是外帶？"
+    total = cart_manager.calculate_cart_total(cart)
+    return f"跟您確認：{summary}，共{total}元，請問內用還是外帶？"
+
+
 def finalize_and_reply(
     dine: str, pay: str, session: dict, tool_registry
 ) -> tuple[str, dict | None]:
@@ -86,7 +97,8 @@ def finalize_and_reply(
     if pay == "pending":
         reply = f"好的，{order_number}號～有客製品項需店員確認價格，請稍候結算，這邊先不收款喔。"
     else:
-        reply = f"好，{order_number}號～"
+        # 帶總金額：同句直接出單的路徑沒經過第一問確認句，報號時必須讓客人聽到金額
+        reply = f"好，{order_number}號，共{result.get('total', 0)}元～"
     return reply, result
 
 
