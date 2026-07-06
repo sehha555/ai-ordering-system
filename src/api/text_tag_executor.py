@@ -173,6 +173,7 @@ async def execute_tags(
     if "[ADD:" in full_text:
         add_kwargs_list: List[Dict[str, Any]] = []
         last_failed_attempt: Optional[Dict[str, Any]] = None
+        retried_ids: set = set()  # 補槽 retry 入車的品項（槽位補完非修改，不參與修改去重）
         for add_content in ADD_RE.findall(full_text):
             parts = add_content.split("|")
             item_name = parts[0].strip()
@@ -246,6 +247,7 @@ async def execute_tags(
                     if retry_result.get("ok"):
                         session["last_failed_attempt"] = None
                         add_results.append(retry_result)
+                        retried_ids.add(retry_result.get("item_id"))
                         logger.info(
                             "[ADD fallback] 補槽成功: {} → {}",
                             retry_kwargs,
@@ -282,22 +284,24 @@ async def execute_tags(
                     )
 
             # ── 修改去重：客人改屬性（不要辣/換白米）LLM 誤發新 ADD → 同款舊品項移除 ──
-            # 保守觸發：user text 含修改語意且無加點語意，且同款新舊各恰 1 個（1↔1 修改）
+            # 保守觸發：user text 含修改語意且無加點語意，且同款新舊各恰 1 個（1↔1 修改）。
+            # 補槽 retry 品項排除：槽位補答（如「換紫米的」）是完成前輪加點，非修改既有品項
             if _has_modify_intent(text):
-                by_key: Dict[str, Dict[str, list]] = {}
+                modify_new_ids = this_turn_ids - retried_ids
+                by_key: dict[str, list] = {}
                 for item in cart:
                     key = _modify_dedup_key(item)
-                    if key is None:
-                        continue
-                    group = by_key.setdefault(key, {"new": [], "old": []})
-                    group["new" if item.get("item_id") in this_turn_ids else "old"].append(item)
-                for key, group in by_key.items():
-                    if len(group["new"]) == 1 and len(group["old"]) == 1:
-                        cart.remove(group["old"][0])
+                    if key is not None:
+                        by_key.setdefault(key, []).append(item)
+                for items in by_key.values():
+                    new_items = [i for i in items if i.get("item_id") in modify_new_ids]
+                    old_items = [i for i in items if i.get("item_id") not in this_turn_ids]
+                    if len(new_items) == 1 and len(old_items) == 1:
+                        cart.remove(old_items[0])
                         logger.info(
                             "[ADD modify-dedup] 修改語意移除舊品項 {} (保留本輪 {})",
-                            group["old"][0].get("item_id"),
-                            group["new"][0].get("item_id"),
+                            old_items[0].get("item_id"),
+                            new_items[0].get("item_id"),
                         )
 
         # add_item 失敗 → 追問一律補發：LLM prose（已 streaming）不含後端追問，

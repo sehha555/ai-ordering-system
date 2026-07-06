@@ -273,6 +273,43 @@ async def test_add_more_intent_keeps_both_items(registry):
 
 
 @pytest.mark.asyncio
+async def test_slot_fill_retry_not_treated_as_modify(registry):
+    """補槽回答含修改詞（換紫米的）→ retry 品項不參與修改去重，既有同款不被誤刪"""
+    old_item = {
+        "item_id": "riceball_1",
+        "itemtype": "riceball",
+        "flavor": "鮪魚飯糰",
+        "rice": "白米",
+        "quantity": 1,
+    }
+    session = _make_session(cart=[old_item])
+    session["last_failed_attempt"] = {
+        "item_name": "鮪魚飯糰",
+        "missing": ["rice"],
+        "provided": {},
+    }
+
+    def _add_item(**kwargs):
+        if kwargs["name"] == "鮪魚飯糰":  # 補槽 retry
+            new_item = {
+                "item_id": "riceball_2",
+                "itemtype": "riceball",
+                "flavor": "鮪魚飯糰",
+                "rice": "紫米",
+                "quantity": 1,
+            }
+            session["cart"].append(new_item)
+            return {"ok": True, "item_id": "riceball_2", "message": "已加入"}
+        return {"ok": False, "message": "沒有這個品項"}  # LLM 把答案當品項
+
+    registry.add_item.side_effect = _add_item
+
+    await execute_tags("[ADD:紫米飯糰|rice=紫米]好～", "換紫米的", session, "s1")
+
+    assert len(session["cart"]) == 2, "補槽 retry 不應觸發修改去重誤刪既有品項"
+
+
+@pytest.mark.asyncio
 async def test_pending_cart_finalizes_as_pending(registry):
     """cart 有客製待確認品項 + 同句外帶 → 直接建「待店員結算」單"""
     cart = [{"itemtype": "riceball", "flavor": "鮪魚", "customization": "加很多料", "quantity": 1}]
