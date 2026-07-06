@@ -437,6 +437,64 @@ async def test_checkout_restate_dedups_new_item(registry):
 
 
 @pytest.mark.asyncio
+async def test_add_one_more_qty_corrected(registry):
+    """「再加一份」LLM 誤發 qty=2 → 後端修正為 +1"""
+    old_item = {
+        "item_id": "ep_1",
+        "itemtype": "egg_pancake",
+        "flavor": "原味蛋餅",
+        "quantity": 1,
+    }
+    session = _make_session(cart=[old_item])
+    session["last_turn_add_ids"] = ["ep_1"]
+
+    def _add_item(**kwargs):
+        new_item = {
+            "item_id": "ep_2",
+            "itemtype": "egg_pancake",
+            "flavor": "原味蛋餅",
+            "quantity": kwargs.get("quantity", 1),
+        }
+        session["cart"].append(new_item)
+        return {"ok": True, "item_id": "ep_2", "message": "已加入"}
+
+    registry.add_item.side_effect = _add_item
+
+    await execute_tags("[ADD:原味蛋餅|qty=2]好～", "蛋餅再加一份", session, "s1")
+
+    new_item = next(i for i in session["cart"] if i["item_id"] == "ep_2")
+    assert new_item["quantity"] == 1, "「再加一份」qty 應被修正為 1"
+    total_qty = sum(i["quantity"] for i in session["cart"])
+    assert total_qty == 2, f"總量應為 2（原 1 + 新 1），實際 {total_qty}"
+
+
+@pytest.mark.asyncio
+async def test_add_two_more_qty_untouched(registry):
+    """「再加兩份」qty=2 是正確增量 → 不修正"""
+    session = _make_session(
+        cart=[{"item_id": "ep_1", "itemtype": "egg_pancake", "flavor": "原味蛋餅", "quantity": 1}]
+    )
+
+    def _add_item(**kwargs):
+        session["cart"].append(
+            {
+                "item_id": "ep_2",
+                "itemtype": "egg_pancake",
+                "flavor": "原味蛋餅",
+                "quantity": kwargs.get("quantity", 1),
+            }
+        )
+        return {"ok": True, "item_id": "ep_2", "message": "已加入"}
+
+    registry.add_item.side_effect = _add_item
+
+    await execute_tags("[ADD:原味蛋餅|qty=2]好～", "蛋餅再加兩份", session, "s1")
+
+    new_item = next(i for i in session["cart"] if i["item_id"] == "ep_2")
+    assert new_item["quantity"] == 2, "「再加兩份」不應被修正"
+
+
+@pytest.mark.asyncio
 async def test_checkout_fallback_without_tag(registry):
     """LLM 漏發 [CHECKOUT] 但客人明說結帳 → 後端兜底推進 finalize，話術經 followup 補送"""
     session = _session_with_item()
