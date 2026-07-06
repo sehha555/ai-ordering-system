@@ -90,3 +90,14 @@ class TestSpecBracketStrip:
         info = registry._resolve_item_name("薯餅(3片)")
         assert info is not None
         assert info["resolved_name"] == "薯餅(1片)"
+
+    def test_multi_variant_base_picks_flavor_match(self, registry):
+        # 果醬吐司 10 種變體同 base：括號口味資訊必須參與挑選，不能短路取第一個
+        info = registry._resolve_item_name("果醬吐司(花生)")
+        assert info is not None
+        assert "花生" in info["resolved_name"]
+
+    def test_multi_variant_base_picks_closest(self, registry):
+        info = registry._resolve_item_name("蔥抓餅(雙蛋)")
+        assert info is not None
+        assert info["resolved_name"] == "蔥抓餅(加蛋)"
