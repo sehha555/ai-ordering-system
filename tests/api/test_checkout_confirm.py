@@ -96,3 +96,47 @@ def test_finalize_pending_reply_no_total(registry):
 
     assert "店員確認" in reply
     assert "90元" not in reply
+
+
+@pytest.mark.asyncio
+async def test_ck_dine_same_turn_payment_finalizes(registry):
+    """CK_DINE 確認輪同句「外帶 現金」→ 直接出單，不再多問付款"""
+    from src.api.checkout_handler import CK_DINE, checkout_step
+
+    store = MagicMock()
+    session = {
+        "checkout_status": CK_DINE,
+        "cart": [{"itemtype": "snack", "snack": "薯餅(1片)", "quantity": 1}],
+        "llm_history": [],
+    }
+    with (
+        patch("src.services.container.tool_registry", registry),
+        patch("src.services.container.session_store", store),
+    ):
+        events = [e async for e in checkout_step("外帶 現金", "s1", session)]
+
+    registry.finalize_order.assert_called_once_with(dine_type="take-out", payment_method="cash")
+    assert "號" in events[0]["content"]
+    assert "checkout_status" not in session
+
+
+@pytest.mark.asyncio
+async def test_ck_dine_without_payment_still_asks(registry):
+    """CK_DINE 確認輪只答內用外帶 → 仍進 CK_PAY 問付款（既有行為不變）"""
+    from src.api.checkout_handler import CK_DINE, CK_PAY, checkout_step
+
+    store = MagicMock()
+    session = {
+        "checkout_status": CK_DINE,
+        "cart": [{"itemtype": "snack", "snack": "薯餅(1片)", "quantity": 1}],
+        "llm_history": [],
+    }
+    with (
+        patch("src.services.container.tool_registry", registry),
+        patch("src.services.container.session_store", store),
+    ):
+        events = [e async for e in checkout_step("外帶", "s1", session)]
+
+    registry.finalize_order.assert_not_called()
+    assert session["checkout_status"] == CK_PAY
+    assert "現金" in events[0]["content"]
