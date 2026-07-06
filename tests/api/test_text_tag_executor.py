@@ -742,3 +742,78 @@ async def test_empty_cart_checkout_no_pending_still_rejected(registry):
 
     assert "空的" in result.full_text
     assert "pending_checkout" not in session
+
+
+# ── V9：LLM prose 已追問缺槽 → 後端 followup 不疊問 ──
+
+
+def _missing_temp_add(registry):
+    registry.add_item.return_value = {
+        "ok": False,
+        "missing": ["temp"],
+        "message": "飲料冰的還是溫的",
+    }
+
+
+@pytest.mark.asyncio
+async def test_followup_suppressed_when_prose_asks_same_slot(registry):
+    """prose 已問「冰的還是溫的？」→ 同缺槽 followup 不疊問"""
+    _missing_temp_add(registry)
+    session = _make_session(cart=[])
+
+    result = await execute_tags("[ADD:套餐C]飲料要冰的還是溫的？", "一個三號餐", session, "s1")
+
+    assert result.followup_text == ""
+    assert result.full_text == "飲料要冰的還是溫的？"
+
+
+@pytest.mark.asyncio
+async def test_followup_sent_when_prose_silent_on_slot(registry):
+    """prose 沒問缺槽 → followup 照補（既有行為不變）"""
+    _missing_temp_add(registry)
+    session = _make_session(cart=[])
+
+    result = await execute_tags("[ADD:套餐C]好的～", "一個三號餐", session, "s1")
+
+    assert "冰的還是溫的" in result.followup_text
+
+
+@pytest.mark.asyncio
+async def test_followup_sent_when_prose_covers_only_partial_slots(registry):
+    """缺兩槽 prose 只問一槽 → followup 照補（寧可重複不可漏問）"""
+    registry.add_item.return_value = {
+        "ok": False,
+        "missing": ["temp", "rice"],
+        "message": "要紫米白米？飲料冰的還是溫的",
+    }
+    session = _make_session(cart=[])
+
+    result = await execute_tags("[ADD:套餐C]飲料要冰的還是溫的？", "一個三號餐", session, "s1")
+
+    assert "紫米白米" in result.followup_text
+
+
+@pytest.mark.asyncio
+async def test_followup_sent_for_unmapped_slot(registry):
+    """缺槽不在 marker 表（noodle）→ 無法確認 prose 已問，照補"""
+    registry.add_item.return_value = {
+        "ok": False,
+        "missing": ["noodle"],
+        "message": "油麵還是烏龍麵",
+    }
+    session = _make_session(cart=[])
+
+    result = await execute_tags("[ADD:蘑菇鐵板麵]油麵還是烏龍麵？", "一個蘑菇鐵板麵", session, "s1")
+
+    assert "油麵還是烏龍麵" in result.followup_text
+
+
+@pytest.mark.asyncio
+async def test_followup_sent_when_prose_has_no_question_mark(registry):
+    """prose 含選項詞但無問號（非追問語氣）→ followup 照補"""
+    _missing_temp_add(registry)
+    session = _make_session(cart=[])
+
+    result = await execute_tags("[ADD:套餐C]我們有冰的和溫的喔", "一個三號餐", session, "s1")
+
+    assert "冰的還是溫的" in result.followup_text
