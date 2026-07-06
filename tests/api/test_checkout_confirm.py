@@ -44,6 +44,28 @@ def test_confirm_pending_cart_no_total():
     assert "內用還是外帶" in msg
 
 
+# ---------- parse_payment 口語變體 ----------
+
+
+def test_parse_payment_colloquial():
+    from src.api.checkout_handler import parse_payment
+
+    assert parse_payment("付現啦") == "cash"
+    assert parse_payment("刷卡") == "line_pay"
+
+
+def test_ask_payment_with_total_contains_amount():
+    from src.api.checkout_handler import ask_payment_with_total
+
+    cart = [_riceball_item(quantity=2)]
+    total = calculate_cart_total(cart)
+
+    msg = ask_payment_with_total(cart)
+
+    assert f"共{total}元" in msg
+    assert "現金" in msg
+
+
 # ---------- finalize_and_reply 金額話術 ----------
 
 

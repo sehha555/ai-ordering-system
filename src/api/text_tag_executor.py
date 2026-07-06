@@ -19,9 +19,9 @@ from typing import Any, Dict, List, Optional
 from loguru import logger
 
 from src.api.checkout_handler import (
-    ASK_PAYMENT,
     CK_DINE,
     CK_PAY,
+    ask_payment_with_total,
     build_checkout_confirm,
     finalize_and_reply,
     parse_dine_type,
@@ -442,9 +442,10 @@ async def execute_tags(
             if pay:
                 full_text, finalize_result = finalize_and_reply(dine, pay, session, _tool_registry)
             else:
+                # 同句帶內用外帶沒經過確認句 → 問付款時帶總金額
                 session["checkout_dine_type"] = dine
                 session["checkout_status"] = CK_PAY
-                full_text = ASK_PAYMENT
+                full_text = ask_payment_with_total(cart)
             logger.info(
                 "[CHECKOUT 同句推進] dine={} finalize={}", dine, finalize_result is not None
             )
