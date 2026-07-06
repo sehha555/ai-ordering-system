@@ -112,10 +112,16 @@ class SnackTool:
             return {"ok": False, "message": "缺少點心名稱，無法計價。"}
 
         try:
-            try:
-                base_price = menu_price_service.get_price("點心", snack_name)
-            except KeyError:
-                base_price = menu_price_service.get_price("鐵板麵", snack_name)
+            # add_item 將點心/鐵板麵/蔥抓餅三個菜單分類都歸入 snack，計價需依序查
+            base_price = None
+            for category in ("點心", "鐵板麵", "蔥抓餅"):
+                try:
+                    base_price = menu_price_service.get_price(category, snack_name)
+                    break
+                except KeyError:
+                    continue
+            if base_price is None:
+                raise KeyError(snack_name)
             total_price = base_price * quantity
 
             message = f"{quantity}份{snack_name}，共 {total_price}元"

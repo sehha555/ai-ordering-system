@@ -349,6 +349,122 @@ async def test_slot_fill_retry_not_treated_as_modify(registry):
 
 
 @pytest.mark.asyncio
+async def test_affirmative_answer_dedups_without_modify_words(registry):
+    """追問肯定回答（要辣）text 沒點名品項 → 視為修改去重，不變兩份"""
+    old_item = {
+        "item_id": "riceball_1",
+        "itemtype": "riceball",
+        "flavor": "鮪魚飯糰",
+        "rice": "紫米",
+        "quantity": 1,
+    }
+    session = _make_session(cart=[old_item])
+    session["last_turn_add_ids"] = ["riceball_1"]
+
+    def _add_item(**kwargs):
+        new_item = {
+            "item_id": "riceball_2",
+            "itemtype": "riceball",
+            "flavor": "鮪魚飯糰",
+            "rice": "紫米",
+            "spicy": True,
+            "quantity": 1,
+        }
+        session["cart"].append(new_item)
+        return {"ok": True, "item_id": "riceball_2", "message": "已加入"}
+
+    registry.add_item.side_effect = _add_item
+
+    await execute_tags("[ADD:鮪魚飯糰|rice=紫米|spicy=true]好～", "要辣 謝謝", session, "s1")
+
+    cart = session["cart"]
+    assert len(cart) == 1, f"肯定回答應去重為 1 個，實際 {len(cart)} 個"
+    assert cart[0]["item_id"] == "riceball_2"
+
+
+@pytest.mark.asyncio
+async def test_named_item_not_deduped_without_modify_words(registry):
+    """text 點名品項（第二人接著點同款）→ 無修改詞不去重"""
+    old_item = {
+        "item_id": "riceball_1",
+        "itemtype": "riceball",
+        "flavor": "鮪魚飯糰",
+        "rice": "紫米",
+        "quantity": 1,
+    }
+    session = _make_session(cart=[old_item])
+    session["last_turn_add_ids"] = ["riceball_1"]
+
+    def _add_item(**kwargs):
+        session["cart"].append(
+            {
+                "item_id": "riceball_2",
+                "itemtype": "riceball",
+                "flavor": "鮪魚飯糰",
+                "rice": "白米",
+                "quantity": 1,
+            }
+        )
+        return {"ok": True, "item_id": "riceball_2", "message": "已加入"}
+
+    registry.add_item.side_effect = _add_item
+
+    await execute_tags("[ADD:鮪魚飯糰|rice=白米]好～", "一個鮪魚飯糰白米", session, "s1")
+
+    assert len(session["cart"]) == 2, "點名品項的新單不應被去重"
+
+
+@pytest.mark.asyncio
+async def test_checkout_restate_dedups_new_item(registry):
+    """結帳輪複述已在車上的品項 → 移除新的重複 ADD"""
+    old_item = {"item_id": "snack_1", "itemtype": "snack", "snack": "港式蘿蔔糕", "quantity": 1}
+    session = _make_session(cart=[old_item])
+    session["last_turn_add_ids"] = []  # 蘿蔔糕是更早輪點的
+
+    def _add_item(**kwargs):
+        session["cart"].append(
+            {"item_id": "snack_2", "itemtype": "snack", "snack": "港式蘿蔔糕", "quantity": 1}
+        )
+        return {"ok": True, "item_id": "snack_2", "message": "已加入"}
+
+    registry.add_item.side_effect = _add_item
+
+    await execute_tags("[ADD:港式蘿蔔糕][CHECKOUT]好～", "蘿蔔糕一份 就這些 結帳", session, "s1")
+
+    cart = session["cart"]
+    assert len(cart) == 1, f"結帳複述應去重為 1 個，實際 {len(cart)} 個"
+    assert cart[0]["item_id"] == "snack_1", "應保留舊品項移除複述的新 ADD"
+
+
+@pytest.mark.asyncio
+async def test_checkout_fallback_without_tag(registry):
+    """LLM 漏發 [CHECKOUT] 但客人明說結帳 → 後端兜底推進 finalize，話術經 followup 補送"""
+    session = _session_with_item()
+
+    result = await execute_tags("好～外帶付現金喔！", "結帳 外帶 現金", session, "s1")
+
+    registry.finalize_order.assert_called_once_with(dine_type="take-out", payment_method="cash")
+    assert result.finalize_result is not None
+    assert "01號" in result.followup_text, "兜底輪話術需經 followup 補送（prose 已 streaming）"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "user_text",
+    ["先不要結帳 我再想想", "不要結帳", "等一下結帳", "還沒要結帳", "晚點再結帳"],
+)
+async def test_checkout_fallback_negated_not_triggered(registry, user_text):
+    """延後/否定語意 → 兜底不觸發，不進結帳狀態機"""
+    session = _session_with_item()
+
+    result = await execute_tags("好的～", user_text, session, "s1")
+
+    registry.finalize_order.assert_not_called()
+    assert "checkout_status" not in session
+    assert result.finalize_result is None
+
+
+@pytest.mark.asyncio
 async def test_pending_cart_finalizes_as_pending(registry):
     """cart 有客製待確認品項 + 同句外帶 → 直接建「待店員結算」單"""
     cart = [{"itemtype": "riceball", "flavor": "鮪魚", "customization": "加很多料", "quantity": 1}]

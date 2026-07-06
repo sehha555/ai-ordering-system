@@ -34,21 +34,54 @@ from src.api.tag_parser import (
     QUERY_RE,
     REMOVE_RE,
     SET_QTY_RE,
+    item_mentioned_in_text,
     find_cart_item_id,
     parse_set_qty_tag,
     resolve_cancel_intent,
 )
 from src.dm.tool_priming import CHECKOUT_TAG
+from src.tools.order_router import CHECKOUT_KEYWORDS
 
 
 # 修改語意判斷：客人在改既有品項屬性（而非加點新品項）的訊號詞
 _MODIFY_WORDS = ("不要", "不加", "改", "換", "去掉")
-_ADD_MORE_WORDS = ("再", "還要", "多一", "加一", "另外", "加購", "加點")
+_ADD_MORE_WORDS = ("再", "還要", "多一", "加一", "另外", "加購", "加點", "也")
+
+
+def _has_add_more_intent(text: str) -> bool:
+    """user text 含加點語意（明確要新的一份，重複 ADD 去重一律讓路）"""
+    return any(w in text for w in _ADD_MORE_WORDS)
 
 
 def _has_modify_intent(text: str) -> bool:
     """user text 含修改語意且無加點語意（供同款重複 ADD 去重判斷）"""
-    return any(w in text for w in _MODIFY_WORDS) and not any(w in text for w in _ADD_MORE_WORDS)
+    return any(w in text for w in _MODIFY_WORDS) and not _has_add_more_intent(text)
+
+
+# 結帳兜底：LLM 漏發 [CHECKOUT] 時依 user text 意圖後端推進。
+# 詞表派生自 order_router 單一來源；排除「結案」「沒了」——語意模糊
+# （沒了可指售完），silent fallback 需要高精確度
+_CHECKOUT_INTENT_WORDS = tuple(w for w in CHECKOUT_KEYWORDS if w not in ("結案", "沒了"))
+_CHECKOUT_NEGATE_WORDS = (
+    "先不",
+    "不用結",
+    "不結",
+    "不要結",
+    "還沒",
+    "還不",
+    "等一下",
+    "等等",
+    "晚點",
+    "先別",
+    "暫時不",
+)
+
+
+def _has_checkout_intent(text: str) -> bool:
+    """user text 明確要結帳且無延後/否定語意"""
+    return any(w in text for w in _CHECKOUT_INTENT_WORDS) and not any(
+        w in text for w in _CHECKOUT_NEGATE_WORDS
+    )
 
 
 def _modify_dedup_key(item: dict) -> Optional[str]:
@@ -95,6 +128,7 @@ async def execute_tags(
 
     # ── [CHECKOUT] 攔截 ──
     checkout_entered = False  # 本輪剛進結帳狀態（供尾端同句推進判斷）
+    checkout_fallback = False  # 兜底進結帳（LLM 漏發 tag，prose 已 streaming，話術需補送）
     if CHECKOUT_TAG in full_text:
         # 空車但同句帶 [ADD:...]（複合句點餐+結帳）→ 品項即將入車，照常進結帳
         if not cart and "[ADD:" not in full_text:
@@ -104,6 +138,12 @@ async def execute_tags(
             checkout_entered = True
             full_text = full_text.replace(CHECKOUT_TAG, "")
         patch_last_assistant(session["llm_history"], full_text)
+    elif (cart or "[ADD:" in full_text) and _has_checkout_intent(text):
+        # 兜底：客人明說結帳但 LLM 漏發 [CHECKOUT]（機率性 fail，模擬 batch1/2 觀察 4 次）
+        session["checkout_status"] = CK_DINE
+        checkout_entered = True
+        checkout_fallback = True
+        logger.info("[CHECKOUT fallback] LLM 漏發 tag，依結帳意圖兜底推進")
 
     # ── [REMOVE:...] 攔截 ──
     removed_ok = False
@@ -283,14 +323,18 @@ async def execute_tags(
                         [n["item_id"] for n in new_items],
                     )
 
-            # ── 修改去重：客人改屬性（不要辣/換白米）LLM 誤發新 ADD → 同款舊品項移除 ──
-            # 保守觸發：user text 含修改語意且無加點語意，且同款新舊各恰 1 個（1↔1 修改）。
+            # ── 修改去重：客人改屬性 LLM 誤發新 ADD → 同款舊品項移除 ──
+            # 觸發（皆需無加點語意 + 同款新舊各恰 1 個）：
+            #   (a) text 含修改詞（不要辣/換白米）
+            #   (b) text 沒點名該品項（如追問「要加辣菜脯嗎」答「要辣」）——
+            #       客人沒說品項名，LLM 是從 context 撈的，必為修改非新點單
             # 舊品項只限「上一輪剛成功 ADD 的」——修改語意天然接在剛點完的下一句，
             # 更早輪的同款是別筆訂單（多人合點），不可誤刪。
             # 補槽 retry 品項排除：槽位補答（如「換紫米的」）是完成前輪加點，非修改既有品項
-            if _has_modify_intent(text):
+            modify_new_ids = this_turn_ids - retried_ids
+            if not _has_add_more_intent(text):
+                has_modify_words = any(w in text for w in _MODIFY_WORDS)
                 prev_turn_add_ids = set(session.get("last_turn_add_ids", []))
-                modify_new_ids = this_turn_ids - retried_ids
                 by_key: dict[str, list] = {}
                 for item in cart:
                     key = _modify_dedup_key(item)
@@ -304,12 +348,37 @@ async def execute_tags(
                         if i.get("item_id") not in this_turn_ids
                         and i.get("item_id") in prev_turn_add_ids
                     ]
-                    if len(new_items) == 1 and len(old_items) == 1:
+                    if (
+                        len(new_items) == 1
+                        and len(old_items) == 1
+                        and (has_modify_words or not item_mentioned_in_text(new_items[0], text))
+                    ):
                         cart.remove(old_items[0])
                         logger.info(
                             "[ADD modify-dedup] 修改語意移除舊品項 {} (保留本輪 {})",
                             old_items[0].get("item_id"),
                             new_items[0].get("item_id"),
+                        )
+
+            # ── 結帳複述去重：[CHECKOUT] 輪把已在車上的品項重 ADD → 移除新的 ──
+            # 結帳句常複述整單（「蘿蔔糕一份跟奶茶 結帳」），複述品項沒有新資訊；
+            # qty>1 是明確改量/加點意圖，不去重。獨立於修改去重判斷（不巢狀在
+            # 加點詞閘門內，「我也要結帳」的「也」不應使複述去重失效）
+            if checkout_entered and not _has_add_more_intent(text):
+                for new_item in [i for i in cart if i.get("item_id") in modify_new_ids]:
+                    key = _modify_dedup_key(new_item)
+                    if key is None or int(new_item.get("quantity", 1) or 1) > 1:
+                        continue
+                    has_older = any(
+                        _modify_dedup_key(i) == key
+                        for i in cart
+                        if i.get("item_id") not in this_turn_ids
+                    )
+                    if has_older:
+                        cart.remove(new_item)
+                        logger.info(
+                            "[ADD checkout-dedup] 結帳複述移除重複品項 {}",
+                            new_item.get("item_id"),
                         )
 
             # 供下一輪修改去重辨識「上一輪剛加的品項」
@@ -380,10 +449,15 @@ async def execute_tags(
                 "[CHECKOUT 同句推進] dine={} finalize={}", dine, finalize_result is not None
             )
             patch_last_assistant(session["llm_history"], full_text)
+            if checkout_fallback:
+                # 兜底輪 LLM prose 已 streaming（無 tag 可 hold），推進話術經 followup 補送
+                followup_text = full_text
         else:
             # 第一問：後端組品項+總金額確認句，取代 LLM 話術（金額不靠 LLM 保證正確）
             full_text = build_checkout_confirm(cart)
             patch_last_assistant(session["llm_history"], full_text)
+            if checkout_fallback:
+                followup_text = full_text
 
     return TagExecutionResult(
         full_text=full_text,

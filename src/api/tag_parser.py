@@ -44,7 +44,7 @@ def find_cart_item_id(cart: list, keyword: str) -> Optional[str]:
     return None
 
 
-def _item_mentioned_in_text(item: dict, text: str) -> bool:
+def item_mentioned_in_text(item: dict, text: str) -> bool:
     """購物車品項是否在這句話被點名（顯示名 + 尾字類別名詞比對）。"""
     from src.dm import cart_manager
 
@@ -88,6 +88,6 @@ def resolve_cancel_intent(text: str, cart: list) -> tuple[bool, list]:
     matched = [
         item["item_id"]
         for item in cart
-        if _item_mentioned_in_text(item, text) and item.get("item_id")
+        if item_mentioned_in_text(item, text) and item.get("item_id")
     ]
     return False, matched
