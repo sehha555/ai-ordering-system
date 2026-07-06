@@ -22,6 +22,7 @@ from src.api.checkout_handler import (
     ASK_PAYMENT,
     CK_DINE,
     CK_PAY,
+    build_checkout_confirm,
     finalize_and_reply,
     parse_dine_type,
     parse_payment,
@@ -321,6 +322,10 @@ async def execute_tags(
             logger.info(
                 "[CHECKOUT 同句推進] dine={} finalize={}", dine, finalize_result is not None
             )
+            patch_last_assistant(session["llm_history"], full_text)
+        else:
+            # 第一問：後端組品項+總金額確認句，取代 LLM 話術（金額不靠 LLM 保證正確）
+            full_text = build_checkout_confirm(cart)
             patch_last_assistant(session["llm_history"], full_text)
 
     return TagExecutionResult(

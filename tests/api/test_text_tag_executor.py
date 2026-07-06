@@ -75,6 +75,10 @@ async def test_checkout_without_dine_stays_in_dine_state(registry):
     registry.finalize_order.assert_not_called()
     assert session["checkout_status"] == CK_DINE
     assert result.finalize_result is None
+    # 第一問由後端組確認句（複述品項+總金額），取代 LLM 話術
+    assert "跟您確認" in result.full_text
+    assert "內用還是外帶" in result.full_text
+    assert session["llm_history"][-1]["content"] == result.full_text
 
 
 @pytest.mark.asyncio
