@@ -86,7 +86,7 @@ def test_order_half_cooked_egg_success(dm_session):
 
     response = dm.handle(session_id, "我要半熟蛋")
     assert "好的，1份 荷包蛋(半熟)，還需要什麼嗎？" in response
-    
+
     # 驗證內部狀態
     cart = dm.store.get(session_id)["cart"]
     assert len(cart) == 1
@@ -97,3 +97,12 @@ def test_order_half_cooked_egg_success(dm_session):
     response = dm.handle(session_id, "結帳")
     assert "這樣一共" in response
     assert "15元" in response
+
+def test_scallion_pancake_priced():
+    """蔥抓餅類別品項計價（回歸：曾被歸 snack 但只查點心/鐵板麵 → $0 卡結帳）"""
+    from src.tools.snack_tool import snack_tool
+
+    for name, expected in [("蔥抓餅(原味)", 40), ("蔥抓餅(加蛋)", 50)]:
+        pi = snack_tool.quote_snack_price({"snack": name, "quantity": 1})
+        assert pi["ok"], pi
+        assert pi["total_price"] == expected
