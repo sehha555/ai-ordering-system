@@ -352,3 +352,91 @@ class TestSetQtyTagStrip:
             f"[SET_QTY:...] tag 不應出現在 text_delta 輸出中，實際: {combined!r}"
         )
         assert "好，薯餅改成一個" in combined, f"tag 後的文字應保留，實際: {combined!r}"
+
+
+# ── [CHECKOUT] 輪話術 surface 測試 ──
+
+
+class TestCheckoutTurnSurface:
+    """[CHECKOUT] 輪 LLM 原話 hold，execute_tags 最終話術（確認句）送到 SSE/TTS"""
+
+    def setup_method(self):
+        self.client = _make_client()
+        self._tts_patcher = patch("src.services.streaming_orchestrator.tts_cache")
+        mc = self._tts_patcher.start()
+        mc.get.return_value = FAKE_AUDIO
+
+    def teardown_method(self):
+        self._tts_patcher.stop()
+
+    def _post_with_fake_llm(self, llm_text: str, user_text: str, session_id: str):
+        from unittest.mock import MagicMock
+        from src.services import container as _container
+
+        async def _fake_run_turn_stream(*args, **kwargs):
+            yield {"type": "text_delta", "content": llm_text}
+            yield {
+                "type": "done",
+                "assistant_text": llm_text,
+                "history": [],
+                "usage": {},
+                "tool_trace": [],
+            }
+
+        mock_llm = MagicMock()
+        mock_llm.run_turn_stream.side_effect = _fake_run_turn_stream
+
+        original_llm = _container.llm_caller
+        _container.llm_caller = mock_llm
+        try:
+            return self.client.post(
+                "/api/text-chat", json={"text": user_text, "session_id": session_id}
+            )
+        finally:
+            _container.llm_caller = original_llm
+
+    def test_checkout_first_question_replaced_by_confirm(self):
+        """進結帳沒帶內用外帶 → SSE 是後端確認句（品項+金額），非 LLM 原話"""
+        from src.services import container as _container
+
+        session_id = "test-ck-surface-001"
+        session = _container.session_store.get(session_id)
+        session["cart"] = [
+            {"itemtype": "riceball", "flavor": "源味傳統", "rice": "紫米", "quantity": 1}
+        ]
+        session["llm_history"] = []
+        _container.session_store.set(session_id, session)
+
+        r = self._post_with_fake_llm("[CHECKOUT]好的～內用還是外帶？", "結帳", session_id)
+
+        assert r.status_code == 200
+        events = parse_sse_events(r.text)
+        combined = "".join(e["data"]["text"] for e in events if e["event"] == "text_delta")
+
+        assert "跟您確認" in combined, f"應送出後端確認句，實際: {combined!r}"
+        assert "內用還是外帶" in combined
+        assert "好的～內用還是外帶" not in combined, "LLM 原話應被 hold 不送出"
+
+        tts = find_event(events, "tts_text")
+        assert tts and "跟您確認" in tts["data"]["text"]
+
+    def test_checkout_same_sentence_finalize_reply_surfaced(self):
+        """同句帶外帶+現金 → SSE 是 finalize 報號帶金額，非 LLM 原話"""
+        from src.services import container as _container
+
+        session_id = "test-ck-surface-002"
+        session = _container.session_store.get(session_id)
+        session["cart"] = [
+            {"itemtype": "riceball", "flavor": "源味傳統", "rice": "紫米", "quantity": 1}
+        ]
+        session["llm_history"] = []
+        _container.session_store.set(session_id, session)
+
+        r = self._post_with_fake_llm("[CHECKOUT]好～外帶付現金喔！", "結帳 外帶 現金", session_id)
+
+        assert r.status_code == 200
+        events = parse_sse_events(r.text)
+        combined = "".join(e["data"]["text"] for e in events if e["event"] == "text_delta")
+
+        assert "號" in combined and "元" in combined, f"應報單號+金額，實際: {combined!r}"
+        assert find_event(events, "order_complete") is not None

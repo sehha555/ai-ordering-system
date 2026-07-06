@@ -115,6 +115,7 @@ class StreamingDMAdapter:
             shortcircuit_reply,
         )
         from src.api.text_tag_executor import execute_tags  # noqa: E402
+        from src.dm.tool_priming import CHECKOUT_TAG  # noqa: E402
 
         if session.get("checkout_status") in CK_STATES:
             yielded = False
@@ -169,6 +170,9 @@ class StreamingDMAdapter:
 
         full_text = ""
         tool_trace = []
+        # [CHECKOUT] 輪：LLM 話術會被 execute_tags 取代（確認句/finalize 報號），
+        # hold streaming 不逐句送 TTS，done 後由最終話術一次送出
+        checkout_turn = False
 
         try:
             async for event in _llm_caller.run_turn_stream(
@@ -183,8 +187,13 @@ class StreamingDMAdapter:
                 evt_type = event.get("type")
 
                 if evt_type == "text_delta":
+                    raw_content = event.get("content", "")
+                    if CHECKOUT_TAG in raw_content:
+                        checkout_turn = True
+                    if checkout_turn:
+                        continue
                     # text tag mode：strip tags 再送 TTS（tags 在 done 事件處理）
-                    content = strip_all_tags(event.get("content", "")).strip()
+                    content = strip_all_tags(raw_content).strip()
                     if content:
                         yield {"type": "text_delta", "content": content}
 
@@ -222,7 +231,12 @@ class StreamingDMAdapter:
                     # ── Tag 執行（CHECKOUT / REMOVE / SET_QTY / ADD / QUERY）──
                     tag_result = await execute_tags(full_text, text, session, self._session_id)
                     full_text = tag_result.full_text
-                    if tag_result.followup_text:
+                    if checkout_turn:
+                        # streaming 已 hold，最終話術（確認句/finalize 報號/追問）一次送出；
+                        # followup 已併入 full_text，不另 yield 避免重複
+                        if full_text:
+                            yield {"type": "text_delta", "content": full_text}
+                    elif tag_result.followup_text:
                         yield {"type": "text_delta", "content": tag_result.followup_text}
 
                     # 訓練資料：append raw LLM pair（user = normalize 後的輸入，assistant = 含 tag 原文）
