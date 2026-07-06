@@ -54,9 +54,9 @@ def parse_dine_type(text: str) -> str | None:
 def parse_payment(text: str) -> str | None:
     """解析付款方式關鍵字，回傳 'cash'、'line_pay' 或 None"""
     t = text.strip()
-    if any(kw in t for kw in ["現金", "cash"]):
+    if any(kw in t for kw in ["現金", "付現", "cash"]):
         return "cash"
-    if any(kw in t for kw in ["Line", "line", "行動", "支付", "pay", "Pay", "LINE"]):
+    if any(kw in t for kw in ["Line", "line", "行動", "支付", "pay", "Pay", "LINE", "刷卡"]):
         return "line_pay"
     return None
 
@@ -67,6 +67,14 @@ def has_order_intent(text: str) -> bool:
 
 
 ASK_PAYMENT = "現金還是行動支付？"
+
+
+def ask_payment_with_total(cart: list) -> str:
+    """進 CK_PAY 第一問：帶總金額問付款方式（同句帶內用外帶的路徑沒經過確認句）"""
+    from src.dm import cart_manager
+
+    total = cart_manager.calculate_cart_total(cart)
+    return f"共{total}元，{ASK_PAYMENT}"
 
 
 def build_checkout_confirm(cart: list) -> str:
@@ -159,6 +167,7 @@ async def checkout_step(text: str, session_id: str, session: dict):
                     dine, "pending", session, _tool_registry
                 )
             else:
+                # 金額已在進結帳的確認句複述過，此處短問即可
                 session["checkout_status"] = CK_PAY
                 reply = ASK_PAYMENT
         elif has_order_intent(text):
