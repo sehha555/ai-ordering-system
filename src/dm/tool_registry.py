@@ -291,23 +291,35 @@ class ToolRegistry:
         if resolved_snack and resolved_snack != name and resolved_snack in _MENU_INDEX:
             return {**_MENU_INDEX[resolved_snack], "resolved_name": resolved_snack}
 
-        # 8. 子字串匹配（去掉規格括號後比較，要求 >= 60% 長度比例）
+        # 8. 子字串匹配（雙方都去掉規格括號後比較，要求 >= 60% 長度比例）
+        #    輸入側也要去：LLM 會腦補規格（「鮮肉包(8顆)」套煎餃格式），
+        #    帶括號直接比長度比例過不了。
+        #    命中多個（同 base 多變體，如果醬吐司 10 種口味）不可短路取第一個
+        #    —— 用原始 name（括號內是口味/規格資訊）fuzzy 挑最相近的變體
         #    + Subsequence 匹配（漏字場景：「煎吐司」→「煎蛋吐司」）
         #    子字串優先：全 index 掃完無子字串命中，才開始比 subsequence
+        name_base = name.split("(")[0].strip() if "(" in name else name
+        substr_hits: List[str] = []
         subseq_match: Optional[Dict[str, Any]] = None
         for full_name, info in _MENU_INDEX.items():
             base = full_name.split("(")[0] if "(" in full_name else full_name
-            if name in base or base in name:
-                shorter = min(len(name), len(base))
-                longer = max(len(name), len(base))
+            if name_base in base or base in name_base:
+                shorter = min(len(name_base), len(base))
+                longer = max(len(name_base), len(base))
                 if shorter >= longer * _SUBSTRING_MATCH_MIN_RATIO:
-                    return {**info, "resolved_name": full_name}
+                    substr_hits.append(full_name)
             if (
                 subseq_match is None
-                and len(name) >= len(base) * _SUBSEQUENCE_MATCH_MIN_RATIO
-                and _is_subsequence(name, base)
+                and len(name_base) >= len(base) * _SUBSEQUENCE_MATCH_MIN_RATIO
+                and _is_subsequence(name_base, base)
             ):
                 subseq_match = {**info, "resolved_name": full_name}
+        if substr_hits:
+            if len(substr_hits) == 1:
+                matched = substr_hits[0]
+            else:
+                matched = process.extractOne(name, substr_hits, scorer=fuzz.ratio)[0]
+            return {**_MENU_INDEX[matched], "resolved_name": matched}
         if subseq_match:
             return subseq_match
 

@@ -75,3 +75,29 @@ class TestSubstringSubsequenceMerge:
         info = registry._resolve_item_name("煎吐司")
         assert info is not None
         assert info["resolved_name"] == "煎蛋吐司"
+
+
+class TestSpecBracketStrip:
+    """LLM 腦補規格括號（「鮮肉包(8顆)」套煎餃格式）→ 去括號後仍能對回菜單實名"""
+
+    def test_hallucinated_spec_bracket(self, registry):
+        info = registry._resolve_item_name("鮮肉包(8顆)")
+        assert info is not None
+        assert info["resolved_name"] == "鮮肉包"
+
+    def test_wrong_spec_on_real_item(self, registry):
+        # 菜單實名「薯餅(1片)」，LLM 發錯規格 → 仍對回唯一的薯餅品項
+        info = registry._resolve_item_name("薯餅(3片)")
+        assert info is not None
+        assert info["resolved_name"] == "薯餅(1片)"
+
+    def test_multi_variant_base_picks_flavor_match(self, registry):
+        # 果醬吐司 10 種變體同 base：括號口味資訊必須參與挑選，不能短路取第一個
+        info = registry._resolve_item_name("果醬吐司(花生)")
+        assert info is not None
+        assert "花生" in info["resolved_name"]
+
+    def test_multi_variant_base_picks_closest(self, registry):
+        info = registry._resolve_item_name("蔥抓餅(雙蛋)")
+        assert info is not None
+        assert info["resolved_name"] == "蔥抓餅(加蛋)"
