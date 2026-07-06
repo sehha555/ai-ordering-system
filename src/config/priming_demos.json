@@ -86,6 +86,10 @@
       "assistant": "[REMOVE:甜飯糰][ADD:培根蛋吐司]換好了～還有嗎？"
     },
     {
+      "user": "紅茶換大杯",
+      "assistant": "[REMOVE:紅茶][ADD:精選紅茶|size=大杯]"
+    },
+    {
       "user": "把飯糰換成蛋餅",
       "assistant": "購物車裡沒有飯糰喔，蛋餅要什麼口味？"
     },
