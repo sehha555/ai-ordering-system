@@ -62,7 +62,19 @@ def _has_modify_intent(text: str) -> bool:
 # 詞表派生自 order_router 單一來源；排除「結案」「沒了」——語意模糊
 # （沒了可指售完），silent fallback 需要高精確度
 _CHECKOUT_INTENT_WORDS = tuple(w for w in CHECKOUT_KEYWORDS if w not in ("結案", "沒了"))
-_CHECKOUT_NEGATE_WORDS = ("先不", "不用結", "不結", "還沒", "等一下再", "晚點再", "先別")
+_CHECKOUT_NEGATE_WORDS = (
+    "先不",
+    "不用結",
+    "不結",
+    "不要結",
+    "還沒",
+    "還不",
+    "等一下",
+    "等等",
+    "晚點",
+    "先別",
+    "暫時不",
+)
 
 
 def _has_checkout_intent(text: str) -> bool:
@@ -348,25 +360,26 @@ async def execute_tags(
                             new_items[0].get("item_id"),
                         )
 
-                # ── 結帳複述去重：[CHECKOUT] 輪把已在車上的品項重 ADD → 移除新的 ──
-                # 結帳句常複述整單（「蘿蔔糕一份跟奶茶 結帳」），複述品項沒有新資訊；
-                # qty>1 是明確改量/加點意圖，不去重
-                if checkout_entered:
-                    for new_item in [i for i in cart if i.get("item_id") in modify_new_ids]:
-                        key = _modify_dedup_key(new_item)
-                        if key is None or int(new_item.get("quantity", 1) or 1) > 1:
-                            continue
-                        has_older = any(
-                            _modify_dedup_key(i) == key
-                            for i in cart
-                            if i.get("item_id") not in this_turn_ids
+            # ── 結帳複述去重：[CHECKOUT] 輪把已在車上的品項重 ADD → 移除新的 ──
+            # 結帳句常複述整單（「蘿蔔糕一份跟奶茶 結帳」），複述品項沒有新資訊；
+            # qty>1 是明確改量/加點意圖，不去重。獨立於修改去重判斷（不巢狀在
+            # 加點詞閘門內，「我也要結帳」的「也」不應使複述去重失效）
+            if checkout_entered and not _has_add_more_intent(text):
+                for new_item in [i for i in cart if i.get("item_id") in modify_new_ids]:
+                    key = _modify_dedup_key(new_item)
+                    if key is None or int(new_item.get("quantity", 1) or 1) > 1:
+                        continue
+                    has_older = any(
+                        _modify_dedup_key(i) == key
+                        for i in cart
+                        if i.get("item_id") not in this_turn_ids
+                    )
+                    if has_older:
+                        cart.remove(new_item)
+                        logger.info(
+                            "[ADD checkout-dedup] 結帳複述移除重複品項 {}",
+                            new_item.get("item_id"),
                         )
-                        if has_older:
-                            cart.remove(new_item)
-                            logger.info(
-                                "[ADD checkout-dedup] 結帳複述移除重複品項 {}",
-                                new_item.get("item_id"),
-                            )
 
             # 供下一輪修改去重辨識「上一輪剛加的品項」
             session["last_turn_add_ids"] = list(this_turn_ids)

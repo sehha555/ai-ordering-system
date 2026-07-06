@@ -449,11 +449,15 @@ async def test_checkout_fallback_without_tag(registry):
 
 
 @pytest.mark.asyncio
-async def test_checkout_fallback_negated_not_triggered(registry):
-    """「先不要結帳」→ 兜底不觸發"""
+@pytest.mark.parametrize(
+    "user_text",
+    ["先不要結帳 我再想想", "不要結帳", "等一下結帳", "還沒要結帳", "晚點再結帳"],
+)
+async def test_checkout_fallback_negated_not_triggered(registry, user_text):
+    """延後/否定語意 → 兜底不觸發，不進結帳狀態機"""
     session = _session_with_item()
 
-    result = await execute_tags("好的～", "先不要結帳 我再想想", session, "s1")
+    result = await execute_tags("好的～", user_text, session, "s1")
 
     registry.finalize_order.assert_not_called()
     assert "checkout_status" not in session
