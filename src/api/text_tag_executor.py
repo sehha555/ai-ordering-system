@@ -13,6 +13,7 @@
 - patch_last_assistant
 """
 
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -42,6 +43,9 @@ from src.api.tag_parser import (
 from src.dm.tool_priming import CHECKOUT_TAG
 from src.tools.order_router import CHECKOUT_KEYWORDS
 
+
+# 「再X一份」增量句：明確 +1，LLM 常把目標總量當增量發 qty>1（見模擬 b4-03 錯單）
+_ADD_ONE_MORE_RE = re.compile(r"再(?:加|來|點)?一(?:份|個|杯|顆|片)")
 
 # 修改語意判斷：客人在改既有品項屬性（而非加點新品項）的訊號詞
 _MODIFY_WORDS = ("不要", "不加", "改", "換", "去掉")
@@ -322,6 +326,22 @@ async def execute_tags(
                         [o["item_id"] for o in old_items],
                         [n["item_id"] for n in new_items],
                     )
+
+            # ── 「再X一份」增量修正：text 明說 +1 份，LLM 卻把目標總量當增量 ──
+            # 發 ADD qty>1（「蛋餅再加一份」車上已 1 份 → 誤發 qty=2 變 3 份）。
+            # 只在本輪成功 ADD 恰 1 個時修正，避免波及多品項句的其他數量
+            ok_results = [r for r in add_results if r.get("ok") and r.get("item_id")]
+            if len(ok_results) == 1 and _ADD_ONE_MORE_RE.search(text):
+                added = next(
+                    (i for i in cart if i.get("item_id") == ok_results[0]["item_id"]), None
+                )
+                if added and int(added.get("quantity", 1) or 1) > 1:
+                    logger.info(
+                        "[ADD qty-fix] 「再X一份」qty {}→1 ({})",
+                        added.get("quantity"),
+                        added.get("item_id"),
+                    )
+                    added["quantity"] = 1
 
             # ── 修改去重：客人改屬性 LLM 誤發新 ADD → 同款舊品項移除 ──
             # 觸發（皆需無加點語意 + 同款新舊各恰 1 個）：
