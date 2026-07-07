@@ -35,27 +35,24 @@ def check_combo_required(
     rice: Optional[str],
     noodle: Optional[str] = None,
     customization: Optional[str] = None,  # noqa: ARG001 — 保留簽名相容性
-) -> tuple[Optional[str], list[str]]:
-    """檢查套餐必填欄位，回傳 (追問訊息, 缺少欄位 list)，全齊回 (None, [])"""
+) -> dict[str, str]:
+    """檢查套餐必填欄位，回傳 缺槽→追問文字 對照（保插入序），全齊回空 dict。
+    對照表供 followup 部分過濾（prose 已問的槽不重複補問）。"""
     if not combo_name:
-        return _chase["combo_name_missing"], ["combo_name"]
+        return {"combo_name": _chase["combo_name_missing"]}
 
-    missing_parts: list[str] = []
-    missing_fields: list[str] = []
+    missing_prompts: dict[str, str] = {}
 
     if not temp:
-        missing_parts.append(_chase["temp"])
-        missing_fields.append("temp")
+        missing_prompts["temp"] = _chase["temp"]
 
     reqs = COMBO_REQUIREMENTS.get(combo_name, {})
 
     if reqs.get("needs_rice") and not rice:
-        missing_parts.append(_chase["needs_rice"])
-        missing_fields.append("rice")
+        missing_prompts["rice"] = _chase["needs_rice"]
 
     if reqs.get("needs_noodle") and not noodle:
-        missing_parts.append(_chase["needs_noodle"])
-        missing_fields.append("noodle")
+        missing_prompts["noodle"] = _chase["needs_noodle"]
 
     flavor_chase_keys = (
         "needs_mantou_flavor",
@@ -65,14 +62,10 @@ def check_combo_required(
     )
     for key in flavor_chase_keys:
         if reqs.get(key) and not flavor:
-            missing_parts.append(_chase[key])
-            missing_fields.append("flavor")
+            missing_prompts["flavor"] = _chase[key]
             break
 
-    if not missing_parts:
-        return None, []
-
-    return " ".join(missing_parts), missing_fields
+    return missing_prompts
 
 
 def generate_item_logic() -> str:

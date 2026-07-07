@@ -118,6 +118,46 @@ async def test_retry_turn_negated_value_not_evidence():
 
 
 @pytest.mark.asyncio
+async def test_retry_turn_strips_wrong_noodle_value():
+    """補槽輪客人說「油麵」但 LLM 幻覺發 noodle=烏龍麵 → 類別詞命中不算佐證，strip 重問"""
+    reg = MagicMock()
+    reg.add_item.return_value = {
+        "ok": False,
+        "missing": ["noodle"],
+        "message": "鐵板麵要油麵還是烏龍麵",
+    }
+    session = _retry_session()
+    with patch("src.services.container.tool_registry", reg):
+        await execute_tags(
+            "[ADD:套餐六|temp=冰|flavor=蘑菇|noodle=烏龍麵]好～",
+            "蘑菇 油麵",
+            session,
+            "s1",
+        )
+    reg.add_item.assert_called_once_with(name="套餐六", temp="冰", flavor="蘑菇")
+
+
+@pytest.mark.asyncio
+async def test_named_turn_strips_wrong_noodle_value():
+    """新點單輪客人說「油麵」但 LLM 幻覺發 noodle=烏龍麵 → slot-strip 同樣走值比對"""
+    reg = MagicMock()
+    reg.add_item.return_value = {
+        "ok": False,
+        "missing": ["noodle"],
+        "message": "鐵板麵要油麵還是烏龍麵",
+    }
+    session = {"cart": [], "llm_history": []}
+    with patch("src.services.container.tool_registry", reg):
+        await execute_tags(
+            "[ADD:套餐六|temp=冰|flavor=黑椒|noodle=烏龍麵]好～",
+            "一個套餐六 冰的黑椒油麵",
+            session,
+            "s1",
+        )
+    reg.add_item.assert_called_once_with(name="套餐六", temp="冰", flavor="黑椒")
+
+
+@pytest.mark.asyncio
 async def test_named_turn_not_affected_by_retry_strip():
     """text 有點名品項的正常點單輪走原 slot-strip，不走補槽防護"""
     reg = MagicMock()

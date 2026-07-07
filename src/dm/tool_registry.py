@@ -659,6 +659,9 @@ class ToolRegistry:
         if not result["ok"]:
             if "rice" in result.get("missing", []):
                 result["message"] = _augment_with_sold_out_rice(result["message"])
+                prompts = result.get("missing_prompts")
+                if prompts and "rice" in prompts:
+                    prompts["rice"] = _augment_with_sold_out_rice(prompts["rice"])
             return result
         return self._append_to_cart(result["item"], "combo", result["display_name"])
 
