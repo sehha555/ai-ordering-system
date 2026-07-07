@@ -63,17 +63,30 @@ def item_mentioned_in_text(item: dict, text: str) -> bool:
     return False
 
 
-def parse_set_qty_tag(content: str) -> tuple[str, int]:
-    """解析 [SET_QTY:品項|qty=N] tag 內容 → (品項名, 數量)"""
+def parse_set_qty_tag(content: str) -> tuple[str, Optional[int], dict]:
+    """解析 [SET_QTY:品項|qty=N|size=…|temp=…] tag 內容 → (品項名, 數量, 屬性)
+
+    LLM 表達「換大杯/換冰的」時慣性發 [SET_QTY:紅茶|size=大杯]（不照 demo 的
+    REMOVE+ADD），size/temp 收進 attrs 由 caller 套用。qty 沒給回 None ——
+    不能預設 1，否則「三杯紅茶換大杯」會把數量重設成 1。
+    """
     parts = content.split("|")
     item_name = parts[0].strip()
-    qty = 1
-    if len(parts) > 1 and parts[1].strip().startswith("qty="):
-        try:
-            qty = int(parts[1].strip().split("=", 1)[1])
-        except ValueError:
-            pass
-    return item_name, qty
+    qty: Optional[int] = None
+    attrs: dict = {}
+    for part in parts[1:]:
+        if "=" not in part:
+            continue
+        key, value = part.split("=", 1)
+        key, value = key.strip(), value.strip()
+        if key == "qty":
+            try:
+                qty = int(value)
+            except ValueError:
+                pass
+        elif key in ("size", "temp") and value:
+            attrs[key] = value
+    return item_name, qty, attrs
 
 
 def resolve_cancel_intent(text: str, cart: list) -> tuple[bool, list]:

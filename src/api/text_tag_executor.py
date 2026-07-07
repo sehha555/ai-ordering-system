@@ -218,6 +218,7 @@ async def execute_tags(
 
     # ── [REMOVE:...] 攔截 ──
     removed_ok = False
+    removed_item_snapshot: Optional[Dict[str, Any]] = None  # 同輪換品項的數量/屬性繼承用
     if "[REMOVE:" in full_text:
         remove_match = REMOVE_RE.search(full_text)
         if remove_match:
@@ -231,6 +232,9 @@ async def execute_tags(
             else:
                 matched_id = find_cart_item_id(cart, remove_target)
                 if matched_id:
+                    removed_item_snapshot = next(
+                        (i for i in cart if i.get("item_id") == matched_id), None
+                    )
                     remove_result = _tool_registry.remove_from_cart(item_id=matched_id)
                 else:
                     remove_result = {
@@ -247,16 +251,26 @@ async def execute_tags(
                 full_text = f"{msg_text}～還需要什麼？"
             patch_last_assistant(session["llm_history"], full_text)
 
-    # ── [SET_QTY:品項|qty=N] 攔截 ──
+    # ── [SET_QTY:品項|qty=N|size=…|temp=…] 攔截 ──
+    # LLM 表達「換大杯/改溫的」慣性發 SET_QTY 帶 size/temp（不照 demo 的
+    # REMOVE+ADD），attrs 走 set_item_attrs；qty 沒給就不動數量
     sq_result: dict = {"ok": False, "message": "已修改"}
     if "[SET_QTY:" in full_text:
         for sqm in SET_QTY_RE.finditer(full_text):
-            sq_target, sq_qty = parse_set_qty_tag(sqm.group(1).strip())
+            sq_target, sq_qty, sq_attrs = parse_set_qty_tag(sqm.group(1).strip())
             matched_id = find_cart_item_id(cart, sq_target)
-            if matched_id:
-                sq_result = _tool_registry.set_item_quantity(item_id=matched_id, quantity=sq_qty)
-            else:
+            if not matched_id:
                 sq_result = {"ok": False, "message": f"購物車裡沒有{sq_target}"}
+            else:
+                if sq_qty is not None:
+                    sq_result = _tool_registry.set_item_quantity(
+                        item_id=matched_id, quantity=sq_qty
+                    )
+                if sq_attrs:
+                    sq_result = _tool_registry.set_item_attrs(item_id=matched_id, **sq_attrs)
+                if sq_qty is None and not sq_attrs:
+                    # 純 [SET_QTY:品項] 無參數：維持舊行為（數量設 1）
+                    sq_result = _tool_registry.set_item_quantity(item_id=matched_id, quantity=1)
             if not sq_result.get("ok"):
                 logger.warning("[SET_QTY] %s", sq_result.get("message"))
         full_text = SET_QTY_RE.sub("", full_text).strip()
@@ -311,6 +325,21 @@ async def execute_tags(
                             kwargs[slot],
                         )
                         kwargs.pop(slot)
+            # ── 換杯型/屬性的 REMOVE+ADD 繼承 ──
+            # 「三杯紅茶換大杯」LLM 走 demo 的 REMOVE+ADD：REMOVE 殺掉 x3、
+            # ADD 重建 x1，數量與沒複述的屬性（temp）蒸發。同輪 REMOVE 了
+            # 同核心飲品且 text 帶換/改語意 → ADD 繼承被移除品項的未提供
+            # 欄位（來源是 cart 事實資料非 LLM 腦補，不經 slot-strip）
+            if (
+                removed_item_snapshot is not None
+                and removed_item_snapshot.get("itemtype") == "drink"
+                and any(w in text for w in ("換", "改"))
+            ):
+                rm_core = removed_item_snapshot.get("drink") or ""
+                if rm_core and (rm_core in item_name or item_name in rm_core):
+                    for field in ("quantity", "size", "temp", "customization"):
+                        if field not in kwargs and removed_item_snapshot.get(field):
+                            kwargs[field] = removed_item_snapshot[field]
             add_kwargs_list.append(kwargs)
             add_result = _tool_registry.add_item(**kwargs)
             add_results.append(add_result)

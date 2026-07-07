@@ -754,6 +754,48 @@ class ToolRegistry:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def set_item_attrs(
+        self,
+        item_id: str,
+        size: Optional[str] = None,
+        temp: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """修改購物車品項的杯型/溫度（「紅茶換大杯」「豆漿改溫的」）。
+
+        LLM 慣性用 [SET_QTY:品項|size=大杯] 表達屬性修改，此為對應的執行端。
+        size 只適用飲品；temp 適用飲品與套餐（套餐附飲料）。價格由
+        get_price_info 依欄位重新報價，不需在此處理。
+        """
+        from src.tools.drink_tool import resolve_size, resolve_temp
+
+        try:
+            session = self.get_current_session()
+            for item in session["cart"]:
+                if item.get("item_id") != item_id:
+                    continue
+                itemtype = item.get("itemtype")
+                changed = []
+                if size:
+                    if itemtype != "drink":
+                        return {"ok": False, "message": "只有飲料可以換杯型喔"}
+                    item["size"] = resolve_size(size) or size
+                    changed.append(item["size"])
+                if temp:
+                    if itemtype not in ("drink", "combo"):
+                        return {"ok": False, "message": "這個品項沒有溫度選項喔"}
+                    item["temp"] = resolve_temp(temp) or temp
+                    changed.append(item["temp"])
+                if not changed:
+                    return {"ok": False, "message": "沒有可修改的選項"}
+                core = item.get("drink") or item.get("combo_name") or "品項"
+                return {
+                    "ok": True,
+                    "message": f"已把{core}換成{'、'.join(changed)}",
+                }
+            return {"ok": False, "message": f"找不到 item_id={item_id}"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     def get_cart_summary(self) -> Dict[str, Any]:
         """
         取得購物車摘要（含 item_id 和 draft_items）
