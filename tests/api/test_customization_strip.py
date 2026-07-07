@@ -28,6 +28,11 @@ class TestCustomizationEvidenced:
         # 否定型客製（去冰）值開頭直接出現 → 佐證
         assert _customization_evidenced("去冰", "紅茶去冰")
 
+    def test_negation_customization_verbatim_not_killed_by_neg_guard(self):
+        # 「不要蔥」型：核心字（蔥）在否定語境會被否定守衛擋，
+        # 必須靠值開頭直接出現的判準放行 — 客人就是要這個否定客製
+        assert _customization_evidenced("不要蔥", "蛋餅不要蔥")
+
     def test_filler_between_func_and_core(self):
         # 「加個蛋」佐證 customization=加蛋（個 是功能字被略過，核心字 蛋 命中）
         assert _customization_evidenced("加蛋", "蘿蔔糕加個蛋")

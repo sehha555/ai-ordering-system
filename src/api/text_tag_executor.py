@@ -59,6 +59,9 @@ _SLOT_TEXT_MARKERS = {
     "noodle": ("油麵", "烏龍"),
 }
 
+# 需 text 佐證的槽（slot-strip / retry-strip 共用）：marker 槽 + 自由值的 flavor
+_EVIDENCED_SLOTS = (*_SLOT_TEXT_MARKERS, "flavor")
+
 # 鐵板麵口味選項詞（flavor 值域依品項而異，唯一的選項型追問是鐵板麵四口味；
 # 開放型追問「什麼口味」以「口味」一詞判斷，見 _prose_asks_slot）
 _FLAVOR_OPTION_MARKERS = ("黑椒", "蘑菇", "義大利", "咖哩")
@@ -105,7 +108,9 @@ def _value_in_text_affirmed(value: str, text: str) -> bool:
     return _frag_affirmed(value[:2], text)
 
 
-# customization 值的功能字/量詞（去除後剩內容核心字：「加辣菜脯」→ 辣菜脯）
+# customization 值的功能字/量詞（去除後剩內容核心字：「加辣菜脯」→ 辣菜脯）。
+# 客製是自由文字（含否定型/未定價修飾），字面表是取捨；若客製詞彙未來收斂，
+# 更深做法是從菜單 config（addon_prices/recipes）derive allowlist
 _CUST_FUNC_CHARS = "加要不去掉免多少半個一的"
 
 
@@ -368,7 +373,7 @@ async def execute_tags(
             if _name_in_text(item_name, text) and not any(w in text for w in _MODIFY_WORDS):
                 # flavor 不在 markers 表（值域自由），經 _slot_evidenced 走值比對
                 # （b8-02「套餐七 冰的 油麵」腦補 flavor=咖哩 入車）
-                for slot in (*_SLOT_TEXT_MARKERS, "flavor"):
+                for slot in _EVIDENCED_SLOTS:
                     if slot in kwargs and not _slot_evidenced(slot, str(kwargs[slot]), text):
                         logger.info(
                             "[ADD slot-strip] text 無佐證，strip 腦補屬性 {}={}",
@@ -388,7 +393,7 @@ async def execute_tags(
                 and not _name_in_text(item_name, text)
             ):
                 provided = prev_slot_attempt.get("provided", {})
-                for slot in ("rice", "size", "temp", "flavor", "noodle"):
+                for slot in _EVIDENCED_SLOTS:
                     if slot not in kwargs or provided.get(slot):
                         continue
                     if not _slot_evidenced(slot, str(kwargs[slot]), text):
