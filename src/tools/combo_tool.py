@@ -10,6 +10,7 @@ def build_cart_item(
     rice: Optional[str] = None,
     temp: Optional[str] = None,
     flavor: Optional[str] = None,
+    noodle: Optional[str] = None,
     customization: Optional[str] = None,
     quantity: int = 1,
 ) -> Dict[str, Any]:
@@ -21,7 +22,7 @@ def build_cart_item(
     if not combo_name:
         return {"ok": False, "missing": ["combo_name"], "message": "請問要哪個套餐？"}
     missing_msg, missing_fields = check_combo_required(
-        combo_name, temp, flavor, rice, customization
+        combo_name, temp, flavor, rice, noodle, customization
     )
     if missing_msg:
         return {"ok": False, "missing": missing_fields, "message": missing_msg}
@@ -36,6 +37,8 @@ def build_cart_item(
         item["rice"] = rice
     if flavor:
         item["sub_flavor"] = flavor
+    if noodle:
+        item["noodle"] = noodle
     if customization:
         item["customization"] = customization
     display = combo_name

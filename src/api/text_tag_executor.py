@@ -79,6 +79,26 @@ def _name_in_text(name: str, text: str) -> bool:
     return False
 
 
+# 補槽值佐證的否定前綴：「不要黑椒」不算 flavor=黑椒 的佐證
+_VALUE_NEG_PREFIXES = ("不要", "不加", "去掉", "不用", "別")
+
+
+def _value_in_text_affirmed(value: str, text: str) -> bool:
+    """槽值（前兩字）是否以非否定語境出現在 user text。
+
+    補槽輪腦補防護的自由值佐證：任一出現處前面不是否定詞才算數
+    """
+    frag = value[:2]
+    start = 0
+    while True:
+        idx = text.find(frag, start)
+        if idx == -1:
+            return False
+        if not any(text[max(0, idx - len(neg)) : idx] == neg for neg in _VALUE_NEG_PREFIXES):
+            return True
+        start = idx + 1
+
+
 # 修改語意判斷：客人在改既有品項屬性（而非加點新品項）的訊號詞
 _MODIFY_WORDS = ("不要", "不加", "改", "換", "去掉")
 _ADD_MORE_WORDS = ("再", "還要", "多一", "加一", "另外", "加購", "加點", "也")
@@ -321,6 +341,34 @@ async def execute_tags(
                     if slot in kwargs and not any(m in text for m in markers):
                         logger.info(
                             "[ADD slot-strip] text 無佐證，strip 腦補屬性 {}={}",
+                            slot,
+                            kwargs[slot],
+                        )
+                        kwargs.pop(slot)
+            # ── 補槽輪腦補防護 ──
+            # context 輪（text 沒點名品項）原本豁免 strip：補槽回答不會複述品名。
+            # 但 LLM 會順手腦補沒被問到的槽（「烏龍麵 冰的」→ flavor=黑椒 出錯餐）。
+            # 這輪若正是同品項的補槽 retry → 逐槽檢查：本輪 text 有佐證、
+            # 或前幾輪客人已提供（prev.provided）才保留，其餘 strip 掉重新追問
+            prev_slot_attempt = session.get("last_failed_attempt")
+            if (
+                prev_slot_attempt
+                and prev_slot_attempt.get("item_name") == item_name
+                and not _name_in_text(item_name, text)
+            ):
+                provided = prev_slot_attempt.get("provided", {})
+                for slot in ("rice", "size", "temp", "flavor", "noodle"):
+                    if slot not in kwargs or provided.get(slot):
+                        continue
+                    markers = _SLOT_TEXT_MARKERS.get(slot)
+                    evidenced = (
+                        any(m in text for m in markers)
+                        if markers
+                        else _value_in_text_affirmed(str(kwargs[slot]), text)
+                    )
+                    if not evidenced:
+                        logger.info(
+                            "[ADD retry-strip] 補槽輪腦補 {}={} 無佐證，strip",
                             slot,
                             kwargs[slot],
                         )

@@ -70,7 +70,7 @@
       "prompt_label": "套餐",
       "required": ["combo_name", "temp"],
       "optional": ["rice", "flavor"],
-      "prompt_desc": "決策樹：\n1. 必填：套餐名、飲料溫度（冰/溫）\n2. 不可自行假設溫度 — 即使客人說「就這樣」「沒了」「以上」，缺溫度就必問，先用 [ADD:套餐名] 不帶 temp，追問溫度\n3. 主食有口味選擇 → 必問口味：\n   - 套餐 B（厚片）→ 「厚片要什麼口味？草莓花生蒜香奶酥巧克力」\n   - 套餐五（饅頭）→ 「饅頭要什麼口味？」\n   - 套餐六/套餐七（鐵板麵）→ 「鐵板麵要蘑菇還是黑椒？」\n   - 套餐二（飯糰）→ 「飯糰要紫米白米？」\n   - 兒童餐（果醬吐司）→ 「果醬吐司要什麼口味？」\n4. 套餐 E vs 套餐一同音 → 必須追問確認\n5. 齊全 → [ADD:套餐名|temp=溫度|flavor=口味]",
+      "prompt_desc": "決策樹：\n1. 必填：套餐名、飲料溫度（冰/溫）\n2. 不可自行假設溫度 — 即使客人說「就這樣」「沒了」「以上」，缺溫度就必問，先用 [ADD:套餐名] 不帶 temp，追問溫度\n3. 主食有口味選擇 → 必問口味：\n   - 套餐 B（厚片）→ 「厚片要什麼口味？草莓花生蒜香奶酥巧克力」\n   - 套餐五（饅頭）→ 「饅頭要什麼口味？」\n   - 套餐六/套餐七（鐵板麵）→ 「鐵板麵要黑椒還是蘑菇？油麵還是烏龍麵？」齊全發 [ADD:套餐六|temp=溫度|flavor=口味|noodle=麵種]，客人沒說的槽不可自己填\n   - 套餐二（飯糰）→ 「飯糰要紫米白米？」\n   - 兒童餐（果醬吐司）→ 「果醬吐司要什麼口味？」\n4. 套餐 E vs 套餐一同音 → 必須追問確認\n5. 齊全 → [ADD:套餐名|temp=溫度|flavor=口味]",
       "missing_prompts": {
         "combo_name": "套餐名稱是什麼",
         "temp": "飲料冰的還是溫的"
@@ -80,8 +80,8 @@
   "combo_requirements": {
     "套餐二": {"needs_rice": true},
     "套餐五": {"needs_mantou_flavor": true},
-    "套餐六": {"needs_noodle_flavor": true},
-    "套餐七": {"needs_noodle_flavor": true},
+    "套餐六": {"needs_noodle_flavor": true, "needs_noodle": true},
+    "套餐七": {"needs_noodle_flavor": true, "needs_noodle": true},
     "套餐B": {"needs_toast_flavor": true},
     "兒童餐": {"needs_jam_flavor": true}
   },
@@ -90,6 +90,7 @@
     "temp": "飲料冰的還是溫的",
     "needs_rice": "飯糰要紫米白米還是混米",
     "needs_mantou_flavor": "饅頭要什麼口味",
+    "needs_noodle": "鐵板麵要油麵還是烏龍麵",
     "needs_noodle_flavor": "鐵板麵要黑椒蘑菇義大利還是咖哩",
     "needs_toast_flavor": "厚片要什麼口味 花生巧克力奶酥蒜香草莓",
     "needs_jam_flavor": "果醬吐司要什麼口味 草莓花生巧克力"
