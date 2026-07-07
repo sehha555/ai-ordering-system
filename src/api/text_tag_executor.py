@@ -574,6 +574,8 @@ async def execute_tags(
                 msg = r.get("message", "")
                 if len(failed) == 1 and ("？" in full_text or "?" in full_text):
                     missing = r.get("missing") or []
+                    # missing_prompts 只有 combo 路徑提供；單品 add_item 各分支
+                    # 逐槽 early return（missing 恆單槽）→ message 即該槽追問文字
                     prompts = r.get("missing_prompts") or (
                         {missing[0]: msg} if len(missing) == 1 else {}
                     )

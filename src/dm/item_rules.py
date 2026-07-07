@@ -35,13 +35,11 @@ def check_combo_required(
     rice: Optional[str],
     noodle: Optional[str] = None,
     customization: Optional[str] = None,  # noqa: ARG001 — 保留簽名相容性
-) -> tuple[Optional[str], list[str], dict[str, str]]:
-    """檢查套餐必填欄位，回傳 (追問訊息, 缺少欄位 list, 欄位→追問文字對照)，
-    全齊回 (None, [], {})。對照表供 followup 部分過濾（prose 已問的槽不重複補問）。
-    """
+) -> dict[str, str]:
+    """檢查套餐必填欄位，回傳 缺槽→追問文字 對照（保插入序），全齊回空 dict。
+    對照表供 followup 部分過濾（prose 已問的槽不重複補問）。"""
     if not combo_name:
-        msg = _chase["combo_name_missing"]
-        return msg, ["combo_name"], {"combo_name": msg}
+        return {"combo_name": _chase["combo_name_missing"]}
 
     missing_prompts: dict[str, str] = {}
 
@@ -67,10 +65,7 @@ def check_combo_required(
             missing_prompts["flavor"] = _chase[key]
             break
 
-    if not missing_prompts:
-        return None, [], {}
-
-    return " ".join(missing_prompts.values()), list(missing_prompts), missing_prompts
+    return missing_prompts
 
 
 def generate_item_logic() -> str:

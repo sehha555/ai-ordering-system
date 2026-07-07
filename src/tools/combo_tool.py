@@ -27,14 +27,12 @@ def build_cart_item(
             "message": msg,
             "missing_prompts": {"combo_name": msg},
         }
-    missing_msg, missing_fields, missing_prompts = check_combo_required(
-        combo_name, temp, flavor, rice, noodle, customization
-    )
-    if missing_msg:
+    missing_prompts = check_combo_required(combo_name, temp, flavor, rice, noodle, customization)
+    if missing_prompts:
         return {
             "ok": False,
-            "missing": missing_fields,
-            "message": missing_msg,
+            "missing": list(missing_prompts),
+            "message": " ".join(missing_prompts.values()),
             "missing_prompts": missing_prompts,
         }
     item: Dict[str, Any] = {
