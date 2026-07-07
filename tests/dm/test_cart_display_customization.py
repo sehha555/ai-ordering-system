@@ -91,3 +91,12 @@ class TestSummaryCustomization:
         cart = [_egg_pancake("加辣"), _egg_pancake()]
         summary = cart_manager.get_short_summary(cart)
         assert "起司蛋餅(加辣)、起司蛋餅" == summary
+
+    def test_combo_different_temps_not_merged(self):
+        # b6-10 端到端行為：兩份同款套餐一冰一溫，摘要必須分開列
+        cart = [
+            {"itemtype": "combo", "combo_name": "套餐一", "quantity": 1, "drink_temp": "冰"},
+            {"itemtype": "combo", "combo_name": "套餐一", "quantity": 1, "drink_temp": "溫"},
+        ]
+        summary = cart_manager.get_short_summary(cart)
+        assert summary == "套餐一(冰)、套餐一(溫)"
