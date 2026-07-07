@@ -88,30 +88,41 @@ def _name_in_text(name: str, text: str) -> bool:
 
 
 # 補槽值佐證的否定詞：「不要黑椒」不算 flavor=黑椒 的佐證。
-# 單字否定（不/免/無）配合前窗 contains 檢查，抓「不加辣」「不要加辣」
-# 這類否定詞與片段不緊鄰或重疊的形態
-_VALUE_NEG_PREFIXES = ("不要", "不加", "去掉", "不用", "別", "不", "免", "無")
+# 多字詞查前 4 字窗（抓「不要加辣」這種否定詞與片段不緊鄰的形態）；
+# 單字否定（不/別/免/無）僅查緊鄰前一字 — ASR 轉錄常無標點，寬窗會被
+# 「不好意思」「不然」這類填充語誤觸（客人真說的口味被誤殺重問）
+_NEG_PREFIXES_MULTI = ("不要", "不加", "去掉", "不用")
+_NEG_PREFIXES_SINGLE = ("不", "別", "免", "無")
 
 # 前窗掃描遇標點/空白截斷（「不用等，加辣」的「加辣」不受前句否定詞波及）
 _WINDOW_BREAKS = "，。？！、 ,?!"
 
 
-def _frag_affirmed(frag: str, text: str) -> bool:
-    """片段是否以非否定語境出現在 user text：任一出現處往前 4 字窗
-    （遇標點截斷）不含否定詞才算數（「蛋餅不要加辣」的「辣」前窗含
-    「不要」→ 不算 加辣 的佐證）"""
+def _frag_contexts(frag: str, text: str):
+    """yield frag 每個出現處是否為否定語境（前窗含多字否定詞或緊鄰單字否定）"""
     start = 0
     while True:
         idx = text.find(frag, start)
         if idx == -1:
-            return False
+            return
         window = text[max(0, idx - 4) : idx]
         for p in _WINDOW_BREAKS:
             if p in window:
                 window = window.rsplit(p, 1)[-1]
-        if not any(neg in window for neg in _VALUE_NEG_PREFIXES):
-            return True
+        yield (
+            any(neg in window for neg in _NEG_PREFIXES_MULTI) or window[-1:] in _NEG_PREFIXES_SINGLE
+        )
         start = idx + 1
+
+
+def _frag_affirmed(frag: str, text: str) -> bool:
+    """片段是否以非否定語境出現在 user text（「蛋餅不要加辣」的「加辣」不算）"""
+    return any(not negated for negated in _frag_contexts(frag, text))
+
+
+def _frag_negated(frag: str, text: str) -> bool:
+    """片段是否以否定語境出現在 user text（負向客製值的佐證方向）"""
+    return any(_frag_contexts(frag, text))
 
 
 def _value_in_text_affirmed(value: str, text: str) -> bool:
@@ -133,15 +144,19 @@ def _customization_evidenced(value: str, text: str) -> bool:
     """customization 值在 user text 有佐證。客製一定當輪說出口（temp/rice
     可來自合法跨輪記憶，客製沒有這種場景），無佐證即 LLM 腦補。
     判準：值開頭以非否定語境直接出現（加辣/去冰 — LLM 照抄客人原話，
-    「不要加辣」前窗含否定不算）；或內容核心字有佐證 — 值為肯定形式（加X）
-    核心字須非否定出現（「不要辣」不佐證 加辣），值為否定形式（去冰/不加蔥）
-    核心字任意出現即可（客人的否定說法「不要冰」與 LLM 正規化詞「去冰」
-    常不同，否定語境恰是佐證）"""
-    if value[:2] and _frag_affirmed(value[:2], text):
-        return True
+    「不要加辣」前窗含否定不算）；或內容核心字有佐證，且佐證的語境方向
+    必須與值的極性一致 — 肯定形式（加X）核心字須非否定出現（「不要辣」
+    不佐證 加辣），否定形式（去冰/不加蔥）核心字須以否定語境出現
+    （「不要冰」佐證 去冰；「加蔥」不佐證腦補的 不加蔥）"""
+    if value[:2]:
+        contexts = list(_frag_contexts(value[:2], text))
+        if contexts:
+            # 值開頭有出現 → 其語境即決定性（「蛋餅別加辣」的 加辣 全在
+            # 否定語境 → 腦補，不再退到核心字判準翻案）
+            return any(not negated for negated in contexts)
     core = [c for c in value if c not in _CUST_FUNC_CHARS]
     if value[:1] in _NEG_VALUE_HEADS:
-        return any(c in text for c in core)
+        return any(_frag_negated(c, text) for c in core)
     return any(_frag_affirmed(c, text) for c in core)
 
 

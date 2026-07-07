@@ -50,9 +50,29 @@ class TestCustomizationEvidenced:
         # 前句的否定詞被標點/空白截斷，不波及本句的肯定客製
         assert _customization_evidenced("加辣", "不用等，加辣喔")
 
+    def test_negative_value_needs_negated_context(self):
+        # 客人明確肯定（加蔥/正常糖）→ LLM 腦補相反的負向客製要被 strip：
+        # 負向值的核心字必須以否定語境出現才算佐證
+        assert not _customization_evidenced("不加蔥", "蛋餅加蔥")
+        assert not _customization_evidenced("少糖", "珍珠奶茶正常糖")
+        assert not _customization_evidenced("去冰", "一杯大冰紅茶")
+
+    def test_filler_word_with_neg_char_not_negation(self):
+        # ASR 無標點的填充語（不好意思/不然）內含「不」字，
+        # 不可波及後面的肯定客製/口味 — 單字否定僅查緊鄰前一字
+        assert _customization_evidenced("加辣", "不好意思蛋餅加辣")
+        assert _customization_evidenced("加蛋", "不然蘿蔔糕加蛋好了")
+
     def test_filler_between_func_and_core(self):
         # 「加個蛋」佐證 customization=加蛋（個 是功能字被略過，核心字 蛋 命中）
         assert _customization_evidenced("加蛋", "蘿蔔糕加個蛋")
+
+
+def test_flavor_after_filler_word_not_negated():
+    # 「不好意思黑椒鐵板麵」：填充語的「不」不可讓真說出口的口味被誤殺
+    from src.api.text_tag_executor import _slot_evidenced
+
+    assert _slot_evidenced("flavor", "黑椒", "不好意思黑椒鐵板麵")
 
 
 def _session(cart=None, attempt=None):
