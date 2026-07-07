@@ -398,6 +398,8 @@ async def execute_tags(
     if "[ADD:" in full_text:
         last_failed_attempt: Optional[Dict[str, Any]] = None
         retried_ids: set = set()  # 補槽 retry 入車的品項（槽位補完非修改，不參與修改去重）
+        # modify 語意輪誤發裸品項新 ADD 的判斷（turn 級常數，首次失敗時延遲計算）
+        turn_modify_misfire: Optional[bool] = None
         for add_content in ADD_RE.findall(full_text):
             parts = add_content.split("|")
             item_name = parts[0].strip()
@@ -507,11 +509,11 @@ async def execute_tags(
                 # 客人是改 cart 既有同類品項、非新增，記幻影 attempt 會卡死結帳
                 # （pending 重放「要什麼口味」死循環）。cart 有品項在本句被點名
                 # （改的就是它）→ 視為誤觸：不記 attempt、也不觸發缺槽追問
-                modify_misfire = _has_modify_intent(text) and any(
-                    item_mentioned_in_text(it, text) for it in cart
-                )
-                if modify_misfire:
-                    add_result["_modify_misfire"] = True
+                if turn_modify_misfire is None:
+                    turn_modify_misfire = _has_modify_intent(text) and any(
+                        item_mentioned_in_text(it, text) for it in cart
+                    )
+                if turn_modify_misfire:
                     logger.info(
                         "[ADD modify-misfire] 改既有品項的誤發新 ADD，不記 attempt: {}", item_name
                     )
@@ -674,8 +676,8 @@ async def execute_tags(
         # （combo 多缺槽 prose 問一半、followup 又整串補問 → 話術破碎）。
         # 只限單一失敗品項——多品項失敗時 prose 的追問無法對應到是問哪一項
         # （兩杯都缺 temp、prose 只問第一杯 → 第二杯追問被吞成死等），一律照補
-        # _modify_misfire 的失敗（改既有品項的誤發新 ADD）不追問缺槽
-        failed = [r for r in add_results if not r.get("ok") and not r.get("_modify_misfire")]
+        # modify 誤發（改既有品項的裸品項新 ADD）整輪不追問缺槽
+        failed = [] if turn_modify_misfire else [r for r in add_results if not r.get("ok")]
         if failed:
             failed_msgs = []
             for r in failed:
