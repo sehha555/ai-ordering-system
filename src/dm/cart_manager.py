@@ -18,7 +18,17 @@ def _safe_quantity(item: Dict[str, Any]) -> int:
 
 
 def format_item(frame: Dict[str, Any]) -> str:
-    """格式化購物車品項為可讀字串"""
+    """格式化購物車品項為可讀字串（含客製後綴）
+
+    customization 必須進顯示名：結帳確認句、廚房 items_display 都走這裡，
+    不顯示等於客製資訊只存在資料裡、實際做餐會漏（如「蛋餅加辣」）
+    """
+    base = _format_item_base(frame)
+    customization = frame.get("customization")
+    return f"{base}({customization})" if customization else base
+
+
+def _format_item_base(frame: Dict[str, Any]) -> str:
     rtype = frame.get("itemtype")
     if rtype == "drink":
         name = frame.get("drink", "飲料")
