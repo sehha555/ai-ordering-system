@@ -1053,3 +1053,47 @@ async def test_modify_misfire_needs_existing_item_mentioned(registry):
 
     assert session.get("last_failed_attempt") is not None
     assert "口味" in result.followup_text
+
+
+@pytest.mark.asyncio
+async def test_mixed_misfire_and_genuine_new_item(registry):
+    """同輪 modify 誤發（蛋餅）+ 真新增缺槽品項（鮪魚飯糰缺 rice）
+    → 只吞誤發那筆，真品項照記 attempt 追問（防靜默漏單）"""
+    registry.add_item.side_effect = [
+        {"ok": False, "missing": ["flavor"], "message": "蛋餅要什麼口味？"},
+        {"ok": False, "missing": ["rice"], "message": "飯糰要紫米白米？"},
+    ]
+    session = _cart_with_egg_pancake()
+
+    result = await execute_tags(
+        "[ADD:蛋餅|customization=不要辣][ADD:鮪魚飯糰]好～",
+        "蛋餅不要辣 我要鮪魚飯糰",
+        session,
+        "s1",
+    )
+
+    attempt = session.get("last_failed_attempt")
+    assert attempt is not None and attempt["item_name"] == "鮪魚飯糰", "真新增品項須記 attempt"
+    assert "紫米" in result.followup_text or "白米" in result.followup_text
+    assert "口味" not in result.followup_text, "誤發蛋餅那筆不追問"
+
+
+@pytest.mark.asyncio
+async def test_misfire_does_not_drop_genuine_across_family(registry):
+    """cart 有蛋餅，客人改蛋餅同時真點缺 temp 的飲料 → 飲料追問不被吞"""
+    registry.add_item.side_effect = [
+        {"ok": False, "missing": ["flavor"], "message": "蛋餅要什麼口味？"},
+        {"ok": False, "missing": ["temp"], "message": "紅茶冰的還是溫的？"},
+    ]
+    session = _cart_with_egg_pancake()
+
+    result = await execute_tags(
+        "[ADD:蛋餅|customization=不要辣][ADD:精選紅茶]好～",
+        "蛋餅不要辣 換一杯紅茶",
+        session,
+        "s1",
+    )
+
+    attempt = session.get("last_failed_attempt")
+    assert attempt is not None and attempt["item_name"] == "精選紅茶"
+    assert "冰的還是溫的" in result.followup_text

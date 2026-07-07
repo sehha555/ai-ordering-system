@@ -196,6 +196,16 @@ def _has_modify_intent(text: str) -> bool:
     return any(w in text for w in _MODIFY_WORDS) and not _has_add_more_intent(text)
 
 
+def _same_item_family(cart_item: dict, item_name: str) -> bool:
+    """失敗 ADD 的裸品項名是否與 cart 既有品項同類（顯示核心名互為子字串）。
+    「蛋餅」↔「培根蛋餅」、「紅茶」↔「精選紅茶」算同類；「鮪魚飯糰」↔「培根蛋餅」不算"""
+    from src.dm import cart_manager  # noqa: PLC0415
+
+    core = cart_manager.format_item(cart_item).split("(")[0].replace("·", "").replace(" ", "")
+    name = item_name.replace("·", "").replace(" ", "")
+    return len(name) >= 2 and (name in core or core in name)
+
+
 # 結帳兜底：LLM 漏發 [CHECKOUT] 時依 user text 意圖後端推進。
 # 詞表派生自 order_router 單一來源；排除「結案」「沒了」——語意模糊
 # （沒了可指售完），silent fallback 需要高精確度
@@ -398,8 +408,10 @@ async def execute_tags(
     if "[ADD:" in full_text:
         last_failed_attempt: Optional[Dict[str, Any]] = None
         retried_ids: set = set()  # 補槽 retry 入車的品項（槽位補完非修改，不參與修改去重）
-        # modify 語意輪誤發裸品項新 ADD 的判斷（turn 級常數，首次失敗時延遲計算）
-        turn_modify_misfire: Optional[bool] = None
+        # modify 語意輪誤發裸品項新 ADD 的判斷：既有 cart 快照（本輪成功 ADD
+        # 不算「既有」）+ 整句 modify 語意；逐失敗品項比對是否改既有同類品項
+        modify_turn = _has_modify_intent(text)
+        existing_cart_snapshot = list(cart)
         for add_content in ADD_RE.findall(full_text):
             parts = add_content.split("|")
             item_name = parts[0].strip()
@@ -507,13 +519,15 @@ async def execute_tags(
                 # 幻影 attempt 防護：modify 語意輪（「蛋餅不要辣」）LLM 常誤發裸
                 # 品項的新 ADD（[ADD:蛋餅|customization=不要辣] 缺 flavor 失敗）。
                 # 客人是改 cart 既有同類品項、非新增，記幻影 attempt 會卡死結帳
-                # （pending 重放「要什麼口味」死循環）。cart 有品項在本句被點名
-                # （改的就是它）→ 視為誤觸：不記 attempt、也不觸發缺槽追問
-                if turn_modify_misfire is None:
-                    turn_modify_misfire = _has_modify_intent(text) and any(
-                        item_mentioned_in_text(it, text) for it in cart
-                    )
-                if turn_modify_misfire:
+                # （pending 重放「要什麼口味」死循環）。逐品項判斷：本失敗品項與
+                # 「本句被點名的既有同類 cart 品項」對得上 → 誤觸，不記 attempt、
+                # 不追問（同輪其他真缺槽新品項不受影響，照常追問）
+                is_modify_misfire = modify_turn and any(
+                    item_mentioned_in_text(it, text) and _same_item_family(it, item_name)
+                    for it in existing_cart_snapshot
+                )
+                if is_modify_misfire:
+                    add_result["_modify_misfire"] = True
                     logger.info(
                         "[ADD modify-misfire] 改既有品項的誤發新 ADD，不記 attempt: {}", item_name
                     )
@@ -676,8 +690,8 @@ async def execute_tags(
         # （combo 多缺槽 prose 問一半、followup 又整串補問 → 話術破碎）。
         # 只限單一失敗品項——多品項失敗時 prose 的追問無法對應到是問哪一項
         # （兩杯都缺 temp、prose 只問第一杯 → 第二杯追問被吞成死等），一律照補
-        # modify 誤發（改既有品項的裸品項新 ADD）整輪不追問缺槽
-        failed = [] if turn_modify_misfire else [r for r in add_results if not r.get("ok")]
+        # _modify_misfire 的失敗（改既有品項的誤發新 ADD）逐項排除、不追問缺槽
+        failed = [r for r in add_results if not r.get("ok") and not r.get("_modify_misfire")]
         if failed:
             failed_msgs = []
             for r in failed:
