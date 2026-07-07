@@ -28,6 +28,17 @@ class TestFormatItemCustomization:
         }
         assert cart_manager.format_item(item) == "培根蛋漢堡(不要小黃瓜)"
 
+    def test_drink_customization_merged_into_details(self):
+        # 飲料已有 (大杯, 冰) 細節括號 → 客製併入同一組，不出現雙括號
+        item = {
+            "itemtype": "drink",
+            "drink": "純鮮奶茶",
+            "size": "大杯",
+            "temp": "冰",
+            "customization": "半糖",
+        }
+        assert cart_manager.format_item(item) == "純鮮奶茶(大杯, 冰, 半糖)"
+
     def test_riceball_customization_shown(self):
         item = {
             "itemtype": "riceball",

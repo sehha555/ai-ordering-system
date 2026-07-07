@@ -25,7 +25,12 @@ def format_item(frame: Dict[str, Any]) -> str:
     """
     base = _format_item_base(frame)
     customization = frame.get("customization")
-    return f"{base}({customization})" if customization else base
+    if not customization:
+        return base
+    if base.endswith(")"):
+        # 已有細節括號（如飲料的「(大杯, 冰)」）→ 併入同一組，避免雙括號
+        return f"{base[:-1]}, {customization})"
+    return f"{base}({customization})"
 
 
 def _format_item_base(frame: Dict[str, Any]) -> str:
