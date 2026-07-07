@@ -1363,9 +1363,9 @@
       }
     ],
     "expected_response_contains": [
-      "套餐"
+      "麵"
     ],
-    "expected_behavior": "套餐六需鐵板麵口味(蘑菇)+飲料溫度(冰)，call add_item(name=套餐六, temp=冰, flavor=蘑菇) 才能 ok:true"
+    "expected_behavior": "套餐六需鐵板麵口味+麵種+飲料溫度；客人沒給麵種 → add_item(name=套餐六, temp=冰, flavor=蘑菇) 缺 noodle 失敗，追問「油麵還是烏龍麵」"
   },
   {
     "id": "sold_out_single",

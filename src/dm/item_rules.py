@@ -33,7 +33,8 @@ def check_combo_required(
     temp: Optional[str],
     flavor: Optional[str],
     rice: Optional[str],
-    customization: Optional[str],  # noqa: ARG001 — 保留簽名相容性
+    noodle: Optional[str] = None,
+    customization: Optional[str] = None,  # noqa: ARG001 — 保留簽名相容性
 ) -> tuple[Optional[str], list[str]]:
     """檢查套餐必填欄位，回傳 (追問訊息, 缺少欄位 list)，全齊回 (None, [])"""
     if not combo_name:
@@ -51,6 +52,10 @@ def check_combo_required(
     if reqs.get("needs_rice") and not rice:
         missing_parts.append(_chase["needs_rice"])
         missing_fields.append("rice")
+
+    if reqs.get("needs_noodle") and not noodle:
+        missing_parts.append(_chase["needs_noodle"])
+        missing_fields.append("noodle")
 
     flavor_chase_keys = (
         "needs_mantou_flavor",

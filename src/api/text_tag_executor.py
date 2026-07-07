@@ -325,6 +325,34 @@ async def execute_tags(
                             kwargs[slot],
                         )
                         kwargs.pop(slot)
+            # ── 補槽輪腦補防護 ──
+            # context 輪（text 沒點名品項）原本豁免 strip：補槽回答不會複述品名。
+            # 但 LLM 會順手腦補沒被問到的槽（「烏龍麵 冰的」→ flavor=黑椒 出錯餐）。
+            # 這輪若正是同品項的補槽 retry → 逐槽檢查：本輪 text 有佐證、
+            # 或前幾輪客人已提供（prev.provided）才保留，其餘 strip 掉重新追問
+            prev_slot_attempt = session.get("last_failed_attempt")
+            if (
+                prev_slot_attempt
+                and prev_slot_attempt.get("item_name") == item_name
+                and not _name_in_text(item_name, text)
+            ):
+                provided = prev_slot_attempt.get("provided", {})
+                for slot in ("rice", "size", "temp", "flavor", "noodle"):
+                    if slot not in kwargs or provided.get(slot):
+                        continue
+                    markers = _SLOT_TEXT_MARKERS.get(slot)
+                    evidenced = (
+                        any(m in text for m in markers)
+                        if markers
+                        else str(kwargs[slot])[:2] in text
+                    )
+                    if not evidenced:
+                        logger.info(
+                            "[ADD retry-strip] 補槽輪腦補 {}={} 無佐證，strip",
+                            slot,
+                            kwargs[slot],
+                        )
+                        kwargs.pop(slot)
             # ── 換杯型/屬性的 REMOVE+ADD 繼承 ──
             # 「三杯紅茶換大杯」LLM 走 demo 的 REMOVE+ADD：REMOVE 殺掉 x3、
             # ADD 重建 x1，數量與沒複述的屬性（temp）蒸發。同輪 REMOVE 了

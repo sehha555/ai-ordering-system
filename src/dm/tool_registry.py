@@ -536,6 +536,7 @@ class ToolRegistry:
                 temp=temp,
                 rice=rice,
                 flavor=flavor,
+                noodle=noodle,
                 quantity=quantity,
                 customization=customization,
             )
@@ -642,6 +643,7 @@ class ToolRegistry:
         rice=None,
         temp=None,
         flavor=None,
+        noodle=None,
         customization=None,
         quantity=1,
     ) -> Dict[str, Any]:
@@ -650,6 +652,7 @@ class ToolRegistry:
             rice=rice,
             temp=temp,
             flavor=flavor,
+            noodle=noodle,
             customization=customization,
             quantity=quantity,
         )
