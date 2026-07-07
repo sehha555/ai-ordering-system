@@ -33,6 +33,23 @@ class TestCustomizationEvidenced:
         # 必須靠值開頭直接出現的判準放行 — 客人就是要這個否定客製
         assert _customization_evidenced("不要蔥", "蛋餅不要蔥")
 
+    def test_negative_value_different_negation_word(self):
+        # 客人否定說法與 LLM 正規化詞不同（不要冰 → 去冰）：
+        # 否定型值的核心字在否定語境出現恰是佐證，不可誤殺
+        assert _customization_evidenced("去冰", "紅茶不要冰")
+        assert _customization_evidenced("去糖", "紅茶不要糖")
+        assert _customization_evidenced("不加蔥", "蛋餅不要蔥")
+
+    def test_affirmative_value_negated_verbatim_not_evidence(self):
+        # 「不要加辣/不加辣/別加辣」：值開頭逐字出現但在否定語境 → 腦補要 strip
+        assert not _customization_evidenced("加辣", "蛋餅不要加辣")
+        assert not _customization_evidenced("加辣", "蛋餅不加辣")
+        assert not _customization_evidenced("加辣", "蛋餅別加辣")
+
+    def test_negation_in_prior_clause_not_blocking(self):
+        # 前句的否定詞被標點/空白截斷，不波及本句的肯定客製
+        assert _customization_evidenced("加辣", "不用等，加辣喔")
+
     def test_filler_between_func_and_core(self):
         # 「加個蛋」佐證 customization=加蛋（個 是功能字被略過，核心字 蛋 命中）
         assert _customization_evidenced("加蛋", "蘿蔔糕加個蛋")
@@ -134,6 +151,36 @@ async def test_named_turn_strips_hallucinated_flavor():
             "s1",
         )
     reg.add_item.assert_called_once_with(name="套餐七", temp="冰", noodle="油麵")
+
+
+@pytest.mark.asyncio
+async def test_named_turn_keeps_alias_flavor():
+    """「黑胡椒鐵板麵」客人講全稱、LLM 正規化 flavor=黑椒 → 查別名表放行，不誤殺重問"""
+    reg = MagicMock()
+    reg.add_item.return_value = {"ok": True, "item_id": "r1", "message": "已加入"}
+    with patch("src.services.container.tool_registry", reg):
+        await execute_tags(
+            "[ADD:鐵板麵|flavor=黑椒|noodle=油麵]好～",
+            "一份黑胡椒鐵板麵 油麵",
+            _session(),
+            "s1",
+        )
+    reg.add_item.assert_called_once_with(name="鐵板麵", flavor="黑椒", noodle="油麵")
+
+
+@pytest.mark.asyncio
+async def test_named_turn_keeps_alias_flavor_mushroom():
+    """「香菇鐵板麵」→ flavor=蘑菇 別名放行"""
+    reg = MagicMock()
+    reg.add_item.return_value = {"ok": True, "item_id": "r1", "message": "已加入"}
+    with patch("src.services.container.tool_registry", reg):
+        await execute_tags(
+            "[ADD:鐵板麵|flavor=蘑菇|noodle=油麵]好～",
+            "一份香菇鐵板麵 油麵",
+            _session(),
+            "s1",
+        )
+    reg.add_item.assert_called_once_with(name="鐵板麵", flavor="蘑菇", noodle="油麵")
 
 
 @pytest.mark.asyncio

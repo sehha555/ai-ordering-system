@@ -87,18 +87,29 @@ def _name_in_text(name: str, text: str) -> bool:
     return False
 
 
-# 補槽值佐證的否定前綴：「不要黑椒」不算 flavor=黑椒 的佐證
-_VALUE_NEG_PREFIXES = ("不要", "不加", "去掉", "不用", "別")
+# 補槽值佐證的否定詞：「不要黑椒」不算 flavor=黑椒 的佐證。
+# 單字否定（不/免/無）配合前窗 contains 檢查，抓「不加辣」「不要加辣」
+# 這類否定詞與片段不緊鄰或重疊的形態
+_VALUE_NEG_PREFIXES = ("不要", "不加", "去掉", "不用", "別", "不", "免", "無")
+
+# 前窗掃描遇標點/空白截斷（「不用等，加辣」的「加辣」不受前句否定詞波及）
+_WINDOW_BREAKS = "，。？！、 ,?!"
 
 
 def _frag_affirmed(frag: str, text: str) -> bool:
-    """片段是否以非否定語境出現在 user text（任一出現處前面不是否定詞才算數）"""
+    """片段是否以非否定語境出現在 user text：任一出現處往前 4 字窗
+    （遇標點截斷）不含否定詞才算數（「蛋餅不要加辣」的「辣」前窗含
+    「不要」→ 不算 加辣 的佐證）"""
     start = 0
     while True:
         idx = text.find(frag, start)
         if idx == -1:
             return False
-        if not any(text[max(0, idx - len(neg)) : idx] == neg for neg in _VALUE_NEG_PREFIXES):
+        window = text[max(0, idx - 4) : idx]
+        for p in _WINDOW_BREAKS:
+            if p in window:
+                window = window.rsplit(p, 1)[-1]
+        if not any(neg in window for neg in _VALUE_NEG_PREFIXES):
             return True
         start = idx + 1
 
@@ -114,25 +125,45 @@ def _value_in_text_affirmed(value: str, text: str) -> bool:
 _CUST_FUNC_CHARS = "加要不去掉免多少半個一的"
 
 
+# 客製值的否定形式開頭字（去冰/不加蔥/少糖/免蔥/無糖）
+_NEG_VALUE_HEADS = "不去免無少"
+
+
 def _customization_evidenced(value: str, text: str) -> bool:
     """customization 值在 user text 有佐證。客製一定當輪說出口（temp/rice
     可來自合法跨輪記憶，客製沒有這種場景），無佐證即 LLM 腦補。
-    判準：值開頭直接出現（加辣/去冰 — LLM 照抄客人原話）；或內容核心字
-    任一以非否定語境出現（「要辣」佐證 customization=加辣；「不要辣」不算）"""
-    if value[:2] and value[:2] in text:
+    判準：值開頭以非否定語境直接出現（加辣/去冰 — LLM 照抄客人原話，
+    「不要加辣」前窗含否定不算）；或內容核心字有佐證 — 值為肯定形式（加X）
+    核心字須非否定出現（「不要辣」不佐證 加辣），值為否定形式（去冰/不加蔥）
+    核心字任意出現即可（客人的否定說法「不要冰」與 LLM 正規化詞「去冰」
+    常不同，否定語境恰是佐證）"""
+    if value[:2] and _frag_affirmed(value[:2], text):
         return True
     core = [c for c in value if c not in _CUST_FUNC_CHARS]
+    if value[:1] in _NEG_VALUE_HEADS:
+        return any(c in text for c in core)
     return any(_frag_affirmed(c, text) for c in core)
 
 
 def _slot_evidenced(slot: str, value: str, text: str) -> bool:
     """該槽的 ADD 屬性值在 user text 有佐證（slot-strip / retry-strip 共用）。
     noodle 二選一互斥：類別詞命中不足以佐證值本身（句含「油麵」也會放行
-    幻覺的 noodle=烏龍麵）→ 與無 marker 槽同走值精確比對。"""
+    幻覺的 noodle=烏龍麵）→ 與無 marker 槽同走值精確比對。
+    flavor 加查別名表：客人講俗稱/全稱（黑胡椒/香菇）、LLM 正規化成菜單
+    短稱（黑椒/蘑菇），裸字面比對會誤殺合法口味造成重複追問"""
     markers = None if slot == "noodle" else _SLOT_TEXT_MARKERS.get(slot)
     if markers:
         return any(m in text for m in markers)
-    return _value_in_text_affirmed(value, text)
+    if _value_in_text_affirmed(value, text):
+        return True
+    if slot == "flavor":
+        from src.dm.tool_registry import _IRON_NOODLE_FLAVOR_CANON  # noqa: PLC0415
+
+        return any(
+            (canon.startswith(value) or value.startswith(canon)) and _frag_affirmed(alias, text)
+            for alias, canon in _IRON_NOODLE_FLAVOR_CANON.items()
+        )
+    return False
 
 
 # 修改語意判斷：客人在改既有品項屬性（而非加點新品項）的訊號詞
