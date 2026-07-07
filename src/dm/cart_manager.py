@@ -71,7 +71,12 @@ def _format_item_base(frame: Dict[str, Any]) -> str:
         ]
         return f"{base}({','.join(details)})" if details else base
     if rtype == "combo":
-        return frame.get("combo_name", "套餐")
+        # 槽位必須進顯示：兩份套餐一冰一溫，廚房要看得出哪份是哪份
+        base = frame.get("combo_name", "套餐")
+        details = [
+            v for v in [frame.get("sub_flavor"), frame.get("rice"), frame.get("drink_temp")] if v
+        ]
+        return f"{base}({', '.join(details)})" if details else base
     return "未知品項"
 
 
