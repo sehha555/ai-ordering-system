@@ -9,8 +9,9 @@ CK_DINE = "CHECKOUT_DINE"
 CK_PAY = "CHECKOUT_PAY"
 CK_STATES = (CK_DINE, CK_PAY)
 
-# 偵測點餐意圖的關鍵字（結帳中反悔 → 退出結帳回 LLM）
-_ORDER_INTENT_KEYWORDS = [
+# 具體品項類詞（no-tag 重試防護用：填充詞「我要/還要」不算，避免
+# 「我要結帳」這種合法空車句被誤判成點餐意圖）
+CONCRETE_ITEM_WORDS = [
     "飯糰",
     "蛋餅",
     "吐司",
@@ -30,6 +31,10 @@ _ORDER_INTENT_KEYWORDS = [
     "咖啡",
     "果汁",
     "套餐",
+]
+
+# 偵測點餐意圖的關鍵字（結帳中反悔 → 退出結帳回 LLM）
+_ORDER_INTENT_KEYWORDS = CONCRETE_ITEM_WORDS + [
     "加一",
     "再一",
     "多一",
