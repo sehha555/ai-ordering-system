@@ -79,6 +79,26 @@ def _name_in_text(name: str, text: str) -> bool:
     return False
 
 
+# 補槽值佐證的否定前綴：「不要黑椒」不算 flavor=黑椒 的佐證
+_VALUE_NEG_PREFIXES = ("不要", "不加", "去掉", "不用", "別")
+
+
+def _value_in_text_affirmed(value: str, text: str) -> bool:
+    """槽值（前兩字）是否以非否定語境出現在 user text。
+
+    補槽輪腦補防護的自由值佐證：任一出現處前面不是否定詞才算數
+    """
+    frag = value[:2]
+    start = 0
+    while True:
+        idx = text.find(frag, start)
+        if idx == -1:
+            return False
+        if not any(text[max(0, idx - len(neg)) : idx] == neg for neg in _VALUE_NEG_PREFIXES):
+            return True
+        start = idx + 1
+
+
 # 修改語意判斷：客人在改既有品項屬性（而非加點新品項）的訊號詞
 _MODIFY_WORDS = ("不要", "不加", "改", "換", "去掉")
 _ADD_MORE_WORDS = ("再", "還要", "多一", "加一", "另外", "加購", "加點", "也")
@@ -344,7 +364,7 @@ async def execute_tags(
                     evidenced = (
                         any(m in text for m in markers)
                         if markers
-                        else str(kwargs[slot])[:2] in text
+                        else _value_in_text_affirmed(str(kwargs[slot]), text)
                     )
                     if not evidenced:
                         logger.info(

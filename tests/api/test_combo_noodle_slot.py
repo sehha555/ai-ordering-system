@@ -98,6 +98,26 @@ async def test_retry_turn_keeps_evidenced_flavor():
 
 
 @pytest.mark.asyncio
+async def test_retry_turn_negated_value_not_evidence():
+    """補槽輪「不要黑椒 烏龍麵」：黑椒在否定語境，不算 flavor=黑椒 的佐證 → strip"""
+    reg = MagicMock()
+    reg.add_item.return_value = {
+        "ok": False,
+        "missing": ["flavor"],
+        "message": "鐵板麵要黑椒蘑菇義大利還是咖哩",
+    }
+    session = _retry_session()
+    with patch("src.services.container.tool_registry", reg):
+        await execute_tags(
+            "[ADD:套餐六|temp=冰|flavor=黑椒|noodle=烏龍麵]好～",
+            "不要黑椒 烏龍麵",
+            session,
+            "s1",
+        )
+    reg.add_item.assert_called_once_with(name="套餐六", temp="冰", noodle="烏龍麵")
+
+
+@pytest.mark.asyncio
 async def test_named_turn_not_affected_by_retry_strip():
     """text 有點名品項的正常點單輪走原 slot-strip，不走補槽防護"""
     reg = MagicMock()
