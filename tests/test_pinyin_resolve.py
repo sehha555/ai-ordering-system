@@ -101,3 +101,20 @@ class TestSpecBracketStrip:
         info = registry._resolve_item_name("蔥抓餅(雙蛋)")
         assert info is not None
         assert info["resolved_name"] == "蔥抓餅(加蛋)"
+
+
+class TestColloquialAliasResolve:
+    """口語俗稱表（step 0）：客語品名 → 菜單實名"""
+
+    def test_rousong_riceball_maps_to_traditional(self, registry):
+        # 菜單沒有「肉鬆飯糰」，客語指的是肉鬆為主料的源味傳統飯糰
+        # （b6-02：priming demo 教 [ADD:肉鬆飯糰] 但 resolve 失敗 → 追問鏈全滅空車）
+        info = registry._resolve_item_name("肉鬆飯糰")
+        assert info is not None
+        assert info["resolved_name"] == "源味傳統飯糰"
+
+    def test_rousong_egg_pancake_not_hijacked(self, registry):
+        # 「肉鬆」開頭的其他真實品項不可被俗稱表誤劫
+        info = registry._resolve_item_name("肉鬆蛋餅")
+        assert info is not None
+        assert info["resolved_name"] == "肉鬆蛋餅"
