@@ -964,3 +964,92 @@ async def test_combo_alias_context_turn_slot_kept(registry):
     await execute_tags("[ADD:套餐一|temp=冰]好～", "冰的就好", session, "s1")
 
     registry.add_item.assert_called_once_with(name="套餐一", temp="冰")
+
+
+# ── b8-07：modify 語意輪誤發裸品項新 ADD → 幻影 attempt 卡死結帳 ──
+
+
+def _cart_with_egg_pancake():
+    """cart 已有培根蛋餅（flavor=培根，itemtype=egg_pancake）"""
+    return _make_session(
+        [{"itemtype": "egg_pancake", "flavor": "培根", "quantity": 1, "item_id": "ep_1"}]
+    )
+
+
+@pytest.mark.asyncio
+async def test_modify_misfire_no_phantom_attempt(registry):
+    """「蛋餅不要辣」cart 已有培根蛋餅，LLM 誤發 [ADD:蛋餅] 缺 flavor 失敗
+    → 不記幻影 attempt（否則卡死結帳），不追問口味"""
+    registry.add_item.return_value = {
+        "ok": False,
+        "missing": ["flavor"],
+        "message": "蛋餅要什麼口味？",
+    }
+    session = _cart_with_egg_pancake()
+
+    result = await execute_tags(
+        "[ADD:蛋餅|customization=不要辣]好～蛋餅不要辣囉", "蛋餅不要辣喔", session, "s1"
+    )
+
+    assert session.get("last_failed_attempt") is None, "modify 誤發不可記 attempt"
+    assert result.followup_text == "", "誤發失敗不追問缺槽"
+    assert "口味" not in result.full_text
+
+
+@pytest.mark.asyncio
+async def test_modify_misfire_then_checkout_not_blocked(registry):
+    """幻影 attempt 防護後，下一輪結帳不被 pending 攔截"""
+    registry.add_item.return_value = {
+        "ok": False,
+        "missing": ["flavor"],
+        "message": "蛋餅要什麼口味？",
+    }
+    registry.finalize_order.return_value = {"ok": True, "order_number": "07", "total": 95}
+    session = _cart_with_egg_pancake()
+
+    await execute_tags(
+        "[ADD:蛋餅|customization=不要辣]好～", "蛋餅不要辣喔", session, "s1"
+    )
+    result = await execute_tags("[CHECKOUT]好～", "結帳 外帶 現金", session, "s1")
+
+    assert result.finalize_result is not None, "結帳應正常出單，不被幻影 attempt 卡住"
+    assert "pending_checkout" not in session
+
+
+@pytest.mark.asyncio
+async def test_genuine_new_item_still_records_attempt(registry):
+    """真新增缺槽品項（加點語意，非 modify）→ 照記 attempt 追問"""
+    registry.add_item.return_value = {
+        "ok": False,
+        "missing": ["flavor"],
+        "message": "蛋餅要什麼口味？",
+    }
+    session = _cart_with_egg_pancake()
+
+    result = await execute_tags(
+        "[ADD:蛋餅]好～", "再給我一個蛋餅", session, "s1"
+    )
+
+    assert session.get("last_failed_attempt") is not None, "加點新品項缺槽須記 attempt"
+    assert "口味" in result.followup_text
+
+
+@pytest.mark.asyncio
+async def test_modify_misfire_needs_existing_item_mentioned(registry):
+    """modify 語意但 cart 無同類被點名品項 → 仍記 attempt（不誤吞真缺槽）"""
+    registry.add_item.return_value = {
+        "ok": False,
+        "missing": ["flavor"],
+        "message": "蛋餅要什麼口味？",
+    }
+    # cart 只有豆漿，text「蛋餅不要辣」沒點名 cart 既有品項
+    session = _make_session(
+        [{"itemtype": "drink", "drink": "有糖豆漿", "size": "中杯", "temp": "溫", "quantity": 1}]
+    )
+
+    result = await execute_tags(
+        "[ADD:蛋餅|customization=不要辣]好～", "蛋餅不要辣", session, "s1"
+    )
+
+    assert session.get("last_failed_attempt") is not None
+    assert "口味" in result.followup_text

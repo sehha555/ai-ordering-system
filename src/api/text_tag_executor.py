@@ -502,7 +502,20 @@ async def execute_tags(
                 logger.warning(
                     "[ADD tag] 執行失敗: {} → {}", add_content, add_result.get("message")
                 )
-                if add_result.get("missing"):
+                # 幻影 attempt 防護：modify 語意輪（「蛋餅不要辣」）LLM 常誤發裸
+                # 品項的新 ADD（[ADD:蛋餅|customization=不要辣] 缺 flavor 失敗）。
+                # 客人是改 cart 既有同類品項、非新增，記幻影 attempt 會卡死結帳
+                # （pending 重放「要什麼口味」死循環）。cart 有品項在本句被點名
+                # （改的就是它）→ 視為誤觸：不記 attempt、也不觸發缺槽追問
+                modify_misfire = _has_modify_intent(text) and any(
+                    item_mentioned_in_text(it, text) for it in cart
+                )
+                if modify_misfire:
+                    add_result["_modify_misfire"] = True
+                    logger.info(
+                        "[ADD modify-misfire] 改既有品項的誤發新 ADD，不記 attempt: {}", item_name
+                    )
+                elif add_result.get("missing"):
                     last_failed_attempt = {
                         "item_name": item_name,
                         "missing": add_result["missing"],
@@ -661,7 +674,8 @@ async def execute_tags(
         # （combo 多缺槽 prose 問一半、followup 又整串補問 → 話術破碎）。
         # 只限單一失敗品項——多品項失敗時 prose 的追問無法對應到是問哪一項
         # （兩杯都缺 temp、prose 只問第一杯 → 第二杯追問被吞成死等），一律照補
-        failed = [r for r in add_results if not r.get("ok")]
+        # _modify_misfire 的失敗（改既有品項的誤發新 ADD）不追問缺槽
+        failed = [r for r in add_results if not r.get("ok") and not r.get("_modify_misfire")]
         if failed:
             failed_msgs = []
             for r in failed:
