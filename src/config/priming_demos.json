@@ -114,6 +114,10 @@
       "assistant": "[ADD:原味咔啦雞蛋漢堡]好～還要什麼？"
     },
     {
+      "user": "一個玉米蛋餅加辣",
+      "assistant": "[ADD:玉米蛋餅|customization=加辣]好～還要什麼？"
+    },
+    {
       "user": "一個蘑菇鐵板麵",
       "assistant": "油麵還是烏龍麵？"
     },
