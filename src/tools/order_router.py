@@ -43,7 +43,7 @@ CANCEL_LAST_KEYWORDS = [
 ]
 CLEAR_ALL_KEYWORDS = ["全部取消", "清空購物車", "都不要了", "全部不要", "清空"]
 REMOVE_INDEX_KEYWORDS = ["刪除第", "取消第", "個不要", "項不要", "刪第"]
-CHECKOUT_KEYWORDS = ["結帳", "送出", "下單", "就這些", "買單", "結案", "沒了"]
+CHECKOUT_KEYWORDS = ["結帳", "送出", "下單", "就這些", "就這樣", "買單", "結案", "沒了"]
 
 # 非點餐意圖關鍵字
 GREETING_KEYWORDS = ["你好", "嗨", "哈囉", "早安", "午安", "晚安", "hello", "hi"]

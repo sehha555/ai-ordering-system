@@ -112,6 +112,7 @@ class StreamingDMAdapter:
         from src.api.checkout_handler import (  # noqa: E402
             CK_STATES,
             checkout_step,
+            has_order_intent,
             shortcircuit_reply,
         )
         from src.api.text_tag_executor import execute_tags  # noqa: E402
@@ -234,6 +235,40 @@ class StreamingDMAdapter:
                     if not full_text:
                         full_text = "好的，還需要什麼嗎？"
 
+                    # ── 空車謊言重試（no-tag sinkhole）──
+                    # 特定句型讓模型掉進「購物車是空的」怪回覆且完全不發 tag
+                    # （「三杯中杯冰紅茶 兩個薯餅」6/6 確定性，整單蒸發）。
+                    # 點餐意圖 + 無任何 tag + 回覆宣稱購物車空 → 帶標籤提醒
+                    # 非串流重問一次（提醒改變取樣分佈，實測 3/3 恢復）
+                    notag_retried = False
+                    if (
+                        "[" not in full_text
+                        and "購物車" in full_text
+                        and "空" in full_text
+                        and has_order_intent(text)
+                    ):
+                        try:
+                            retry_messages = _llm_caller._build_messages(
+                                SystemPromptBuilder().build(),
+                                f"{text}\n（請用 [ADD:品項|參數] 標籤把客人點的品項加入購物車）",
+                                session["llm_history"][:-2],
+                                context=ctx,
+                            )
+                            resp = await _llm_caller.call_llm_async(messages=retry_messages)
+                            retry_content = (
+                                resp["choices"][0]["message"].get("content") or ""
+                            ).strip()
+                            if "[ADD:" in retry_content:
+                                logger.info(
+                                    "[NO-TAG RETRY] 空車謊言重試成功: {!r} → {!r}",
+                                    full_text,
+                                    retry_content,
+                                )
+                                full_text = retry_content
+                                notag_retried = True
+                        except Exception as e:
+                            logger.warning("[NO-TAG RETRY] 重試失敗: {}", e)
+
                     # ── Tag 執行（CHECKOUT / REMOVE / SET_QTY / ADD / QUERY）──
                     tag_result = await execute_tags(full_text, text, session, self._session_id)
                     full_text = tag_result.full_text
@@ -241,6 +276,10 @@ class StreamingDMAdapter:
                         # streaming 被 hold（CHECKOUT 輪）或 tag-only 輪無字可 stream
                         # → 最終話術（確認句/finalize 報號/後端訊息）一次送出；
                         # followup 已併入 full_text，不另 yield 避免重複
+                        if full_text:
+                            yield {"type": "text_delta", "content": full_text}
+                    elif notag_retried:
+                        # 錯誤 prose 已串流出去，重試結果的話術補送更正
                         if full_text:
                             yield {"type": "text_delta", "content": full_text}
                     elif tag_result.followup_text:
