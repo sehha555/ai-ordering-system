@@ -88,12 +88,8 @@ def _name_in_text(name: str, text: str) -> bool:
 _VALUE_NEG_PREFIXES = ("不要", "不加", "去掉", "不用", "別")
 
 
-def _value_in_text_affirmed(value: str, text: str) -> bool:
-    """槽值（前兩字）是否以非否定語境出現在 user text。
-
-    補槽輪腦補防護的自由值佐證：任一出現處前面不是否定詞才算數
-    """
-    frag = value[:2]
+def _frag_affirmed(frag: str, text: str) -> bool:
+    """片段是否以非否定語境出現在 user text（任一出現處前面不是否定詞才算數）"""
     start = 0
     while True:
         idx = text.find(frag, start)
@@ -102,6 +98,26 @@ def _value_in_text_affirmed(value: str, text: str) -> bool:
         if not any(text[max(0, idx - len(neg)) : idx] == neg for neg in _VALUE_NEG_PREFIXES):
             return True
         start = idx + 1
+
+
+def _value_in_text_affirmed(value: str, text: str) -> bool:
+    """槽值（前兩字）是否以非否定語境出現在 user text（自由值槽的腦補佐證）"""
+    return _frag_affirmed(value[:2], text)
+
+
+# customization 值的功能字/量詞（去除後剩內容核心字：「加辣菜脯」→ 辣菜脯）
+_CUST_FUNC_CHARS = "加要不去掉免多少半個一的"
+
+
+def _customization_evidenced(value: str, text: str) -> bool:
+    """customization 值在 user text 有佐證。客製一定當輪說出口（temp/rice
+    可來自合法跨輪記憶，客製沒有這種場景），無佐證即 LLM 腦補。
+    判準：值開頭直接出現（加辣/去冰 — LLM 照抄客人原話）；或內容核心字
+    任一以非否定語境出現（「要辣」佐證 customization=加辣；「不要辣」不算）"""
+    if value[:2] and value[:2] in text:
+        return True
+    core = [c for c in value if c not in _CUST_FUNC_CHARS]
+    return any(_frag_affirmed(c, text) for c in core)
 
 
 def _slot_evidenced(slot: str, value: str, text: str) -> bool:
@@ -350,7 +366,9 @@ async def execute_tags(
                     elif key in ("spicy", "extra_egg"):
                         kwargs[key] = value.lower() == "true"
             if _name_in_text(item_name, text) and not any(w in text for w in _MODIFY_WORDS):
-                for slot in _SLOT_TEXT_MARKERS:
+                # flavor 不在 markers 表（值域自由），經 _slot_evidenced 走值比對
+                # （b8-02「套餐七 冰的 油麵」腦補 flavor=咖哩 入車）
+                for slot in (*_SLOT_TEXT_MARKERS, "flavor"):
                     if slot in kwargs and not _slot_evidenced(slot, str(kwargs[slot]), text):
                         logger.info(
                             "[ADD slot-strip] text 無佐證，strip 腦補屬性 {}={}",
@@ -380,6 +398,26 @@ async def execute_tags(
                             kwargs[slot],
                         )
                         kwargs.pop(slot)
+            # ── customization 腦補防護（不限輪次）──
+            # 槽位有「合法跨輪記憶」豁免（context 輪的 temp 來自前輪問答），
+            # 客製沒有 — 一定當輪說出口。無 text 佐證即腦補（priming demo 的
+            # 加辣菜脯被無中生有帶入 → 錯單出貨，b8-06/b8-10/b7-01）。
+            # 唯一合法跨輪來源：同品項補槽 retry 前幾輪已提供（prev.provided）
+            prev_provided_cust = (
+                prev_slot_attempt
+                and prev_slot_attempt.get("item_name") == item_name
+                and prev_slot_attempt.get("provided", {}).get("customization")
+            )
+            if (
+                "customization" in kwargs
+                and not prev_provided_cust
+                and not _customization_evidenced(str(kwargs["customization"]), text)
+            ):
+                logger.info(
+                    "[ADD cust-strip] text 無佐證，strip 腦補客製 {}",
+                    kwargs["customization"],
+                )
+                kwargs.pop("customization")
             # ── 換杯型/屬性的 REMOVE+ADD 繼承 ──
             # 「三杯紅茶換大杯」LLM 走 demo 的 REMOVE+ADD：REMOVE 殺掉 x3、
             # ADD 重建 x1，數量與沒複述的屬性（temp）蒸發。同輪 REMOVE 了

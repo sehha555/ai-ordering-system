@@ -1,0 +1,146 @@
+# tests/api/test_customization_strip.py
+# b8 批次 A 族：flavor / customization 腦補防護
+# - b8-02: 新點單輪腦補 flavor=咖哩 入車（slot-strip 原不管 flavor）
+# - b8-06: 「肉鬆飯糰紫米的」腦補 customization=加辣菜脯 直接出單
+# - b8-10: context 輪（補豆漿槽）飯糰被偷偷補上加辣菜脯
+
+import pytest
+from unittest.mock import MagicMock, patch
+
+from src.api.text_tag_executor import _customization_evidenced, execute_tags
+
+
+class TestCustomizationEvidenced:
+    def test_value_prefix_in_text(self):
+        assert _customization_evidenced("加辣", "一個起司蛋餅加辣")
+
+    def test_core_char_affirmed(self):
+        # 「要辣」佐證 customization=加辣（功能字去除後核心字命中）
+        assert _customization_evidenced("加辣", "蛋餅要辣")
+
+    def test_negated_core_char_not_evidence(self):
+        assert not _customization_evidenced("加辣", "蛋餅不要辣")
+
+    def test_hallucinated_customization(self):
+        assert not _customization_evidenced("加辣菜脯", "一個肉鬆飯糰紫米的 一杯大冰奶")
+
+    def test_negative_style_customization_verbatim(self):
+        # 否定型客製（去冰）值開頭直接出現 → 佐證
+        assert _customization_evidenced("去冰", "紅茶去冰")
+
+    def test_filler_between_func_and_core(self):
+        # 「加個蛋」佐證 customization=加蛋（個 是功能字被略過，核心字 蛋 命中）
+        assert _customization_evidenced("加蛋", "蘿蔔糕加個蛋")
+
+
+def _session(cart=None, attempt=None):
+    s = {"cart": cart or [], "llm_history": []}
+    if attempt:
+        s["last_failed_attempt"] = attempt
+    return s
+
+
+@pytest.mark.asyncio
+async def test_named_turn_strips_hallucinated_customization():
+    """b8-06：新點單輪腦補 customization=加辣菜脯 → strip，不帶客製入車"""
+    reg = MagicMock()
+    reg.add_item.return_value = {"ok": True, "item_id": "r1", "message": "已加入"}
+    with patch("src.services.container.tool_registry", reg):
+        await execute_tags(
+            "[ADD:源味傳統飯糰|rice=紫米|customization=加辣菜脯]好～",
+            "一個肉鬆飯糰紫米的",
+            _session(),
+            "s1",
+        )
+    reg.add_item.assert_called_once_with(name="源味傳統飯糰", rice="紫米")
+
+
+@pytest.mark.asyncio
+async def test_context_turn_strips_hallucinated_customization():
+    """b8-10：補別品項槽的 context 輪（text=中杯）飯糰被補上加辣菜脯 → strip"""
+    reg = MagicMock()
+    reg.add_item.return_value = {"ok": True, "item_id": "r1", "message": "已加入"}
+    attempt = {
+        "item_name": "有糖豆漿",
+        "missing": ["size"],
+        "provided": {"temp": "冰"},
+        "message": "要中杯還是大杯？",
+    }
+    with patch("src.services.container.tool_registry", reg):
+        await execute_tags(
+            "[ADD:香燻培根飯糰|rice=白米|customization=加辣菜脯]好～",
+            "中杯",
+            _session(attempt=attempt),
+            "s1",
+        )
+    reg.add_item.assert_called_once_with(name="香燻培根飯糰", rice="白米")
+
+
+@pytest.mark.asyncio
+async def test_named_turn_keeps_evidenced_customization():
+    """b8-04 回歸：「起司蛋餅加辣」customization=加辣 有佐證 → 保留"""
+    reg = MagicMock()
+    reg.add_item.return_value = {"ok": True, "item_id": "r1", "message": "已加入"}
+    with patch("src.services.container.tool_registry", reg):
+        await execute_tags(
+            "[ADD:起司蛋餅|customization=加辣]好～",
+            "一個起司蛋餅加辣",
+            _session(),
+            "s1",
+        )
+    reg.add_item.assert_called_once_with(name="起司蛋餅", customization="加辣")
+
+
+@pytest.mark.asyncio
+async def test_retry_turn_keeps_prev_provided_customization():
+    """補槽 retry 輪：customization 前幾輪已提供（provided）→ 合法跨輪記憶，不 strip"""
+    reg = MagicMock()
+    reg.add_item.return_value = {"ok": True, "item_id": "r1", "message": "已加入"}
+    attempt = {
+        "item_name": "源味傳統飯糰",
+        "missing": ["rice"],
+        "provided": {"customization": "加辣菜脯"},
+        "message": "飯糰要紫米白米？",
+    }
+    with patch("src.services.container.tool_registry", reg):
+        await execute_tags(
+            "[ADD:源味傳統飯糰|rice=白米|customization=加辣菜脯]好～",
+            "白米",
+            _session(attempt=attempt),
+            "s1",
+        )
+    reg.add_item.assert_called_once_with(name="源味傳統飯糰", rice="白米", customization="加辣菜脯")
+
+
+@pytest.mark.asyncio
+async def test_named_turn_strips_hallucinated_flavor():
+    """b8-02：「套餐七一份 冰的 油麵」腦補 flavor=咖哩 → strip，缺口味重新追問"""
+    reg = MagicMock()
+    reg.add_item.return_value = {
+        "ok": False,
+        "missing": ["flavor"],
+        "message": "鐵板麵要黑椒蘑菇義大利還是咖哩",
+    }
+    with patch("src.services.container.tool_registry", reg):
+        await execute_tags(
+            "[ADD:套餐七|temp=冰|noodle=油麵|flavor=咖哩]好～",
+            "套餐七一份 冰的 油麵",
+            _session(),
+            "s1",
+        )
+    reg.add_item.assert_called_once_with(name="套餐七", temp="冰", noodle="油麵")
+
+
+@pytest.mark.asyncio
+async def test_named_turn_keeps_evidenced_flavor():
+    """「黑椒鐵板麵一份 油麵」flavor=黑椒 text 有佐證 → 保留"""
+    reg = MagicMock()
+    reg.add_item.return_value = {"ok": True, "item_id": "r1", "message": "已加入"}
+    with patch("src.services.container.tool_registry", reg):
+        await execute_tags(
+            "[ADD:鐵板麵|flavor=黑椒|noodle=油麵]好～",
+            "黑椒鐵板麵一份 油麵",
+            _session(),
+            "s1",
+        )
+    reg.add_item.assert_called_once_with(name="鐵板麵", flavor="黑椒", noodle="油麵")
