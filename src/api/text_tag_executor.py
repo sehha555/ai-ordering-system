@@ -56,7 +56,12 @@ _SLOT_TEXT_MARKERS = {
     "rice": ("紫", "白", "混"),
     "temp": ("冰", "溫", "熱"),
     "size": ("大", "中", "小"),
+    "noodle": ("油麵", "烏龍"),
 }
+
+# 鐵板麵口味選項詞（flavor 值域依品項而異，唯一的選項型追問是鐵板麵四口味；
+# 開放型追問「什麼口味」以「口味」一詞判斷，見 _prose_asks_slot）
+_FLAVOR_OPTION_MARKERS = ("黑椒", "蘑菇", "義大利", "咖哩")
 
 
 def _name_in_text(name: str, text: str) -> bool:
@@ -140,23 +145,20 @@ def _has_checkout_intent(text: str) -> bool:
     )
 
 
-def _prose_already_asks(prose: str, missing) -> bool:
-    """LLM prose 已在追問全部缺槽 → 後端不疊問。
+def _prose_asks_slot(prose: str, slot: str) -> bool:
+    """prose 是否已在追問該槽（呼叫方需先確認 prose 帶問號）。
     判準：該 slot 兩個選項詞在同一子句以「還是/或」相連（「冰的還是溫的」），
     防常用字假陽性（「大概中午」含 大+中 但非追問）。
-    不在 _SLOT_TEXT_MARKERS 的槽（noodle/flavor）無法確認 → 保守回 False 照補"""
-    if not missing or ("？" not in prose and "?" not in prose):
-        return False
-    for slot in missing:
-        markers = _SLOT_TEXT_MARKERS.get(slot, ())
-        if not any(
-            re.search(f"{a}[^，。？?!！]*?(?:還是|或)[^，。？?!！]*?{b}", prose)
-            for a in markers
-            for b in markers
-            if a != b
-        ):
-            return False
-    return True
+    flavor 開放型追問（「饅頭要什麼口味？」）以「口味」一詞判斷。"""
+    if slot == "flavor" and "口味" in prose:
+        return True
+    markers = _FLAVOR_OPTION_MARKERS if slot == "flavor" else _SLOT_TEXT_MARKERS.get(slot, ())
+    return any(
+        re.search(f"{a}[^，。？?!！]*?(?:還是|或)[^，。？?!！]*?{b}", prose)
+        for a in markers
+        for b in markers
+        if a != b
+    )
 
 
 def _pending_checkout_reply(attempt: dict) -> str:
@@ -561,15 +563,26 @@ async def execute_tags(
         # add_item 失敗 → 追問補發：LLM prose（已 streaming）不含後端追問，
         # 不設 followup_text 客人會聽不到「缺什麼」死等（voice_router 對
         # not streamed_anything 輪改 yield full_text，該路徑不會重複）。
-        # 例外：prose 已在問同一缺槽（V9 疊問「冰的還是溫的？飲料冰的還是溫的」）。
+        # V9 部分過濾：prose 已在問的槽不重複補問，只補 prose 沒問到的槽
+        # （combo 多缺槽 prose 問一半、followup 又整串補問 → 話術破碎）。
         # 只限單一失敗品項——多品項失敗時 prose 的追問無法對應到是問哪一項
         # （兩杯都缺 temp、prose 只問第一杯 → 第二杯追問被吞成死等），一律照補
         failed = [r for r in add_results if not r.get("ok")]
         if failed:
-            suppress = len(failed) == 1 and _prose_already_asks(full_text, failed[0].get("missing"))
-            failed_msgs = (
-                [] if suppress else [r.get("message", "") for r in failed if r.get("message")]
-            )
+            failed_msgs = []
+            for r in failed:
+                msg = r.get("message", "")
+                if len(failed) == 1 and ("？" in full_text or "?" in full_text):
+                    missing = r.get("missing") or []
+                    prompts = r.get("missing_prompts") or (
+                        {missing[0]: msg} if len(missing) == 1 else {}
+                    )
+                    if missing and all(s in prompts for s in missing):
+                        msg = " ".join(
+                            prompts[s] for s in missing if not _prose_asks_slot(full_text, s)
+                        )
+                if msg:
+                    failed_msgs.append(msg)
             if failed_msgs:
                 followup = "，".join(failed_msgs)
                 followup_text = followup

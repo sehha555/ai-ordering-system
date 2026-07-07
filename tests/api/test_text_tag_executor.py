@@ -780,7 +780,7 @@ async def test_followup_sent_when_prose_silent_on_slot(registry):
 
 @pytest.mark.asyncio
 async def test_followup_sent_when_prose_covers_only_partial_slots(registry):
-    """缺兩槽 prose 只問一槽 → followup 照補（寧可重複不可漏問）"""
+    """缺兩槽但無 missing_prompts 對照 → 無法拆槽部分過濾，整串照補（寧可重複不可漏問）"""
     registry.add_item.return_value = {
         "ok": False,
         "missing": ["temp", "rice"],
@@ -794,8 +794,8 @@ async def test_followup_sent_when_prose_covers_only_partial_slots(registry):
 
 
 @pytest.mark.asyncio
-async def test_followup_sent_for_unmapped_slot(registry):
-    """缺槽不在 marker 表（noodle）→ 無法確認 prose 已問，照補"""
+async def test_followup_suppressed_for_noodle_slot(registry):
+    """prose 已問「油麵還是烏龍麵？」→ noodle followup 不疊問"""
     registry.add_item.return_value = {
         "ok": False,
         "missing": ["noodle"],
@@ -805,7 +805,79 @@ async def test_followup_sent_for_unmapped_slot(registry):
 
     result = await execute_tags("[ADD:蘑菇鐵板麵]油麵還是烏龍麵？", "一個蘑菇鐵板麵", session, "s1")
 
-    assert "油麵還是烏龍麵" in result.followup_text
+    assert result.followup_text == ""
+
+
+def _combo_six_missing_all(registry):
+    """套餐六三缺槽（temp/noodle/flavor），帶 missing_prompts 對照（同 add_combo 實際回傳）"""
+    registry.add_item.return_value = {
+        "ok": False,
+        "missing": ["temp", "noodle", "flavor"],
+        "message": "飲料冰的還是溫的 鐵板麵要油麵還是烏龍麵 鐵板麵要黑椒蘑菇義大利還是咖哩",
+        "missing_prompts": {
+            "temp": "飲料冰的還是溫的",
+            "noodle": "鐵板麵要油麵還是烏龍麵",
+            "flavor": "鐵板麵要黑椒蘑菇義大利還是咖哩",
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_followup_partial_filter_combo_multi_slot(registry):
+    """combo 缺三槽、prose 已問 flavor+noodle → followup 只補 temp（V9 擴充核心場景）"""
+    _combo_six_missing_all(registry)
+    session = _make_session(cart=[])
+
+    result = await execute_tags(
+        "[ADD:套餐六]鐵板麵要蘑菇還是黑椒？油麵還是烏龍麵？", "一個套餐六", session, "s1"
+    )
+
+    assert result.followup_text == "飲料冰的還是溫的"
+    assert "油麵" not in result.followup_text
+
+
+@pytest.mark.asyncio
+async def test_followup_suppressed_when_prose_asks_all_combo_slots(registry):
+    """combo 缺三槽 prose 全問到 → followup 全吞"""
+    _combo_six_missing_all(registry)
+    session = _make_session(cart=[])
+
+    result = await execute_tags(
+        "[ADD:套餐六]鐵板麵要蘑菇還是黑椒？油麵還是烏龍麵？飲料冰的還是溫的？",
+        "一個套餐六",
+        session,
+        "s1",
+    )
+
+    assert result.followup_text == ""
+
+
+@pytest.mark.asyncio
+async def test_followup_full_when_prose_asks_nothing_combo(registry):
+    """combo 缺三槽 prose 沒問任何槽 → 整串照補（既有行為不變）"""
+    _combo_six_missing_all(registry)
+    session = _make_session(cart=[])
+
+    result = await execute_tags("[ADD:套餐六]好的～", "一個套餐六", session, "s1")
+
+    assert "冰的還是溫的" in result.followup_text
+    assert "油麵" in result.followup_text
+    assert "黑椒" in result.followup_text
+
+
+@pytest.mark.asyncio
+async def test_followup_suppressed_for_open_flavor_question(registry):
+    """開放型口味追問（「什麼口味？」無選項詞）→ flavor followup 不疊問"""
+    registry.add_item.return_value = {
+        "ok": False,
+        "missing": ["flavor"],
+        "message": "蛋餅什麼口味？",
+    }
+    session = _make_session(cart=[])
+
+    result = await execute_tags("[ADD:蛋餅]蛋餅要什麼口味呢？", "一個蛋餅", session, "s1")
+
+    assert result.followup_text == ""
 
 
 @pytest.mark.asyncio

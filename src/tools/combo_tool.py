@@ -20,12 +20,23 @@ def build_cart_item(
     from src.dm.item_rules import check_combo_required
 
     if not combo_name:
-        return {"ok": False, "missing": ["combo_name"], "message": "請問要哪個套餐？"}
-    missing_msg, missing_fields = check_combo_required(
+        msg = "請問要哪個套餐？"
+        return {
+            "ok": False,
+            "missing": ["combo_name"],
+            "message": msg,
+            "missing_prompts": {"combo_name": msg},
+        }
+    missing_msg, missing_fields, missing_prompts = check_combo_required(
         combo_name, temp, flavor, rice, noodle, customization
     )
     if missing_msg:
-        return {"ok": False, "missing": missing_fields, "message": missing_msg}
+        return {
+            "ok": False,
+            "missing": missing_fields,
+            "message": missing_msg,
+            "missing_prompts": missing_prompts,
+        }
     item: Dict[str, Any] = {
         "itemtype": "combo",
         "combo_name": combo_name,
