@@ -49,6 +49,37 @@ class TestFormatItemCustomization:
         assert cart_manager.format_item(item) == "紫米·鮪魚飯糰(加辣菜脯)"
 
 
+class TestComboSlotDisplay:
+    def test_combo_drink_temp_shown(self):
+        # b6-10：兩份套餐一冰一溫，槽位不顯示廚房分不出哪份是哪份
+        item = {"itemtype": "combo", "combo_name": "套餐三", "quantity": 1, "drink_temp": "冰"}
+        assert cart_manager.format_item(item) == "套餐三(冰)"
+
+    def test_combo_flavor_and_temp_shown(self):
+        item = {
+            "itemtype": "combo",
+            "combo_name": "套餐B",
+            "quantity": 1,
+            "sub_flavor": "花生",
+            "drink_temp": "溫",
+        }
+        assert cart_manager.format_item(item) == "套餐B(花生, 溫)"
+
+    def test_combo_no_slots_unchanged(self):
+        item = {"itemtype": "combo", "combo_name": "套餐C", "quantity": 1}
+        assert cart_manager.format_item(item) == "套餐C"
+
+    def test_combo_customization_merged(self):
+        item = {
+            "itemtype": "combo",
+            "combo_name": "套餐三",
+            "quantity": 1,
+            "drink_temp": "冰",
+            "customization": "不要胡椒",
+        }
+        assert cart_manager.format_item(item) == "套餐三(冰, 不要胡椒)"
+
+
 class TestSummaryCustomization:
     def test_short_summary_includes_customization(self):
         # 結帳確認句用 get_short_summary，客製必須讓客人聽得到
