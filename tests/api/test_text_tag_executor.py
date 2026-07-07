@@ -866,6 +866,20 @@ async def test_followup_full_when_prose_asks_nothing_combo(registry):
 
 
 @pytest.mark.asyncio
+async def test_followup_kept_when_flavor_word_not_in_question(registry):
+    """prose 含「口味」但在非疑問子句（招牌口味喔！）→ flavor 不算已問，照補防死等"""
+    _combo_six_missing_all(registry)
+    session = _make_session(cart=[])
+
+    result = await execute_tags(
+        "[ADD:套餐六]好的！鐵板麵是招牌口味喔！飲料要冰的還是溫的？", "一個套餐六", session, "s1"
+    )
+
+    assert "黑椒蘑菇" in result.followup_text
+    assert "冰的還是溫的" not in result.followup_text
+
+
+@pytest.mark.asyncio
 async def test_followup_suppressed_for_open_flavor_question(registry):
     """開放型口味追問（「什麼口味？」無選項詞）→ flavor followup 不疊問"""
     registry.add_item.return_value = {

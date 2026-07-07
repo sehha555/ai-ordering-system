@@ -104,6 +104,16 @@ def _value_in_text_affirmed(value: str, text: str) -> bool:
         start = idx + 1
 
 
+def _slot_evidenced(slot: str, value: str, text: str) -> bool:
+    """該槽的 ADD 屬性值在 user text 有佐證（slot-strip / retry-strip 共用）。
+    noodle 二選一互斥：類別詞命中不足以佐證值本身（句含「油麵」也會放行
+    幻覺的 noodle=烏龍麵）→ 與無 marker 槽同走值精確比對。"""
+    markers = None if slot == "noodle" else _SLOT_TEXT_MARKERS.get(slot)
+    if markers:
+        return any(m in text for m in markers)
+    return _value_in_text_affirmed(value, text)
+
+
 # 修改語意判斷：客人在改既有品項屬性（而非加點新品項）的訊號詞
 _MODIFY_WORDS = ("不要", "不加", "改", "換", "去掉")
 _ADD_MORE_WORDS = ("再", "還要", "多一", "加一", "另外", "加購", "加點", "也")
@@ -149,8 +159,9 @@ def _prose_asks_slot(prose: str, slot: str) -> bool:
     """prose 是否已在追問該槽（呼叫方需先確認 prose 帶問號）。
     判準：該 slot 兩個選項詞在同一子句以「還是/或」相連（「冰的還是溫的」），
     防常用字假陽性（「大概中午」含 大+中 但非追問）。
-    flavor 開放型追問（「饅頭要什麼口味？」）以「口味」一詞判斷。"""
-    if slot == "flavor" and "口味" in prose:
+    flavor 開放型追問（「饅頭要什麼口味？」）以「口味」判斷，且必須與問號
+    同子句 —「招牌口味喔！」這種非疑問語境不算已問，誤判會吞掉追問致死等。"""
+    if slot == "flavor" and re.search(r"口味[^，。？?!！]*[？?]", prose):
         return True
     markers = _FLAVOR_OPTION_MARKERS if slot == "flavor" else _SLOT_TEXT_MARKERS.get(slot, ())
     return any(
@@ -339,8 +350,8 @@ async def execute_tags(
                     elif key in ("spicy", "extra_egg"):
                         kwargs[key] = value.lower() == "true"
             if _name_in_text(item_name, text) and not any(w in text for w in _MODIFY_WORDS):
-                for slot, markers in _SLOT_TEXT_MARKERS.items():
-                    if slot in kwargs and not any(m in text for m in markers):
+                for slot in _SLOT_TEXT_MARKERS:
+                    if slot in kwargs and not _slot_evidenced(slot, str(kwargs[slot]), text):
                         logger.info(
                             "[ADD slot-strip] text 無佐證，strip 腦補屬性 {}={}",
                             slot,
@@ -362,13 +373,7 @@ async def execute_tags(
                 for slot in ("rice", "size", "temp", "flavor", "noodle"):
                     if slot not in kwargs or provided.get(slot):
                         continue
-                    markers = _SLOT_TEXT_MARKERS.get(slot)
-                    evidenced = (
-                        any(m in text for m in markers)
-                        if markers
-                        else _value_in_text_affirmed(str(kwargs[slot]), text)
-                    )
-                    if not evidenced:
+                    if not _slot_evidenced(slot, str(kwargs[slot]), text):
                         logger.info(
                             "[ADD retry-strip] 補槽輪腦補 {}={} 無佐證，strip",
                             slot,
