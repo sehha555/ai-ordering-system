@@ -111,10 +111,12 @@ class StreamingDMAdapter:
         # ── 結帳狀態機攔截：不經 LLM ──
         from src.api.checkout_handler import (  # noqa: E402
             CK_STATES,
+            CONCRETE_ITEM_WORDS,
             checkout_step,
             shortcircuit_reply,
         )
-        from src.api.text_tag_executor import execute_tags  # noqa: E402
+        from src.api.tag_parser import ADD_RE  # noqa: E402
+        from src.api.text_tag_executor import _name_in_text, execute_tags  # noqa: E402
         from src.dm.tool_priming import CHECKOUT_TAG  # noqa: E402
 
         if session.get("checkout_status") in CK_STATES:
@@ -234,6 +236,55 @@ class StreamingDMAdapter:
                     if not full_text:
                         full_text = "好的，還需要什麼嗎？"
 
+                    # ── 空車謊言重試（no-tag sinkhole）──
+                    # 特定句型讓模型掉進「購物車是空的」怪回覆且完全不發 tag
+                    # （「三杯中杯冰紅茶 兩個薯餅」6/6 確定性，整單蒸發）。
+                    # 觸發限具體品項詞（「我要結帳」這種合法空車句不觸發）；
+                    # 重試輸出的每個 ADD 品項名都要在原句有出現才採信，
+                    # 擋提醒詞逼出來的幻覺品項入車
+                    notag_retried = False
+                    if (
+                        "[" not in full_text
+                        and "購物車" in full_text
+                        and "空" in full_text
+                        and any(w in text for w in CONCRETE_ITEM_WORDS)
+                    ):
+                        try:
+                            # llm_history 在文字標籤模式（tools_schema=[]）每輪
+                            # 固定 append user+assistant 兩條，[:-2] 即本輪之前；
+                            # timeout fallback 文案不含「購物車」不會走到這裡
+                            retry_messages = _llm_caller._build_messages(
+                                SystemPromptBuilder().build(),
+                                f"{text}\n（請用 [ADD:品項|參數] 標籤把客人點的品項加入購物車）",
+                                session["llm_history"][:-2],
+                                context=ctx,
+                            )
+                            resp = await asyncio.wait_for(
+                                _llm_caller.call_llm_async(messages=retry_messages),
+                                timeout=15,
+                            )
+                            retry_content = (
+                                resp["choices"][0]["message"].get("content") or ""
+                            ).strip()
+                            add_names = [
+                                c.split("|")[0].strip() for c in ADD_RE.findall(retry_content)
+                            ]
+                            if add_names and all(_name_in_text(n, text) for n in add_names):
+                                logger.info(
+                                    "[NO-TAG RETRY] 空車謊言重試成功: {!r} → {!r}",
+                                    full_text,
+                                    retry_content,
+                                )
+                                full_text = retry_content
+                                notag_retried = True
+                            elif add_names:
+                                logger.warning(
+                                    "[NO-TAG RETRY] 重試 ADD 品項 {} 在原句無佐證，丟棄",
+                                    add_names,
+                                )
+                        except Exception as e:
+                            logger.warning("[NO-TAG RETRY] 重試失敗: {}", e)
+
                     # ── Tag 執行（CHECKOUT / REMOVE / SET_QTY / ADD / QUERY）──
                     tag_result = await execute_tags(full_text, text, session, self._session_id)
                     full_text = tag_result.full_text
@@ -241,6 +292,10 @@ class StreamingDMAdapter:
                         # streaming 被 hold（CHECKOUT 輪）或 tag-only 輪無字可 stream
                         # → 最終話術（確認句/finalize 報號/後端訊息）一次送出；
                         # followup 已併入 full_text，不另 yield 避免重複
+                        if full_text:
+                            yield {"type": "text_delta", "content": full_text}
+                    elif notag_retried:
+                        # 錯誤 prose 已串流出去，重試結果的話術補送更正
                         if full_text:
                             yield {"type": "text_delta", "content": full_text}
                     elif tag_result.followup_text:
