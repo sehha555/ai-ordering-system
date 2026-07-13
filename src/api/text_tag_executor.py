@@ -50,6 +50,8 @@ _ADD_ONE_MORE_RE = re.compile(r"再(?:加|來|點)?一(?:份|個|杯|顆|片)")
 # 「N杯就好」減量句：客人要保留 N 份，LLM 慣性發 [REMOVE:品項] 整項蒸發
 # 或純 prose 不發 tag（b11-03 紅茶一杯就好 → 紅茶全沒了）
 _QTY_KEEP_RE = re.compile(r"([一兩二三四五六七八九十0-9]+)\s*(?:杯|個|份|顆|片)\s*就好")
+# 「改成N個」改量句：LLM 機率性不發 [SET_QTY]（b9-08）
+_QTY_CHANGE_RE = re.compile(r"改成?\s*([一兩二三四五六七八九十0-9]+)\s*(?:杯|個|份|顆|片)")
 _ZH_NUM = {
     "一": 1,
     "兩": 2,
@@ -188,6 +190,37 @@ def _customization_evidenced(value: str, text: str) -> bool:
     if value[:1] in _NEG_VALUE_HEADS:
         return any(_frag_negated(c, text) for c in core)
     return any(_frag_affirmed(c, text) for c in core)
+
+
+# 補槽輪 text 修正候選（封閉值域槽）：value → text marker（負向語境由 _frag_affirmed 守衛）
+_SLOT_CORRECTION = {
+    "rice": {"紫米": "紫", "白米": "白", "混米": "混"},
+    "temp": {"冰": "冰", "溫": "溫", "熱": "熱"},
+    "size": {"大杯": "大", "中杯": "中"},
+    "noodle": {"油麵": "油麵", "烏龍麵": "烏龍"},
+}
+
+
+def _slot_value_from_text(slot: str, text: str) -> Optional[str]:
+    """text 恰好肯定語境佐證該槽單一候選值 → 回該值；多值/無值/否定 → None"""
+    mapping = _SLOT_CORRECTION.get(slot)
+    if mapping:
+        hits = [v for v, m in mapping.items() if _frag_affirmed(m, text)]
+        return hits[0] if len(hits) == 1 else None
+    if slot == "flavor":
+        from src.dm.tool_registry import _IRON_NOODLE_FLAVOR_CANON  # noqa: PLC0415
+
+        # 鐵板麵四口味（套餐六/七）+ 果醬口味（兒童餐/套餐B — LLM 會把
+        # 口味塞進 customization 而非 flavor 參數，b12-03 兒童餐蒸發）；
+        # 兩表合掃恰一命中才修，歧義回 None
+        canon_hits = {
+            canon
+            for alias, canon in _IRON_NOODLE_FLAVOR_CANON.items()
+            if _frag_affirmed(alias, text)
+        }
+        canon_hits |= {f for f in _JAM_FLAVORS if _frag_affirmed(f, text)}
+        return canon_hits.pop() if len(canon_hits) == 1 else None
+    return None
 
 
 def _slot_evidenced(slot: str, value: str, text: str) -> bool:
@@ -425,7 +458,7 @@ async def execute_tags(
                     # 純 [SET_QTY:品項] 無參數：維持舊行為（數量設 1）
                     sq_result = _tool_registry.set_item_quantity(item_id=matched_id, quantity=1)
             if not sq_result.get("ok"):
-                logger.warning("[SET_QTY] %s", sq_result.get("message"))
+                logger.warning("[SET_QTY] {}", sq_result.get("message"))
         full_text = SET_QTY_RE.sub("", full_text).strip()
         if not full_text:
             full_text = f"{sq_result.get('message', '已修改')}～還需要什麼？"
@@ -500,12 +533,31 @@ async def execute_tags(
                     if slot not in kwargs or provided.get(slot):
                         continue
                     if not _slot_evidenced(slot, str(kwargs[slot]), text):
-                        logger.info(
-                            "[ADD retry-strip] 補槽輪腦補 {}={} 無佐證，strip",
-                            slot,
-                            kwargs[slot],
-                        )
-                        kwargs.pop(slot)
+                        # 錯值先試 text 修正（封閉值域）：「黑椒 油麵」LLM 腦補
+                        # noodle=烏龍麵 → 若只 strip，text 明說的油麵跟著蒸發、
+                        # provided 記不到 → 補槽死循環（b9-04 套餐六）
+                        corrected = _slot_value_from_text(slot, text)
+                        if corrected:
+                            logger.info(
+                                "[ADD retry-fix] 補槽輪 {}={} 無佐證，text 修正為 {}",
+                                slot,
+                                kwargs[slot],
+                                corrected,
+                            )
+                            kwargs[slot] = corrected
+                        else:
+                            logger.info(
+                                "[ADD retry-strip] 補槽輪腦補 {}={} 無佐證，strip",
+                                slot,
+                                kwargs[slot],
+                            )
+                            kwargs.pop(slot)
+                # 合法跨輪記憶 merge：前幾輪客人已提供的槽直接補回 kwargs。
+                # 沒有這步，LLM 帶了舊參數會被 strip（本輪 text 無佐證）、
+                # attempt.provided 覆寫時跨輪累積遺失 → 補槽永動輪（b12-08
+                # 套餐五：「溫的」→「起司的」每輪只留當輪槽，永遠缺一個）
+                for k, v in provided.items():
+                    kwargs.setdefault(k, v)
             # ── customization 腦補防護（不限輪次）──
             # 槽位有「合法跨輪記憶」豁免（context 輪的 temp 來自前輪問答），
             # 客製沒有 — 一定當輪說出口。無 text 佐證即腦補（priming demo 的
@@ -856,6 +908,42 @@ async def execute_tags(
 
         patch_last_assistant(session["llm_history"], full_text)
 
+    # ── attempt 缺槽 text 直補兜底 ──
+    # 兩型：(a) 補槽輪 LLM 純 prose 不發 tag（「溫的」→「好的～」）→ 客人答的
+    # 槽值蒸發、追問永動（b8-08 prose-only 補槽輪型）；(b) 本輪 ADD fail 但
+    # text 還有被 strip/漏掉的缺槽值（「套餐六 冰的黑椒油麵」LLM 發錯 noodle
+    # 被 strip → text 的油麵當輪撿回，不多問一輪）。
+    # attempt 缺槽直接從 text 補（封閉值域，_slot_value_from_text 同一套
+    # 否定守衛），全齊 retry add_item；有斬獲但未齊 → 更新 attempt 累積
+    if session.get("last_failed_attempt"):
+        nt_attempt = session["last_failed_attempt"]
+        nt_missing = list(nt_attempt.get("missing", []))
+        nt_provided = dict(nt_attempt.get("provided", {}))
+        nt_progressed = False
+        for f in list(nt_missing):
+            tv = _slot_value_from_text(f, text)
+            if tv:
+                nt_provided[f] = tv
+                nt_missing.remove(f)
+                nt_progressed = True
+        if nt_progressed:
+            if not nt_missing:
+                nt_result = _tool_registry.add_item(name=nt_attempt["item_name"], **nt_provided)
+                if nt_result.get("ok"):
+                    session["last_failed_attempt"] = None
+                    logger.info(
+                        "[ADD no-tag 補槽] text 補齊 retry 成功: {} {}",
+                        nt_attempt["item_name"],
+                        nt_provided,
+                    )
+                    if not full_text.strip():
+                        full_text = f"{nt_result.get('message', '已加入')}～還需要什麼？"
+                        patch_last_assistant(session["llm_history"], full_text)
+            else:
+                nt_attempt["provided"] = nt_provided
+                nt_attempt["missing"] = nt_missing
+                logger.info("[ADD no-tag 補槽] text 補槽 {}，仍缺 {}", nt_provided, nt_missing)
+
     # ── 「N杯就好」減量兜底 ──
     # 「紅茶一杯就好」LLM 三種發法：[REMOVE:紅茶] 單發（整項蒸發）、
     # REMOVE+ADD 重建（正確）、純 prose 無 tag（cart 沒動）。
@@ -893,6 +981,31 @@ async def execute_tags(
                     )
                 else:
                     logger.warning("[keep-qty] 改量失敗: {}", kq_result.get("message"))
+
+    # ── 「改成N個」改量兜底 ──
+    # 「改成五個好了」LLM 機率性純 prose 不發 [SET_QTY]（priming 演化後
+    # 行為漂移，b9-08）→ text 點名品項、或 cart 恰一品項時直接改量
+    if not setqty_handled and removed_target_name is None:
+        chg_m = _QTY_CHANGE_RE.search(text)
+        if chg_m and not _has_add_more_intent(text):
+            chg_qty = _zh_qty_to_int(chg_m.group(1))
+            cart_now = session.get("cart", [])
+            mentioned = [i for i in cart_now if item_mentioned_in_text(i, text)]
+            target = (
+                mentioned[0]
+                if len(mentioned) == 1
+                else (cart_now[0] if len(cart_now) == 1 else None)
+            )
+            if target is not None and int(target.get("quantity", 1) or 1) != chg_qty:
+                cq_result = _tool_registry.set_item_quantity(
+                    item_id=target.get("item_id"), quantity=chg_qty
+                )
+                if cq_result.get("ok"):
+                    logger.info(
+                        "[qty-change] 「改成N個」無 tag → {} 改量 x{}",
+                        target.get("item_id"),
+                        chg_qty,
+                    )
 
     # ── [QUERY:分類] 攔截 ──
     if "[QUERY" in full_text:

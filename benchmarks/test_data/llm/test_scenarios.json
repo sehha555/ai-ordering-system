@@ -1718,13 +1718,23 @@
         "content": "一個套餐B 冰的"
       }
     ],
-    "expected_tools": [],
-    "expected_args": [],
+    "expected_tools": [
+      "add_item"
+    ],
+    "expected_args": [
+      {
+        "name": "add_item",
+        "args": {
+          "name": "套餐B",
+          "temp": "冰"
+        }
+      }
+    ],
     "expected_response_contains": [
       "厚片",
       "口味"
     ],
-    "expected_behavior": "套餐 B 含厚片，temp 齊全也不能直接 [ADD]，必問厚片口味（草莓/花生/蒜香/奶酥/巧克力）"
+    "expected_behavior": "套餐 B 含厚片：先發 [ADD:套餐B|temp=冰] 佔位 tag（後端記待補欄位），同時必問厚片口味（草莓/花生/蒜香/奶酥/巧克力）— tag-first，與 priming demo 對齊"
   },
   {
     "id": "teacher_combo_six_noodle_flavor",
@@ -1736,13 +1746,23 @@
         "content": "一個套餐六 冰的"
       }
     ],
-    "expected_tools": [],
-    "expected_args": [],
+    "expected_tools": [
+      "add_item"
+    ],
+    "expected_args": [
+      {
+        "name": "add_item",
+        "args": {
+          "name": "套餐六",
+          "temp": "冰"
+        }
+      }
+    ],
     "expected_response_contains": [
       "蘑菇",
       "黑椒"
     ],
-    "expected_behavior": "套餐六含鐵板麵，temp 齊全也不能直接 [ADD]，必問鐵板麵口味（蘑菇/黑椒，menu 真實名稱）"
+    "expected_behavior": "套餐六含鐵板麵：先發 [ADD:套餐六|temp=冰] 佔位 tag（後端記待補欄位），同時必問鐵板麵口味與麵種 — tag-first，與 priming demo 對齊"
   },
   {
     "id": "teacher_iron_noodle_must_ask_type",

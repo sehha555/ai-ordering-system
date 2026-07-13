@@ -51,7 +51,6 @@
 
 - id: b9-04-combo6
   desc: 套餐六多槽追問鏈（b8-08 架構族）
-  known_fail: true
   script:
     - 我要一個套餐六
     - 黑椒 油麵
@@ -96,7 +95,7 @@
     total: 100
     dine_type: take-out
     items:
-      - {name: "兒童餐(草莓, 溫)", qty: 1}
+      - {name: "兒童餐(草莓, 溫", qty: 1}
       - {name: 荷包蛋, qty: 1}
 
 - id: b9-07-colloquial

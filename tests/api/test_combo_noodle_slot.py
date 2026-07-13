@@ -118,14 +118,11 @@ async def test_retry_turn_negated_value_not_evidence():
 
 
 @pytest.mark.asyncio
-async def test_retry_turn_strips_wrong_noodle_value():
-    """補槽輪客人說「油麵」但 LLM 幻覺發 noodle=烏龍麵 → 類別詞命中不算佐證，strip 重問"""
+async def test_retry_turn_corrects_wrong_noodle_value():
+    """補槽輪客人說「油麵」但 LLM 幻覺發 noodle=烏龍麵 → text 封閉值域修正為油麵
+    （b8-08 tag-first：只 strip 會讓油麵資訊蒸發 → 補槽死循環）"""
     reg = MagicMock()
-    reg.add_item.return_value = {
-        "ok": False,
-        "missing": ["noodle"],
-        "message": "鐵板麵要油麵還是烏龍麵",
-    }
+    reg.add_item.return_value = {"ok": True, "item_id": "combo_1", "message": "已加入"}
     session = _retry_session()
     with patch("src.services.container.tool_registry", reg):
         await execute_tags(
@@ -134,18 +131,18 @@ async def test_retry_turn_strips_wrong_noodle_value():
             session,
             "s1",
         )
-    reg.add_item.assert_called_once_with(name="套餐六", temp="冰", flavor="蘑菇")
+    reg.add_item.assert_called_once_with(name="套餐六", temp="冰", flavor="蘑菇", noodle="油麵")
 
 
 @pytest.mark.asyncio
-async def test_named_turn_strips_wrong_noodle_value():
-    """新點單輪客人說「油麵」但 LLM 幻覺發 noodle=烏龍麵 → slot-strip 同樣走值比對"""
+async def test_named_turn_strips_then_text_recovers_noodle():
+    """新點單輪 LLM 幻覺 noodle=烏龍麵 → slot-strip 擋掉錯值 →
+    attempt 缺槽 text 直補兜底同輪撿回油麵，不多問一輪"""
     reg = MagicMock()
-    reg.add_item.return_value = {
-        "ok": False,
-        "missing": ["noodle"],
-        "message": "鐵板麵要油麵還是烏龍麵",
-    }
+    reg.add_item.side_effect = [
+        {"ok": False, "missing": ["noodle"], "message": "鐵板麵要油麵還是烏龍麵"},
+        {"ok": True, "item_id": "combo_1", "message": "已加入"},
+    ]
     session = {"cart": [], "llm_history": []}
     with patch("src.services.container.tool_registry", reg):
         await execute_tags(
@@ -154,7 +151,10 @@ async def test_named_turn_strips_wrong_noodle_value():
             session,
             "s1",
         )
-    reg.add_item.assert_called_once_with(name="套餐六", temp="冰", flavor="黑椒")
+    # 第一次 call：strip 錯值後 fail；第二次：兜底從 text 補 noodle=油麵 成功
+    assert reg.add_item.call_count == 2
+    assert reg.add_item.call_args_list[1].kwargs["noodle"] == "油麵"
+    assert session.get("last_failed_attempt") is None
 
 
 @pytest.mark.asyncio
