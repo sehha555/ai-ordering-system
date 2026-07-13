@@ -104,6 +104,10 @@ def finalize_and_reply(
     result = tool_registry.finalize_order(dine_type=dine, payment_method=pay)
     session.pop("checkout_status", None)
     session.pop("checkout_dine_type", None)
+    # 跨輪記憶單筆訂單有效：finalize 收斂點統一清除，防殘留污染同 session 下一筆
+    # （pending 客製單路徑不讀 pending_pay、同句 dine 路徑不讀 hint，都必須在此清）
+    session.pop("checkout_pending_pay", None)
+    session.pop("dine_type_hint", None)
     if not result.get("ok"):
         return result.get("message", "結帳失敗，請再試一次"), None
     order_number = result.get("order_number", "")

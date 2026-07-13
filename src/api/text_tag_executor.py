@@ -214,8 +214,9 @@ def _slot_evidenced(slot: str, value: str, text: str) -> bool:
 # 修改語意判斷：客人在改既有品項屬性（而非加點新品項）的訊號詞
 _MODIFY_WORDS = ("不要", "不加", "改", "換", "去掉")
 _ADD_MORE_WORDS = ("再", "還要", "多一", "加一", "另外", "加購", "加點", "也")
-# 跨品項替換詞（swap-dedup 用）：收斂到明確替換語，客製詞（不要辣）不觸發
-_SWAP_WORDS = ("換成", "改成", "換一個", "改一個")
+# 跨品項替換詞（swap-dedup 用）：只認明確帶替換對象的「換成/改成」。
+# 「換一個/改一個」口語常是幫別人加點（「我朋友換一個綠茶」）不可觸發誤刪
+_SWAP_WORDS = ("換成", "改成")
 
 
 def _has_add_more_intent(text: str) -> bool:

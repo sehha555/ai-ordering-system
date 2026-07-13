@@ -250,3 +250,113 @@ class TestSwapDedup:
             await execute_tags("[ADD:無骨雞排蛋堡]好～", "換成無骨雞排蛋堡好了", session, "s1")
         ids = [i["item_id"] for i in session["cart"]]
         assert "c1" in ids
+
+
+class TestReviewFindings31:
+    """PR #31 review 修正"""
+
+    @pytest.mark.asyncio
+    async def test_pending_pay_cleared_on_pending_finalize(self):
+        # 有客製待確認單：先講刷卡再答內用 → pending 單出單後 pending_pay 不殘留
+        store = MagicMock()
+        reg = MagicMock()
+        reg.finalize_order.return_value = {"ok": True, "order_number": "01", "total": 0}
+        session = {
+            "checkout_status": CK_DINE,
+            "cart": [
+                {
+                    "itemtype": "snack",
+                    "snack": "港式蘿蔔糕",
+                    "quantity": 1,
+                    "customization": "加蛋",
+                }
+            ],
+            "llm_history": [],
+        }
+        with (
+            patch("src.services.container.tool_registry", reg),
+            patch("src.services.container.session_store", store),
+            patch("src.dm.cart_manager.cart_has_pending", return_value=True),
+        ):
+            _ = [e async for e in checkout_step("刷卡", "s1", session)]
+            _ = [e async for e in checkout_step("內用", "s1", session)]
+        reg.finalize_order.assert_called_once_with(dine_type="dine-in", payment_method="pending")
+        assert "checkout_pending_pay" not in session  # 不殘留污染下一筆
+
+    @pytest.mark.asyncio
+    async def test_dine_hint_cleared_on_finalize(self):
+        # hint 設了但同句 dine 直接出單沒用到 → finalize 後不殘留
+        from src.api.checkout_handler import finalize_and_reply
+
+        reg = MagicMock()
+        reg.finalize_order.return_value = {"ok": True, "order_number": "02", "total": 50}
+        session = {"dine_type_hint": "take-out", "checkout_status": "CHECKOUT_PAY"}
+        finalize_and_reply("dine-in", "cash", session, reg)
+        assert "dine_type_hint" not in session
+
+    @pytest.mark.asyncio
+    async def test_friend_wants_another_not_swapped(self):
+        # 「我朋友換一個綠茶」是幫別人加點 → 不可誤刪上一輪的紅茶
+        session = {
+            "cart": [
+                {
+                    "item_id": "d1",
+                    "itemtype": "drink",
+                    "drink": "精選紅茶",
+                    "quantity": 1,
+                }
+            ],
+            "llm_history": [
+                {"role": "user", "content": "hi"},
+                {"role": "assistant", "content": "raw"},
+            ],
+            "last_turn_add_ids": ["d1"],
+        }
+        reg = MagicMock()
+
+        def _add(**kw):
+            session["cart"].append(
+                {"item_id": "d2", "itemtype": "drink", "drink": "無糖清香綠茶", "quantity": 1}
+            )
+            return {"ok": True, "item_id": "d2", "message": "已加入"}
+
+        reg.add_item.side_effect = _add
+        with patch("src.services.container.tool_registry", reg):
+            await execute_tags(
+                "[ADD:綠茶|size=中|temp=冰]好～", "我朋友換一個綠茶 中杯冰的", session, "s1"
+            )
+        ids = [i["item_id"] for i in session["cart"]]
+        assert "d1" in ids  # 紅茶保留
+
+    @pytest.mark.asyncio
+    async def test_peanut_rice_milk_not_merged(self):
+        # 花生糙米漿含「米漿」子字串 → 分開點不誤合併（PR #31 觀察 4）
+        session = {
+            "cart": [],
+            "llm_history": [
+                {"role": "user", "content": "hi"},
+                {"role": "assistant", "content": "raw"},
+            ],
+        }
+        reg = MagicMock()
+
+        def _add(**kw):
+            item = {
+                "item_id": f"d{len(session['cart']) + 1}",
+                "itemtype": "drink",
+                "drink": "花生糙米漿" if "糙米" in kw.get("name", "") else "有糖豆漿",
+                "quantity": 1,
+            }
+            session["cart"].append(item)
+            return {"ok": True, "item_id": item["item_id"], "message": "已加入"}
+
+        reg.add_item.side_effect = _add
+        with patch("src.services.container.tool_registry", reg):
+            await execute_tags(
+                "[ADD:花生糙米漿|size=中|temp=溫][ADD:豆漿|size=中|temp=溫]好～",
+                "一杯花生糙米漿 一杯豆漿 都中杯溫的",
+                session,
+                "s1",
+            )
+        reg.add_drink.assert_not_called()
+        assert len(session["cart"]) == 2
