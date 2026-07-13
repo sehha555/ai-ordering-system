@@ -188,17 +188,27 @@ async def checkout_step(text: str, session_id: str, session: dict):
             reply = "請問是內用還是外帶？"
 
     elif status == CK_PAY:
+        # 付款輪改口內用外帶（「啊還是外帶好了」）→ 更新 dine_type 並 acknowledge，
+        # 否則客人的變更被吃掉、單照舊 dine_type 出（b11-02 錯單）
+        dine_change = parse_dine_type(text)
         pay = parse_payment(text)
         if pay:
+            if dine_change:
+                session["checkout_dine_type"] = dine_change
             dine = session.get("checkout_dine_type")
             if dine is None:
                 logger.warning("[CHECKOUT] checkout_dine_type missing in CHECKOUT_PAY state")
                 dine = "dine-in"
             reply, finalize_result = finalize_and_reply(dine, pay, session, _tool_registry)
         elif has_order_intent(text):
-            # 反悔：intent 檢查必須在 parse 失敗後才執行
+            # 反悔/加點優先於純改口：「外帶 再加一個蛋餅」必須 fallthrough
+            # 給 LLM 處理加點，不能被 acknowledge 分支吞掉
             exit_checkout(session_id, session, _session_store)
             return
+        elif dine_change:
+            session["checkout_dine_type"] = dine_change
+            dine_label = "內用" if dine_change == "dine-in" else "外帶"
+            reply = f"好，改{dine_label}～現金還是行動支付？"
         else:
             reply = "請問要現金還是行動支付？"
 

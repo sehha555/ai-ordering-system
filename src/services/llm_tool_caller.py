@@ -35,6 +35,14 @@ def _strip_hallucinated_apology(text: str) -> str:
     return _APOLOGY_SYSTEM_RE.sub("", text).strip()
 
 
+def _punct_outside_tag(buf: str, idx: int) -> bool:
+    """idx 處的句點是否在未閉合 [tag] 之外（tag 內標點切句會腰斬 tag）"""
+    open_pos = buf.rfind("[", 0, idx)
+    if open_pos == -1:
+        return True
+    return buf.find("]", open_pos, idx) != -1
+
+
 def _is_followup_question(text: str) -> bool:
     """判斷是否為追問缺資訊的問句（vs 通用「還要什麼」確認）"""
     if "？" not in text:
@@ -629,12 +637,16 @@ class LLMToolCaller:
                                 sentence_buf += evt["content"]
                                 if not early_tts_sent:
                                     # 遇到句點 → 立即 yield text_delta（orchestrator 送 TTS）
+                                    # 未閉合 [tag] 內的標點不可切：tag 值含頓號
+                                    # （customization=不要蔥、加辣）被腰斬成兩個殘片，
+                                    # strip_all_tags 對不完整 tag 失效 → 洩漏給 TTS 唸出
                                     while sentence_buf:
                                         idx = next(
                                             (
                                                 i
                                                 for i, ch in enumerate(sentence_buf)
                                                 if ch in _SENTENCE_PUNCTS
+                                                and _punct_outside_tag(sentence_buf, i)
                                             ),
                                             -1,
                                         )
@@ -689,7 +701,7 @@ class LLMToolCaller:
                         buf = ""
                         for ch in full_text:
                             buf += ch
-                            if ch in _SENTENCE_PUNCTS:
+                            if ch in _SENTENCE_PUNCTS and _punct_outside_tag(buf, len(buf) - 1):
                                 yield {"type": "text_delta", "content": buf}
                                 buf = ""
                         if buf:

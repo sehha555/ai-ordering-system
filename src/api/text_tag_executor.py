@@ -47,6 +47,28 @@ from src.tools.order_router import CHECKOUT_KEYWORDS
 # 「再X一份」增量句：明確 +1，LLM 常把目標總量當增量發 qty>1（見模擬 b4-03 錯單）
 _ADD_ONE_MORE_RE = re.compile(r"再(?:加|來|點)?一(?:份|個|杯|顆|片)")
 
+# 「N杯就好」減量句：客人要保留 N 份，LLM 慣性發 [REMOVE:品項] 整項蒸發
+# 或純 prose 不發 tag（b11-03 紅茶一杯就好 → 紅茶全沒了）
+_QTY_KEEP_RE = re.compile(r"([一兩二三四五六七八九十0-9]+)\s*(?:杯|個|份|顆|片)\s*就好")
+_ZH_NUM = {
+    "一": 1,
+    "兩": 2,
+    "二": 2,
+    "三": 3,
+    "四": 4,
+    "五": 5,
+    "六": 6,
+    "七": 7,
+    "八": 8,
+    "九": 9,
+    "十": 10,
+}
+
+
+def _zh_qty_to_int(s: str) -> int:
+    return _ZH_NUM.get(s) or (int(s) if s.isdigit() else 1)
+
+
 # 槽位屬性腦補檢查：新點單輪（text 點名品項且無修改詞）ADD 帶的屬性值
 # 必須在 user text 有字面佐證，否則是 LLM 腦補（「鮪魚飯糰一個」誤帶
 # rice=白米 → 錯單），strip 掉讓 add_item 的 missing 機制追問。
@@ -337,10 +359,12 @@ async def execute_tags(
     # ── [REMOVE:...] 攔截 ──
     removed_ok = False
     removed_item_snapshot: Optional[Dict[str, Any]] = None  # 同輪換品項的數量/屬性繼承用
+    removed_target_name: Optional[str] = None  # 「N杯就好」減量兜底比對用
     if "[REMOVE:" in full_text:
         remove_match = REMOVE_RE.search(full_text)
         if remove_match:
             remove_target = remove_match.group(1).strip()
+            removed_target_name = remove_target
             remove_result: dict = {"ok": False, "message": "移除失敗"}
 
             if remove_target == "all":
@@ -373,6 +397,7 @@ async def execute_tags(
     # LLM 表達「換大杯/改溫的」慣性發 SET_QTY 帶 size/temp（不照 demo 的
     # REMOVE+ADD），attrs 走 set_item_attrs；qty 沒給就不動數量
     sq_result: dict = {"ok": False, "message": "已修改"}
+    setqty_handled = "[SET_QTY:" in full_text  # keep-qty 兜底判斷用（區塊會 strip tag）
     if "[SET_QTY:" in full_text:
         for sqm in SET_QTY_RE.finditer(full_text):
             sq_target, sq_qty, sq_attrs = parse_set_qty_tag(sqm.group(1).strip())
@@ -754,6 +779,44 @@ async def execute_tags(
             full_text = "，".join(ok_msgs) + "～還需要什麼？" if ok_msgs else "好的～還需要什麼？"
 
         patch_last_assistant(session["llm_history"], full_text)
+
+    # ── 「N杯就好」減量兜底 ──
+    # 「紅茶一杯就好」LLM 三種發法：[REMOVE:紅茶] 單發（整項蒸發）、
+    # REMOVE+ADD 重建（正確）、純 prose 無 tag（cart 沒動）。
+    # 前者回復快照改量（cart 事實資料不經 slot-strip）、後者對 text 點名的品項直接改量
+    keep_m = _QTY_KEEP_RE.search(text)
+    if keep_m:
+        keep_qty = _zh_qty_to_int(keep_m.group(1))
+        cart_now = session.get("cart", [])
+        if (
+            removed_ok
+            and removed_item_snapshot is not None
+            and removed_target_name
+            and not find_cart_item_id(cart_now, removed_target_name)
+        ):
+            restored = dict(removed_item_snapshot)
+            restored["quantity"] = keep_qty
+            cart_now.append(restored)
+            logger.info(
+                "[REMOVE keep-qty] 「N就好」誤全移除 → 回復 {} x{}",
+                removed_target_name,
+                keep_qty,
+            )
+        elif not removed_ok and not setqty_handled:
+            # 無 tag / tag 沒動到目標：text 點名且在車上的品項直接改量
+            mentioned = [i for i in cart_now if item_mentioned_in_text(i, text)]
+            if len(mentioned) == 1 and int(mentioned[0].get("quantity", 1) or 1) != keep_qty:
+                kq_result = _tool_registry.set_item_quantity(
+                    item_id=mentioned[0].get("item_id"), quantity=keep_qty
+                )
+                if kq_result.get("ok"):
+                    logger.info(
+                        "[keep-qty] 「N就好」無 tag → {} 改量 x{}",
+                        mentioned[0].get("item_id"),
+                        keep_qty,
+                    )
+                else:
+                    logger.warning("[keep-qty] 改量失敗: {}", kq_result.get("message"))
 
     # ── [QUERY:分類] 攔截 ──
     if "[QUERY" in full_text:
