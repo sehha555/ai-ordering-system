@@ -1,0 +1,153 @@
+# b11 批次（2026-07-13）— expected 取自修復後驗證 transcript
+- id: b11-01-polite
+  desc: 禮貌迂迴句
+  script:
+    - 不好意思 可以幫我弄一份高麗菜蛋餅嗎
+    - 麻煩再給我一杯無糖豆漿 中杯溫的
+    - 這樣就好了 謝謝 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 65
+    dine_type: dine-in
+    items:
+      - {name: 高麗菜蛋餅, qty: 1}
+      - {name: "無糖豆漿(中杯, 溫)", qty: 1}
+
+- id: b11-02-dine-change
+  desc: 結帳中改內用外帶（CK_PAY dine 改口）
+  script:
+    - 一個豬肉蛋漢堡 一杯中杯冰紅茶
+    - 結帳
+    - 內用
+    - 啊還是外帶好了
+    - 現金
+  expected:
+    total: 70
+    dine_type: take-out
+    items:
+      - {name: 豬肉蛋漢堡, qty: 1}
+      - {name: "精選紅茶(中杯, 冰)", qty: 1}
+
+- id: b11-03-keep-qty
+  desc: 減量「一杯就好」
+  script:
+    - 三杯中杯冰紅茶 兩個煎蛋吐司
+    - 紅茶一杯就好
+    - 結帳
+    - 外帶
+    - 刷卡
+  expected:
+    total: 70
+    dine_type: take-out
+    payment: line_pay
+    items:
+      - {name: 煎蛋吐司, qty: 2}
+      - {name: "精選紅茶(中杯, 冰)", qty: 1}
+
+- id: b11-04-combo-drink-swap
+  desc: 套餐追問中換飲料（b8-08 架構族）
+  known_fail: true
+  script:
+    - 一份套餐三
+    - 鮮奶茶換成紅茶可以嗎
+    - 冰的
+    - 好 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 80
+    dine_type: dine-in
+    items:
+      - {name: 套餐三, qty: 1}
+
+- id: b11-05-multi-custom
+  desc: 多重客製一句（tag 洩漏回歸點；客製計價 LLM 變異不斷言 total）
+  script:
+    - 一份原味蛋餅不要蔥多加辣
+    - 再一個荷包蛋要全熟
+    - 結帳 外帶
+    - 現金
+  expected:
+    dine_type: take-out
+    items:
+      - {name: 原味蛋餅, qty: 1}
+      - {name: 荷包蛋, qty: 1}
+
+- id: b11-06-same-again
+  desc: 跟剛剛一樣再一份（品項指代）
+  script:
+    - 一個蜜汁燒肉飯糰 白米
+    - 跟剛剛一樣的再來一份
+    - 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 140
+    dine_type: dine-in
+    items:
+      - {name: 蜜汁燒肉, qty: 2}
+
+- id: b11-07-sugar-negotiation
+  desc: 半糖談判後點單（b8-08 架構族：豆漿蒸發）
+  known_fail: true
+  script:
+    - 一杯大杯冰豆漿 半糖
+    - 那就微糖
+    - 好吧 那有糖的
+    - 再一個薯餅蛋吐司
+    - 結帳 外帶 現金
+  expected:
+    total: 70
+    dine_type: take-out
+    items:
+      - {name: "有糖豆漿(大杯", qty: 1}
+      - {name: 薯餅蛋吐司, qty: 1}
+
+- id: b11-08-inline-correction
+  desc: 同句點餐即時反悔改口
+  script:
+    - 一個甜飯糰 啊不對 是半甜鹹飯糰
+    - 混米
+    - 再一杯紅茶 中杯 去冰
+    - 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 65
+    dine_type: dine-in
+    items:
+      - {name: 半甜鹹, qty: 1}
+      - {name: "精選紅茶(中杯, 溫)", qty: 1}
+
+- id: b11-09-nonexistent-item
+  desc: 魯蛋腦補（known：LLM 對映 QQ滷蛋飯糰入車）
+  known_fail: true
+  script:
+    - 一個起士蛋餅 一杯中杯冰奶茶
+    - 再一個魯蛋
+    - 結帳
+    - 外帶
+    - 現金
+  expected:
+    total: 75
+    dine_type: take-out
+    items:
+      - {name: 起司蛋餅, qty: 1}
+      - {name: "純鮮奶茶(中杯, 冰)", qty: 1}
+
+- id: b11-10-time-question
+  desc: 中途問製作時間+續點
+  script:
+    - 一份蘑菇鐵板麵 烏龍麵
+    - 大概要等多久
+    - 再一杯冰的中杯米漿+豆漿
+    - 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 85
+    dine_type: dine-in
+    items:
+      - {name: 蘑菇鐵板麵(烏龍), qty: 1}
+      - {name: 米漿+豆漿, qty: 1}

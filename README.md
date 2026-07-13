@@ -68,6 +68,20 @@ uv run python -m benchmarks.run_benchmark --type asr|tts|e2e|all
 uv run python -m benchmarks.run_benchmark --type llm --model qwen3-30b-a3b
 ```
 
+## E2E 模擬點餐回歸套件
+
+量測整條 pipeline 的出單正確率（LLM tag + 後端防護 + 結帳狀態機），
+與 unified benchmark（單測 LLM 行為）互補。需要 backend :8001 + llama-server :1234 在跑。
+
+```bash
+uv run python -m benchmarks.e2e_sim.run_e2e              # 全部場景跑 1 次
+uv run python -m benchmarks.e2e_sim.run_e2e --repeat 3   # 穩定度模式（LLM 有變異）
+uv run python -m benchmarks.e2e_sim.run_e2e --filter b12 # 只跑 b12 系列
+```
+
+場景檔在 `benchmarks/e2e_sim/scenarios/*.yaml`（script 多輪腳本 + expected 品項/總價/內用外帶）；
+`known_fail: true` 標記追蹤中的架構級問題（通過代表有進展，不計入主套件通過率）。
+
 ## 專案結構
 
 ```

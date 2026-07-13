@@ -1,0 +1,164 @@
+# b9 批次（2026-07-13）— expected 取自修復後驗證 transcript
+- id: b9-01-family
+  desc: 家庭大單多品項帶量
+  script:
+    - 兩個培根蛋餅 一個起司蛋吐司 三杯中杯冰紅茶
+    - 好了 幫我結帳
+    - 內用
+    - 現金
+  expected:
+    total: 190
+    dine_type: dine-in
+    items:
+      - {name: 培根蛋餅, qty: 2}
+      - {name: 起司蛋吐司, qty: 1}
+      - {name: "精選紅茶(中杯, 冰)", qty: 3}
+
+- id: b9-02-swap-item
+  desc: 中途換品項+改數量
+  script:
+    - 我要一個鮪魚蛋餅和一杯大杯溫豆漿
+    - 有糖的
+    - 欸不好意思 蛋餅換成鮪魚蛋吐司好了
+    - 再幫我把豆漿改成兩杯
+    - 結帳
+    - 外帶
+    - 刷卡
+  expected:
+    total: 105
+    dine_type: take-out
+    payment: line_pay
+    items:
+      - {name: "有糖豆漿(大杯, 溫)", qty: 2}
+      - {name: 鮪魚蛋吐司, qty: 1}
+
+- id: b9-03-price-query-egg
+  desc: 詢價客+加荷包蛋（known 荷包蛋進客製待確認）
+  known_fail: true
+  script:
+    - 請問起司蛋餅多少錢
+    - 那火腿蛋餅呢
+    - 好 那我要一個火腿蛋餅 加一顆荷包蛋
+    - 就這樣 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 55
+    dine_type: dine-in
+    items:
+      - {name: 火腿蛋餅, qty: 1}
+      - {name: 荷包蛋, qty: 1}
+
+- id: b9-04-combo6
+  desc: 套餐六多槽追問鏈（b8-08 架構族）
+  known_fail: true
+  script:
+    - 我要一個套餐六
+    - 黑椒 油麵
+    - 紅茶去冰
+    - 肉片不要太鹹可以嗎
+    - 結帳 外帶
+    - 現金
+  expected:
+    total: 110
+    dine_type: take-out
+    items:
+      - {name: 套餐六, qty: 1}
+
+- id: b9-05-hesitant
+  desc: 猶豫反悔客 negate+換品項
+  script:
+    - 我要一個甜飯糰
+    - 紫米
+    - 等等 甜飯糰不要好了 換半甜鹹飯糰
+    - 一樣紫米
+    - 再一杯中杯熱豆漿 無糖的
+    - 好 這樣就好 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 65
+    dine_type: dine-in
+    items:
+      - {name: 半甜鹹, qty: 1}
+      - {name: "無糖豆漿(中杯, 溫)", qty: 1}
+
+- id: b9-06-kids-meal
+  desc: 兒童餐+中途問總價
+  script:
+    - 一份兒童餐 果醬吐司要草莓的
+    - 紅茶溫的
+    - 再加一顆荷包蛋
+    - 現在多少錢
+    - 外帶 結帳
+    - 刷卡
+  expected:
+    total: 100
+    dine_type: take-out
+    items:
+      - {name: "兒童餐(草莓, 溫)", qty: 1}
+      - {name: 荷包蛋, qty: 1}
+
+- id: b9-07-colloquial
+  desc: 俗稱客 大冰紅/蘿蔔糕加蛋/總匯（known 總匯 LLM 反問）
+  known_fail: true
+  script:
+    - 老闆 一杯大冰紅 一份蘿蔔糕加蛋
+    - 再一個總匯
+    - 好 結帳
+    - 內用
+    - 現金
+  expected:
+    dine_type: dine-in
+    price_pending: true
+    items:
+      - {name: "精選紅茶(大杯, 冰)", qty: 1}
+      - {name: 港式蘿蔔糕, qty: 1}
+      - {name: 醬燒肉片總匯吐司, qty: 1}
+
+- id: b9-08-qty-mix
+  desc: 數量修改混合 SET_QTY vs 增量
+  script:
+    - 三個鮮肉包
+    - 改成五個好了
+    - 再加兩個豆沙包
+    - 豆沙包再一個
+    - 所以現在總共多少錢
+    - 結帳 外帶 現金
+  expected:
+    total: 120
+    dine_type: take-out
+    items:
+      - {name: 鮮肉包, qty: 5}
+      - {name: 豆沙包, qty: 3}
+
+- id: b9-09-inquiry-then-order
+  desc: 飲料查詢後追加
+  script:
+    - 你們飲料有什麼
+    - 給我一杯燕麥薏仁牛奶 中杯冰的
+    - 再一個煎蛋吐司
+    - 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 65
+    dine_type: dine-in
+    items:
+      - {name: "燕麥薏仁牛奶(中杯, 冰)", qty: 1}
+      - {name: 煎蛋吐司, qty: 1}
+
+- id: b9-10-full-spec
+  desc: 規格全給一次進車+就這樣收單
+  script:
+    - 一份果醬吐司花生厚片 一個芋頭饅頭 一杯大杯溫的無糖豆漿
+    - 就這樣
+    - 內用
+    - 現金
+  expected:
+    total: 70
+    dine_type: dine-in
+    items:
+      - {name: 果醬吐司(花生/厚片), qty: 1}
+      - {name: 芋頭饅頭, qty: 1}
+      - {name: "無糖豆漿(大杯, 溫)", qty: 1}
