@@ -70,6 +70,35 @@ _CARRIER_CATEGORY_MAP: Dict[str, str] = _reg_cfg["carrier_category_map"]
 # 果醬吐司名稱解析（預編譯，避免 add_item 內部每次 import + compile）
 _JAM_TOAST_RE = re.compile(r"果醬吐司\(([^/]+)/([^)]+)\)")
 
+# 糖度客製 → 目標變體前綴（來源前綴, 目標前綴）
+_SUGAR_FLIP: Dict[str, tuple] = {
+    "無糖": ("有糖", "無糖"),
+    "有糖": ("無糖", "有糖"),
+    "去糖": ("有糖", "無糖"),
+}
+_CUST_SPLIT_RE = re.compile(r"[,，、\s]+")
+
+
+def _flip_sugar_variant(name: str, customization: str) -> Optional[tuple]:
+    """客製含糖度詞且對應糖度變體品項存在 → 回 (新品項名, 剩餘客製)，否則 None。
+
+    「豆漿」預設解到有糖豆漿，客人補「無糖的」時 LLM 慣性發
+    [ADD:有糖豆漿|customization=無糖] → 品項與客製矛盾，翻轉為無糖豆漿。
+    無對應變體的飲品（紅茶+無糖）不翻轉，保留客製給廚房。
+    """
+    tokens = [t for t in _CUST_SPLIT_RE.split(customization) if t]
+    for token in tokens:
+        flip = _SUGAR_FLIP.get(token)
+        if not flip:
+            continue
+        src, dst = flip
+        candidate = name.replace(src, dst) if src in name else f"{dst}{name}"
+        if candidate != name and f"{candidate}(中)" in _MENU_INDEX:
+            remaining = ",".join(t for t in tokens if t != token)
+            return candidate, (remaining or None)
+    return None
+
+
 # 鐵板麵別名（口味 + 麵體）— 從 aliases_iron_noodle.json 載入
 _iron_noodle_cfg = load_json_config("aliases_iron_noodle.json")
 _IRON_NOODLE_FLAVOR_CANON: Dict[str, str] = _iron_noodle_cfg["flavor_aliases"]
@@ -116,6 +145,10 @@ def _build_menu_index() -> Dict[str, Dict[str, Any]]:
 
 # 模組載入時建立一次索引（避免每次 add_item 讀檔）
 _MENU_INDEX: Dict[str, Dict[str, Any]] = _build_menu_index()
+
+# 公開：菜單品名基底集合（去規格括號）— voice_router 總價查詢規則用來判斷
+# 「句中有沒有點名具體品項」（CONCRETE_ITEM_WORDS 靜態表涵蓋不了全菜單）
+MENU_BASE_NAMES: frozenset = frozenset(n.split("(")[0].strip() for n in _MENU_INDEX)
 
 
 def _build_pinyin_index() -> Dict[str, str]:
@@ -384,6 +417,15 @@ class ToolRegistry:
         category = item_info["category"]
         resolved_name = item_info["resolved_name"]
 
+        # 糖度矛盾翻轉：「豆漿」預設有糖，但客人說「無糖的」時 LLM 慣性發
+        # [ADD:有糖豆漿|customization=無糖] → 品項與客製矛盾（廚房可能做錯）。
+        # 客製含糖度詞且對應變體存在 → 翻轉品項、去掉該客製。
+        # 必須在售完攔截前：有糖豆漿售完但無糖有貨時，翻轉後不該被誤擋
+        if category == "飲品" and customization:
+            flipped = _flip_sugar_variant(resolved_name, customization)
+            if flipped:
+                resolved_name, customization = flipped
+
         # ── 售完硬攔截：命中今日售完清單就擋下，不准進購物車 ──
         blocked = _sold_out_block(resolved_name)
         if blocked:
@@ -470,12 +512,19 @@ class ToolRegistry:
 
         # ── 果醬吐司 ──
         if category == "果醬吐司":
+            # 參數優先：裸「果醬吐司」fuzzy 會解到任意變體（草莓/薄片），
+            # resolved_name 的 regex 抽取不能覆蓋 LLM 明給的 flavor/size；
+            # 且只在原始 name 真帶該資訊時採用（別名/全名路徑），
+            # fuzzy 猜的變體不算數 → 缺口味照追問，不腦補草莓
             jam_flavor = flavor
-            jam_size = size or "薄片"
+            jam_size = size
             m = _JAM_TOAST_RE.search(resolved_name)
             if m:
-                jam_flavor = m.group(1)
-                jam_size = m.group(2)
+                if not jam_flavor and m.group(1) in name:
+                    jam_flavor = m.group(1)
+                if not jam_size and m.group(2) in name:
+                    jam_size = m.group(2)
+            jam_size = jam_size or "薄片"
             if not jam_flavor:
                 return {
                     "ok": False,
