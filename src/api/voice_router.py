@@ -145,6 +145,10 @@ class StreamingDMAdapter:
         # ── 規則層攔截（pre-LLM）──
         cart = session.get("cart", [])
 
+        # pending_offer 先 pop（單輪有效）：放最前避免其他規則 shortcircuit
+        # 時殘留跨輪
+        pending_offer = session.pop("pending_offer", None)
+
         # 1. 空購物車 + 修改意圖
         if not cart and any(kw in text for kw in _EMPTY_CART_MOD_KEYWORDS):
             async for evt in shortcircuit_reply(
@@ -160,8 +164,7 @@ class StreamingDMAdapter:
 
         # 2.5 pending_offer 指代橋接：上一輪存在性查詢答「有喔，要來一份嗎？」，
         #     本輪純肯定接單句（「來一份」「好」）無品項名 → 改寫成完整點單
-        #     交 LLM 走正常 ADD 流程（槽位追問全復用）。單輪有效，用過即棄
-        pending_offer = session.pop("pending_offer", None)
+        #     交 LLM 走正常 ADD 流程（槽位追問全復用）
         if pending_offer:
             m_affirm = _OFFER_AFFIRM_RE.match(text.strip())
             if m_affirm and text.strip():
@@ -219,12 +222,17 @@ class StreamingDMAdapter:
             candidate = m_exist.group(1)
             info = _tool_registry._resolve_item_name(candidate)
             if info is not None:
+                from src.tools.menu import menu_state_service
+
                 offered = info["resolved_name"]
-                if info.get("category") == "飲品":
-                    reply = f"有喔～{offered}，要來一杯嗎？"
+                if offered in menu_state_service.get_effective_sold_out():
+                    reply = f"{offered}今天賣完了，要不要換別的？"
                 else:
-                    reply = f"有喔～{offered}一份{info['price']}元，要來一份嗎？"
-                session["pending_offer"] = offered
+                    if info.get("category") == "飲品":
+                        reply = f"有喔～{offered}，要來一杯嗎？"
+                    else:
+                        reply = f"有喔～{offered}一份{info['price']}元，要來一份嗎？"
+                    session["pending_offer"] = offered
                 async for evt in shortcircuit_reply(
                     text, reply, self._session_id, session, _session_store, cart
                 ):

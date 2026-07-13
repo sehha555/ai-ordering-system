@@ -238,3 +238,18 @@ class TestJamTagNameVariants:
         kwargs = mock_registry.add_item.call_args_list[0].kwargs
         assert kwargs["flavor"] == "巧克力"
         assert kwargs["size"] == "厚片"
+
+
+class TestExistenceQuerySoldOut:
+    """PR #29 review 觀察 1：存在性查詢須檢查售完"""
+
+    def test_sold_out_item_reported(self):
+        with patch(
+            "src.tools.menu.menu_state_service.get_effective_sold_out",
+            return_value={"港式蘿蔔糕"},
+        ):
+            reply, llm_reached, session, _ = TestExistenceQuery._run("有沒有蘿蔔糕")
+        assert "賣完" in reply
+        assert "有喔" not in reply
+        assert not llm_reached
+        assert "pending_offer" not in session  # 售完不留 offer
