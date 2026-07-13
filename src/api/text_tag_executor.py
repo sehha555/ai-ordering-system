@@ -201,8 +201,17 @@ _SLOT_CORRECTION = {
 }
 
 
-def _slot_value_from_text(slot: str, text: str) -> Optional[str]:
-    """text 恰好肯定語境佐證該槽單一候選值 → 回該值；多值/無值/否定 → None"""
+# flavor 值域依品項而異：鐵板麵套餐 vs 果醬口味套餐（兒童餐/套餐B）
+_IRON_FLAVOR_COMBOS = ("套餐六", "套餐七")
+_JAM_FLAVOR_COMBOS = ("兒童餐", "套餐B")
+
+
+def _slot_value_from_text(slot: str, text: str, item_name: Optional[str] = None) -> Optional[str]:
+    """text 恰好肯定語境佐證該槽單一候選值 → 回該值；多值/無值/否定 → None。
+
+    flavor 值域依品項而異，已知 item_name 時只掃對應表 —
+    防跨品項誤判（套餐六 attempt 遇「花生」不可判成果醬口味）
+    """
     mapping = _SLOT_CORRECTION.get(slot)
     if mapping:
         hits = [v for v, m in mapping.items() if _frag_affirmed(m, text)]
@@ -210,15 +219,21 @@ def _slot_value_from_text(slot: str, text: str) -> Optional[str]:
     if slot == "flavor":
         from src.dm.tool_registry import _IRON_NOODLE_FLAVOR_CANON  # noqa: PLC0415
 
-        # 鐵板麵四口味（套餐六/七）+ 果醬口味（兒童餐/套餐B — LLM 會把
-        # 口味塞進 customization 而非 flavor 參數，b12-03 兒童餐蒸發）；
-        # 兩表合掃恰一命中才修，歧義回 None
-        canon_hits = {
+        iron_hits = {
             canon
             for alias, canon in _IRON_NOODLE_FLAVOR_CANON.items()
             if _frag_affirmed(alias, text)
         }
-        canon_hits |= {f for f in _JAM_FLAVORS if _frag_affirmed(f, text)}
+        jam_hits = {f for f in _JAM_FLAVORS if _frag_affirmed(f, text)}
+        if item_name:
+            if item_name in _IRON_FLAVOR_COMBOS or "鐵板麵" in item_name:
+                canon_hits = iron_hits
+            elif item_name in _JAM_FLAVOR_COMBOS or "果醬" in item_name:
+                canon_hits = jam_hits
+            else:
+                canon_hits = iron_hits | jam_hits
+        else:
+            canon_hits = iron_hits | jam_hits
         return canon_hits.pop() if len(canon_hits) == 1 else None
     return None
 
@@ -440,7 +455,10 @@ async def execute_tags(
     # LLM 表達「換大杯/改溫的」慣性發 SET_QTY 帶 size/temp（不照 demo 的
     # REMOVE+ADD），attrs 走 set_item_attrs；qty 沒給就不動數量
     sq_result: dict = {"ok": False, "message": "已修改"}
-    setqty_handled = "[SET_QTY:" in full_text  # keep-qty 兜底判斷用（區塊會 strip tag）
+    # 改量兜底判斷用（區塊會 strip tag）：只有「發了且成功」才算 handled —
+    # LLM 會發 [SET_QTY:載體|qty=5] 這種對不到品項的 tag（b9-08），
+    # 失敗輪要放行「改成N個」兜底接手
+    setqty_handled = "[SET_QTY:" in full_text
     if "[SET_QTY:" in full_text:
         for sqm in SET_QTY_RE.finditer(full_text):
             sq_target, sq_qty, sq_attrs = parse_set_qty_tag(sqm.group(1).strip())
@@ -463,6 +481,7 @@ async def execute_tags(
         if not full_text:
             full_text = f"{sq_result.get('message', '已修改')}～還需要什麼？"
         patch_last_assistant(session["llm_history"], full_text)
+        setqty_handled = bool(sq_result.get("ok"))
 
     # ── 取消意圖兜底 ──
     # 模型漏發 [REMOVE] tag、或發了但 tag 沒對到品項（移除失敗）時，
@@ -536,7 +555,7 @@ async def execute_tags(
                         # 錯值先試 text 修正（封閉值域）：「黑椒 油麵」LLM 腦補
                         # noodle=烏龍麵 → 若只 strip，text 明說的油麵跟著蒸發、
                         # provided 記不到 → 補槽死循環（b9-04 套餐六）
-                        corrected = _slot_value_from_text(slot, text)
+                        corrected = _slot_value_from_text(slot, text, item_name=item_name)
                         if corrected:
                             logger.info(
                                 "[ADD retry-fix] 補槽輪 {}={} 無佐證，text 修正為 {}",
@@ -678,7 +697,12 @@ async def execute_tags(
             else:
                 missing = set(prev_attempt.get("missing", []))
                 merged = dict(prev_attempt.get("provided", {}))
+                # 只從「目標就是 attempt 品項」的 ADD 撈參數 — 跨品項裸欄位
+                # 比對會把不相干新品項的屬性外洩進 attempt（「我還要一杯冰
+                # 紅茶」的 temp=冰 補進套餐六 → 客人沒選過的溫度出單）
                 for ak in add_kwargs_list:
+                    if ak.get("name") != prev_name:
+                        continue
                     for f in missing.copy():
                         if ak.get(f):
                             merged[f] = ak[f]
@@ -917,15 +941,20 @@ async def execute_tags(
     # 否定守衛），全齊 retry add_item；有斬獲但未齊 → 更新 attempt 累積
     if session.get("last_failed_attempt"):
         nt_attempt = session["last_failed_attempt"]
+        # 相關性閘門：加點意圖句（「我還要一杯冰紅茶」）是在點新品項不是
+        # 答追問 → 不掃，防不相干句的字被撿去補槽（紅茶的冰補進套餐 temp）。
+        # 純補答句（「油麵」「紅茶去冰」答套餐附飲溫度）無加點詞照掃。
+        # 寧可多問一輪，不錯單
         nt_missing = list(nt_attempt.get("missing", []))
         nt_provided = dict(nt_attempt.get("provided", {}))
         nt_progressed = False
-        for f in list(nt_missing):
-            tv = _slot_value_from_text(f, text)
-            if tv:
-                nt_provided[f] = tv
-                nt_missing.remove(f)
-                nt_progressed = True
+        if not _has_add_more_intent(text):
+            for f in list(nt_missing):
+                tv = _slot_value_from_text(f, text, item_name=nt_attempt["item_name"])
+                if tv:
+                    nt_provided[f] = tv
+                    nt_missing.remove(f)
+                    nt_progressed = True
         if nt_progressed:
             if not nt_missing:
                 nt_result = _tool_registry.add_item(name=nt_attempt["item_name"], **nt_provided)
@@ -939,6 +968,28 @@ async def execute_tags(
                     if not full_text.strip():
                         full_text = f"{nt_result.get('message', '已加入')}～還需要什麼？"
                         patch_last_assistant(session["llm_history"], full_text)
+                else:
+                    # retry 失敗不可靜默：寫回進度（已答槽不丟）+ 補追問，
+                    # 否則客人答了卻沒回饋、下輪重問 → 死路
+                    session["last_failed_attempt"] = {
+                        "item_name": nt_attempt["item_name"],
+                        "missing": nt_result.get("missing") or nt_missing or ["flavor"],
+                        "provided": {
+                            k: v
+                            for k, v in nt_provided.items()
+                            if k not in (nt_result.get("missing") or [])
+                        },
+                        "message": nt_result.get("message", nt_attempt.get("message", "")),
+                    }
+                    followup_text = nt_result.get("message", "") or followup_text
+                    if followup_text and followup_text not in full_text:
+                        full_text = f"{full_text}，{followup_text}" if full_text else followup_text
+                        patch_last_assistant(session["llm_history"], full_text)
+                    logger.warning(
+                        "[ADD no-tag 補槽] retry 失敗: {} → {}",
+                        nt_provided,
+                        nt_result.get("message"),
+                    )
             else:
                 nt_attempt["provided"] = nt_provided
                 nt_attempt["missing"] = nt_missing
