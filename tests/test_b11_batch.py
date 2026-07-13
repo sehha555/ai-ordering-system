@@ -164,3 +164,25 @@ class TestCkPayDineChange:
         ):
             _ = [e async for e in checkout_step("外帶 現金", "s1", session)]
         reg.finalize_order.assert_called_once_with(dine_type="take-out", payment_method="cash")
+
+    @pytest.mark.asyncio
+    async def test_dine_word_with_order_intent_falls_through(self):
+        # PR #30 review 問題 1：「外帶 再加一個蛋餅」加點意圖優先，
+        # 必須 exit_checkout fallthrough 給 LLM，不可被改口 acknowledge 吞掉
+        from src.api.checkout_handler import checkout_step
+
+        store = MagicMock()
+        reg = MagicMock()
+        session = {
+            "checkout_status": CK_PAY,
+            "checkout_dine_type": "dine-in",
+            "cart": [{"itemtype": "snack", "snack": "薯餅(1片)", "quantity": 1}],
+            "llm_history": [],
+        }
+        with (
+            patch("src.services.container.tool_registry", reg),
+            patch("src.services.container.session_store", store),
+        ):
+            events = [e async for e in checkout_step("外帶 再加一個蛋餅", "s1", session)]
+        assert events == []  # 未 yield = fallthrough 給 LLM
+        assert "checkout_status" not in session  # 已退出結帳狀態

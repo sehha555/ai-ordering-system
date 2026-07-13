@@ -806,14 +806,17 @@ async def execute_tags(
             # 無 tag / tag 沒動到目標：text 點名且在車上的品項直接改量
             mentioned = [i for i in cart_now if item_mentioned_in_text(i, text)]
             if len(mentioned) == 1 and int(mentioned[0].get("quantity", 1) or 1) != keep_qty:
-                _tool_registry.set_item_quantity(
+                kq_result = _tool_registry.set_item_quantity(
                     item_id=mentioned[0].get("item_id"), quantity=keep_qty
                 )
-                logger.info(
-                    "[keep-qty] 「N就好」無 tag → {} 改量 x{}",
-                    mentioned[0].get("item_id"),
-                    keep_qty,
-                )
+                if kq_result.get("ok"):
+                    logger.info(
+                        "[keep-qty] 「N就好」無 tag → {} 改量 x{}",
+                        mentioned[0].get("item_id"),
+                        keep_qty,
+                    )
+                else:
+                    logger.warning("[keep-qty] 改量失敗: {}", kq_result.get("message"))
 
     # ── [QUERY:分類] 攔截 ──
     if "[QUERY" in full_text:
