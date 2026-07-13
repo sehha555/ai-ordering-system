@@ -165,7 +165,9 @@ class StreamingDMAdapter:
             return
 
         # 4. 總價查詢兜底：「現在總共多少錢」LLM 會幻覺（空車謊言/載體謊言），
-        #    後端直接報 cart total。有品項詞（詢單品價）或結帳詞（推進結帳）不攔
+        #    後端直接報 cart total。有品項詞（詢單品價，靜態類別詞 + 全菜單品名
+        #    雙閘門）或結帳詞（推進結帳）不攔
+        from src.dm.tool_registry import MENU_BASE_NAMES
         from src.tools.order_router import CHECKOUT_KEYWORDS
 
         if (
@@ -173,6 +175,7 @@ class StreamingDMAdapter:
             and any(w in text for w in _TOTAL_QUERY_WORDS)
             and not any(w in text for w in CONCRETE_ITEM_WORDS)
             and not any(w in text for w in CHECKOUT_KEYWORDS)
+            and not any(n in text for n in MENU_BASE_NAMES)
         ):
             total = cart_manager.calculate_cart_total(cart)
             if any(cart_manager.is_item_price_pending(i) for i in cart):

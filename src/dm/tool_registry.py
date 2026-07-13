@@ -146,6 +146,10 @@ def _build_menu_index() -> Dict[str, Dict[str, Any]]:
 # 模組載入時建立一次索引（避免每次 add_item 讀檔）
 _MENU_INDEX: Dict[str, Dict[str, Any]] = _build_menu_index()
 
+# 公開：菜單品名基底集合（去規格括號）— voice_router 總價查詢規則用來判斷
+# 「句中有沒有點名具體品項」（CONCRETE_ITEM_WORDS 靜態表涵蓋不了全菜單）
+MENU_BASE_NAMES: frozenset = frozenset(n.split("(")[0].strip() for n in _MENU_INDEX)
+
 
 def _build_pinyin_index() -> Dict[str, str]:
     """無聲調拼音 → 菜單 base name（去括號規格）。158 品項已驗證零拼音碰撞。"""
@@ -413,6 +417,15 @@ class ToolRegistry:
         category = item_info["category"]
         resolved_name = item_info["resolved_name"]
 
+        # 糖度矛盾翻轉：「豆漿」預設有糖，但客人說「無糖的」時 LLM 慣性發
+        # [ADD:有糖豆漿|customization=無糖] → 品項與客製矛盾（廚房可能做錯）。
+        # 客製含糖度詞且對應變體存在 → 翻轉品項、去掉該客製。
+        # 必須在售完攔截前：有糖豆漿售完但無糖有貨時，翻轉後不該被誤擋
+        if category == "飲品" and customization:
+            flipped = _flip_sugar_variant(resolved_name, customization)
+            if flipped:
+                resolved_name, customization = flipped
+
         # ── 售完硬攔截：命中今日售完清單就擋下，不准進購物車 ──
         blocked = _sold_out_block(resolved_name)
         if blocked:
@@ -437,13 +450,6 @@ class ToolRegistry:
 
         # ── 飲品（先問溫度，答了再問杯型）──
         if category == "飲品":
-            # 糖度矛盾翻轉：「豆漿」預設有糖，但客人說「無糖的」時 LLM 慣性發
-            # [ADD:有糖豆漿|customization=無糖] → 品項與客製矛盾（廚房可能做錯）。
-            # 客製含糖度詞且對應變體存在 → 翻轉品項、去掉該客製
-            if customization:
-                flipped = _flip_sugar_variant(resolved_name, customization)
-                if flipped:
-                    resolved_name, customization = flipped
             if not temp:
                 return {"ok": False, "missing": ["temp"], "message": "冰的還是溫的？"}
             if not size:

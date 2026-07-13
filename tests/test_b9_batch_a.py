@@ -177,3 +177,33 @@ class TestIcedRedTeaNormalize:
         from src.tools.order_router import normalize_text
 
         assert normalize_text("中冰紅謝謝") == "中杯冰紅茶謝謝"
+
+
+class TestReviewFindings:
+    """PR #28 review 發現的修正"""
+
+    def test_flip_before_sold_out_block(self, registry):
+        # 有糖豆漿售完但無糖有貨 → [ADD:有糖豆漿|customization=無糖] 翻轉後不該被誤擋
+        from unittest.mock import patch
+
+        with patch(
+            "src.dm.tool_registry.menu_state_service.get_effective_sold_out",
+            return_value={"有糖豆漿(中)", "有糖豆漿(大)", "有糖豆漿"},
+        ):
+            r = registry.add_item(name="有糖豆漿", size="中杯", temp="溫", customization="無糖")
+        assert r["ok"]
+        item = registry.get_current_session()["cart"][0]
+        assert item["drink"] == "無糖豆漿"
+
+    def test_menu_name_price_query_not_hijacked(self):
+        # 「十穀漿多少錢」不在 CONCRETE_ITEM_WORDS，但是菜單品名 → 不可攔截
+        cart = [{"itemtype": "snack", "snack": "薯餅(1片)", "quantity": 1}]
+        reply, llm_reached = TestTotalQueryShortcircuit._run("十穀漿多少錢", cart)
+        assert "目前共" not in reply
+        assert llm_reached
+
+    def test_full_drink_name_normalize_no_dup(self):
+        # 「大冰紅茶」完整品名不可變成「大杯冰紅茶茶」
+        from src.tools.order_router import normalize_text
+
+        assert normalize_text("一杯大冰紅茶謝謝") == "一杯大杯冰紅茶謝謝"
