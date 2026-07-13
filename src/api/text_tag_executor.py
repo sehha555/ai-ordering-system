@@ -66,6 +66,14 @@ _EVIDENCED_SLOTS = (*_SLOT_TEXT_MARKERS, "flavor")
 # 開放型追問「什麼口味」以「口味」一詞判斷，見 _prose_asks_slot）
 _FLAVOR_OPTION_MARKERS = ("黑椒", "蘑菇", "義大利", "咖哩")
 
+# 果醬吐司封閉值域（text 佐證修正用）：「再一份花生薄片」cart 有巧克力厚片時，
+# LLM 慣性把「再一份」解讀成同款+1、複製前品項 flavor/size（b10-06）。
+# tag 名「果醬吐司」不在 text（text 說的是「花生薄片」）→ slot-strip 的
+# context 輪豁免放行腦補值。口味與厚薄是封閉值域：text 恰好點名單一值
+# 且與 tag 不符 → 以 text 為準
+_JAM_FLAVORS = ("草莓", "花生", "蒜香", "奶酥", "巧克力")
+_JAM_SIZES = ("厚片", "薄片")
+
 
 def _name_in_text(name: str, text: str) -> bool:
     """品項名（或其 2+ 字片段、套餐俗稱）是否在 user text 被點名。
@@ -483,6 +491,32 @@ async def execute_tags(
                     kwargs["customization"],
                 )
                 kwargs.pop("customization")
+            # ── 果醬吐司 text 佐證修正（封閉值域）──
+            # text 恰好點名單一口味/厚薄且與 tag 不符 → 以 text 為準；
+            # text 含多值（「花生厚片換巧克力」）語意模糊不動。
+            # 觸發也涵蓋「花生吐司/花生厚片」型 tag 名（LLM 三種發法都見過），
+            # 口味詞+吐司/厚薄詞判定 jam 品項（花生糙米漿無吐司詞不誤觸）
+            is_jam_tag = "果醬吐司" in item_name or (
+                any(f in item_name for f in _JAM_FLAVORS)
+                and any(k in item_name for k in ("吐司", "厚片", "薄片"))
+            )
+            if is_jam_tag:
+                text_flavors = [f for f in _JAM_FLAVORS if f in text]
+                if len(text_flavors) == 1 and kwargs.get("flavor") != text_flavors[0]:
+                    logger.info(
+                        "[ADD jam-fix] flavor {}→{}（text 佐證）",
+                        kwargs.get("flavor"),
+                        text_flavors[0],
+                    )
+                    kwargs["flavor"] = text_flavors[0]
+                text_sizes = [s for s in _JAM_SIZES if s in text]
+                if len(text_sizes) == 1 and kwargs.get("size") != text_sizes[0]:
+                    logger.info(
+                        "[ADD jam-fix] size {}→{}（text 佐證）",
+                        kwargs.get("size"),
+                        text_sizes[0],
+                    )
+                    kwargs["size"] = text_sizes[0]
             # ── 換杯型/屬性的 REMOVE+ADD 繼承 ──
             # 「三杯紅茶換大杯」LLM 走 demo 的 REMOVE+ADD：REMOVE 殺掉 x3、
             # ADD 重建 x1，數量與沒複述的屬性（temp）蒸發。同輪 REMOVE 了

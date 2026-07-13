@@ -4,6 +4,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 import asyncio
 import json
+import re
+
 from loguru import logger
 
 from src.services.asr_postprocess import postprocess
@@ -29,6 +31,17 @@ _DRINK_INQUIRY_PATTERNS = [
     "飲品有什麼",
     "有什麼喝的",
 ]
+# 存在性查詢：「你們有賣咖啡嗎」「有沒有蘿蔔糕」— LLM 對品項存在性會謊報
+# （菜單有純鮮奶咖啡卻答「沒有賣咖啡」，b10-02）。抽出品項詞交 resolver 驗證，
+# 命中才攔截直答；解不了（廁所/聊天詞）fallthrough 給 LLM
+_EXISTENCE_QUERY_RE = re.compile(
+    r"^(?:請問)?(?:你們|老闆)?(?:有賣|有沒有|有)([一-鿿A-Za-z0-9]{1,10}?)(?:嗎|沒有)?[?？]?$"
+)
+# pending_offer 肯定句：「來一份」「好」「要一個」— 上一輪存在性查詢後的
+# 純肯定接單句（無品項名），改寫成完整點單交 LLM 走正常 ADD 流程
+_OFFER_AFFIRM_RE = re.compile(
+    r"^(?:好啊?|要|對|嗯)?[,，\s]*(?:來|給我|幫我來?)?([一兩二三四五六七八九十0-9]+)?(?:份|個|杯|顆|片)?(?:吧|好了|謝謝)?$"
+)
 
 router = APIRouter()
 
@@ -145,6 +158,17 @@ class StreamingDMAdapter:
 
         text = normalize_text(text)
 
+        # 2.5 pending_offer 指代橋接：上一輪存在性查詢答「有喔，要來一份嗎？」，
+        #     本輪純肯定接單句（「來一份」「好」）無品項名 → 改寫成完整點單
+        #     交 LLM 走正常 ADD 流程（槽位追問全復用）。單輪有效，用過即棄
+        pending_offer = session.pop("pending_offer", None)
+        if pending_offer:
+            m_affirm = _OFFER_AFFIRM_RE.match(text.strip())
+            if m_affirm and text.strip():
+                qty = m_affirm.group(1) or "一"
+                text = f"我要{qty}份{pending_offer}"
+                logger.info("[OFFER bridge] 肯定句改寫: '{}'", text)
+
         # 3. 飲料查詢強制攔截
         if any(pat in text for pat in _DRINK_INQUIRY_PATTERNS):
             menu_result = _tool_registry.query_menu(category="飲品")
@@ -187,6 +211,25 @@ class StreamingDMAdapter:
             ):
                 yield evt
             return
+
+        # 5. 存在性查詢攔截：「有賣咖啡嗎」抽品項詞交 resolver 驗證，命中直答
+        #    （LLM 會謊報「沒賣咖啡」，b10-02）；解不了 fallthrough 給 LLM
+        m_exist = _EXISTENCE_QUERY_RE.match(text.strip())
+        if m_exist:
+            candidate = m_exist.group(1)
+            info = _tool_registry._resolve_item_name(candidate)
+            if info is not None:
+                offered = info["resolved_name"]
+                if info.get("category") == "飲品":
+                    reply = f"有喔～{offered}，要來一杯嗎？"
+                else:
+                    reply = f"有喔～{offered}一份{info['price']}元，要來一份嗎？"
+                session["pending_offer"] = offered
+                async for evt in shortcircuit_reply(
+                    text, reply, self._session_id, session, _session_store, cart
+                ):
+                    yield evt
+                return
 
         logger.info(
             "[VOICE-STREAM] LLM 串流處理: '{}', 購物車: {} 項", text, len(session.get("cart", []))
