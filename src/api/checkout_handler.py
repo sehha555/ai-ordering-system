@@ -104,6 +104,10 @@ def finalize_and_reply(
     result = tool_registry.finalize_order(dine_type=dine, payment_method=pay)
     session.pop("checkout_status", None)
     session.pop("checkout_dine_type", None)
+    # 跨輪記憶單筆訂單有效：finalize 收斂點統一清除，防殘留污染同 session 下一筆
+    # （pending 客製單路徑不讀 pending_pay、同句 dine 路徑不讀 hint，都必須在此清）
+    session.pop("checkout_pending_pay", None)
+    session.pop("dine_type_hint", None)
     if not result.get("ok"):
         return result.get("message", "結帳失敗，請再試一次"), None
     order_number = result.get("order_number", "")
@@ -127,6 +131,7 @@ def exit_checkout(session_id: str, session: dict, session_store) -> None:
     """清除結帳狀態並回寫 session（反悔出口用）"""
     session.pop("checkout_status", None)
     session.pop("checkout_dine_type", None)
+    session.pop("checkout_pending_pay", None)
     session_store.set(session_id, session)
 
 
@@ -172,14 +177,20 @@ async def checkout_step(text: str, session_id: str, session: dict):
                     dine, "pending", session, _tool_registry
                 )
             else:
-                # 同句已帶付款方式（「外帶 現金」）→ 直接出單，不再多問一輪
-                pay = parse_payment(text)
+                # 同句已帶付款方式（「外帶 現金」）或前一輪先講了付款
+                # （「刷卡」→「內用」，b12-02）→ 直接出單，不再多問一輪
+                pay = parse_payment(text) or session.pop("checkout_pending_pay", None)
                 if pay:
                     reply, finalize_result = finalize_and_reply(dine, pay, session, _tool_registry)
                 else:
                     # 金額已在進結帳的確認句複述過，此處短問即可
                     session["checkout_status"] = CK_PAY
                     reply = ASK_PAYMENT
+        elif (pay := parse_payment(text)) is not None:
+            # 內用外帶還沒答就先講付款（「刷卡」）→ 記住，答完 dine 直接出單，
+            # 不能已讀不回卡在重問 dine（b12-02）
+            session["checkout_pending_pay"] = pay
+            reply = "好的～請問是內用還是外帶？"
         elif has_order_intent(text):
             # 反悔：intent 檢查必須在 parse 失敗後才執行
             exit_checkout(session_id, session, _session_store)
