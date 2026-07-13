@@ -1,0 +1,147 @@
+# b12 量測批（2026-07-13）— 代表性日常場景
+- id: b12-01-standard
+  desc: 標準單人早餐
+  script:
+    - 一份火腿蛋餅 一杯中杯溫奶茶
+    - 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 75
+    dine_type: dine-in
+    items:
+      - {name: 火腿蛋餅, qty: 1}
+      - {name: "純鮮奶茶(中杯, 溫)", qty: 1}
+
+- id: b12-02-office-worker
+  desc: 上班族快點外帶（dine hint + pending pay 回歸）
+  script:
+    - 起司蛋吐司加一杯大杯冰純鮮奶咖啡 外帶
+    - 結帳
+    - 刷卡
+  expected:
+    total: 85
+    dine_type: take-out
+    payment: line_pay
+    items:
+      - {name: 起司蛋吐司, qty: 1}
+      - {name: "純鮮奶咖啡(大杯, 冰)", qty: 1}
+
+- id: b12-03-parent-kid
+  desc: 媽媽帶小孩
+  script:
+    - 一份兒童餐 果醬吐司要花生的 紅茶冰的
+    - 我自己要一個鮪魚蛋饅頭 一杯中杯溫十穀漿
+    - 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 180
+    dine_type: dine-in
+    items:
+      - {name: "兒童餐(花生, 冰)", qty: 1}
+      - {name: 鮪魚蛋饅頭, qty: 1}
+      - {name: "十穀漿(中杯, 溫)", qty: 1}
+
+- id: b12-04-custom-polarity
+  desc: 客製極性（不要太辣）
+  script:
+    - 一個韓式泡菜飯糰 混米 不要太辣
+    - 一杯大杯冰無糖清香綠茶
+    - 結帳 外帶
+    - 現金
+  expected:
+    total: 90
+    dine_type: take-out
+    items:
+      - {name: 韓式泡菜, qty: 1}
+      - {name: "無糖清香綠茶(大杯, 冰)", qty: 1}
+
+- id: b12-05-mixed-drink
+  desc: 混合飲品大單（known：LLM 解析變異大）
+  known_fail: true
+  script:
+    - 兩個薯餅蛋漢堡 一份煎餃 三杯中杯冰紅茶+豆漿
+    - 結帳
+    - 外帶
+    - 現金
+  expected:
+    total: 200
+    dine_type: take-out
+    items:
+      - {name: 薯餅蛋漢堡, qty: 2}
+      - {name: 煎餃, qty: 1}
+      - {name: 紅茶+豆漿, qty: 3}
+
+- id: b12-06-menu-browse
+  desc: 饅頭清單詢問後點餐
+  script:
+    - 饅頭有哪些口味
+    - 一個黑糖饅頭和一個芋泥包
+    - 再一杯中杯溫米漿+豆漿
+    - 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 55
+    dine_type: dine-in
+    items:
+      - {name: 黑糖饅頭, qty: 1}
+      - {name: 芋泥包, qty: 1}
+      - {name: 米漿+豆漿, qty: 1}
+
+- id: b12-07-item-swap
+  desc: 換品項（swap-dedup 回歸）
+  script:
+    - 一個原味咔啦雞蛋漢堡
+    - 換成無骨雞排蛋堡好了
+    - 加一杯中杯冰黑糖純鮮奶茶
+    - 結帳 外帶 現金
+  expected:
+    total: 120
+    dine_type: take-out
+    items:
+      - {name: 無骨雞排蛋堡, qty: 1}
+      - {name: "黑糖純鮮奶茶(中杯, 冰)", qty: 1}
+
+- id: b12-08-combo5
+  desc: 套餐五多槽追問（b8-08 架構族）
+  known_fail: true
+  script:
+    - 一份套餐五
+    - 溫的
+    - 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 75
+    dine_type: dine-in
+    items:
+      - {name: 套餐五, qty: 1}
+
+- id: b12-09-riceball-egg
+  desc: 飯糰加荷包蛋（known：進客製待確認而非拆單）
+  known_fail: true
+  script:
+    - 一個懷古鹹蛋飯糰 白米 加一顆荷包蛋
+    - 結帳
+    - 外帶
+    - 現金
+  expected:
+    total: 80
+    dine_type: take-out
+    items:
+      - {name: 懷古鹹蛋, qty: 1}
+      - {name: 荷包蛋, qty: 1}
+
+- id: b12-10-oneshot
+  desc: 快速同句結帳
+  script:
+    - 一個玉米蛋餅一杯中杯冰綠茶 內用 結帳
+    - 現金
+  expected:
+    total: 60
+    dine_type: dine-in
+    items:
+      - {name: 玉米蛋餅, qty: 1}
+      - {name: "無糖清香綠茶(中杯, 冰)", qty: 1}

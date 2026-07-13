@@ -1,0 +1,157 @@
+# b10 批次（2026-07-13）— expected 取自修復後驗證 transcript
+- id: b10-01-flavor-swap
+  desc: 換口味 modify
+  script:
+    - 一個玉米蛋餅 一杯中杯冰綠茶
+    - 玉米的換成起司的好了
+    - 結帳
+    - 外帶
+    - 現金
+  expected:
+    total: 60
+    dine_type: take-out
+    items:
+      - {name: 起司蛋餅, qty: 1}
+      - {name: "無糖清香綠茶(中杯, 冰)", qty: 1}
+
+- id: b10-02-existence-query
+  desc: 有無詢問+指代接單（存在性攔截+pending_offer 橋接）
+  script:
+    - 你們有賣咖啡嗎
+    - 好 一杯純鮮奶咖啡 大杯冰的
+    - 有沒有蘿蔔糕
+    - 來一份
+    - 就這樣 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 85
+    dine_type: dine-in
+    items:
+      - {name: "純鮮奶咖啡(大杯, 冰)", qty: 1}
+      - {name: 港式蘿蔔糕, qty: 1}
+
+- id: b10-03-clear-all
+  desc: 整單取消重點
+  script:
+    - 兩個鮮肉包 一杯中杯溫豆漿
+    - 等等 全部不要了 重新點
+    - 一個培根蛋餅就好
+    - 結帳
+    - 外帶
+    - 現金
+  expected:
+    total: 45
+    dine_type: take-out
+    items:
+      - {name: 培根蛋餅, qty: 1}
+
+- id: b10-04-filler-words
+  desc: 口語贅字填充詞（模擬 ASR 真實輸出）
+  script:
+    - 那個 就是 幫我用一個那種鮪魚的飯糰
+    - 紫米好了
+    - 然後 嗯 再一杯 那個豆漿好了 中杯溫的
+    - 好 這樣就可以了 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 85
+    dine_type: dine-in
+    items:
+      - {name: 鮪魚飯糰, qty: 1}
+      - {name: "有糖豆漿(中杯, 溫)", qty: 1}
+
+- id: b10-05-two-person
+  desc: 兩人合點一句
+  script:
+    - 我要一個起司蛋餅 我朋友要一個火腿蛋吐司加一杯大杯冰紅茶
+    - 蛋餅不要加辣
+    - 結帳
+    - 內用
+    - 刷卡
+  expected:
+    total: 105
+    dine_type: dine-in
+    items:
+      - {name: 起司蛋餅, qty: 1}
+      - {name: 火腿蛋吐司, qty: 1}
+      - {name: "精選紅茶(大杯, 冰)", qty: 1}
+
+- id: b10-06-jam-regression
+  desc: 果醬吐司多變體+無糖豆漿+總價查詢綜合回歸
+  script:
+    - 一份巧克力厚片 一杯大杯溫豆漿無糖
+    - 現在總共多少錢
+    - 再一份花生薄片
+    - 結帳
+    - 外帶
+    - 現金
+  expected:
+    total: 75
+    dine_type: take-out
+    items:
+      - {name: 果醬吐司(巧克力/厚片), qty: 1}
+      - {name: "無糖豆漿(大杯, 溫)", qty: 1}
+      - {name: 果醬吐司(花生/薄片), qty: 1}
+
+- id: b10-07-bulk
+  desc: 大量數量+分裝請求
+  script:
+    - 我要十個鮮肉包 五個黑糖饅頭
+    - 可以幫我分兩袋裝嗎
+    - 結帳
+    - 外帶
+    - 現金
+  expected:
+    total: 225
+    dine_type: take-out
+    items:
+      - {name: 鮮肉包, qty: 10}
+      - {name: 黑糖饅頭, qty: 5}
+
+- id: b10-08-budget
+  desc: 預算詢問+推薦點餐
+  script:
+    - 50塊以內有什麼可以吃的
+    - 那來一個煎蛋吐司和一杯中杯冰紅茶
+    - 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 45
+    dine_type: dine-in
+    items:
+      - {name: 煎蛋吐司, qty: 1}
+      - {name: "精選紅茶(中杯, 冰)", qty: 1}
+
+- id: b10-09-checkout-regret
+  desc: 結帳中反悔加點（E 族 pending_checkout）
+  script:
+    - 一個韓式泡菜蛋餅 一杯中杯冰無糖綠茶
+    - 結帳
+    - 啊等等 再加一個薯餅
+    - 好了 結帳 內用
+    - 現金
+  expected:
+    total: 85
+    dine_type: dine-in
+    items:
+      - {name: 韓式泡菜蛋餅, qty: 1}
+      - {name: "無糖清香綠茶(中杯, 冰)", qty: 1}
+      - {name: 薯餅, qty: 1}
+
+- id: b10-10-attr-changes
+  desc: 溫度/杯型連續改口
+  script:
+    - 一杯大杯冰純鮮奶茶
+    - 改溫的好了
+    - 還是換中杯好了
+    - 再一個蔥蛋
+    - 結帳 外帶 現金
+  expected:
+    total: 50
+    dine_type: take-out
+    items:
+      - {name: "純鮮奶茶(中杯, 溫)", qty: 1}
+      - {name: 蔥蛋, qty: 1}
