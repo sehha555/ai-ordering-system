@@ -20,6 +20,7 @@ _AUDIO_LOG_DIR = Path(__file__).resolve().parents[2] / "logs" / "audio"
 
 # 規則層攔截常數
 _EMPTY_CART_MOD_KEYWORDS = ["刪掉", "移除", "撤銷", "取消上一", "刪掉剛剛"]
+_TOTAL_QUERY_WORDS = ["多少", "幾塊", "幾元"]
 _DRINK_INQUIRY_PATTERNS = [
     "有什麼飲料",
     "飲料有什麼",
@@ -157,6 +158,27 @@ class StreamingDMAdapter:
                 reply += "，請問要點什麼呢？"
             else:
                 reply = "抱歉，無法查詢飲品菜單，請再試一次。"
+            async for evt in shortcircuit_reply(
+                text, reply, self._session_id, session, _session_store, cart
+            ):
+                yield evt
+            return
+
+        # 4. 總價查詢兜底：「現在總共多少錢」LLM 會幻覺（空車謊言/載體謊言），
+        #    後端直接報 cart total。有品項詞（詢單品價）或結帳詞（推進結帳）不攔
+        from src.tools.order_router import CHECKOUT_KEYWORDS
+
+        if (
+            cart
+            and any(w in text for w in _TOTAL_QUERY_WORDS)
+            and not any(w in text for w in CONCRETE_ITEM_WORDS)
+            and not any(w in text for w in CHECKOUT_KEYWORDS)
+        ):
+            total = cart_manager.calculate_cart_total(cart)
+            if any(cart_manager.is_item_price_pending(i) for i in cart):
+                reply = f"目前共{total}元，部分客製品項價格待店員確認，還需要什麼嗎？"
+            else:
+                reply = f"目前共{total}元，還需要什麼嗎？"
             async for evt in shortcircuit_reply(
                 text, reply, self._session_id, session, _session_store, cart
             ):
