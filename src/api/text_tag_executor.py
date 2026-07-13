@@ -214,6 +214,8 @@ def _slot_evidenced(slot: str, value: str, text: str) -> bool:
 # 修改語意判斷：客人在改既有品項屬性（而非加點新品項）的訊號詞
 _MODIFY_WORDS = ("不要", "不加", "改", "換", "去掉")
 _ADD_MORE_WORDS = ("再", "還要", "多一", "加一", "另外", "加購", "加點", "也")
+# 跨品項替換詞（swap-dedup 用）：收斂到明確替換語，客製詞（不要辣）不觸發
+_SWAP_WORDS = ("換成", "改成", "換一個", "改一個")
 
 
 def _has_add_more_intent(text: str) -> bool:
@@ -355,6 +357,13 @@ async def execute_tags(
         checkout_entered = True
         checkout_fallback = True
         logger.info("[CHECKOUT fallback] LLM 漏發 tag，依結帳意圖兜底推進")
+
+    # 非結帳輪帶內用外帶詞（「起司蛋吐司加咖啡 外帶」）→ 記 hint，
+    # 進結帳時不再重問（b12-02 首輪說的外帶被忘、結帳又問一次）
+    if not checkout_entered:
+        dine_hint = parse_dine_type(text)
+        if dine_hint:
+            session["dine_type_hint"] = dine_hint
 
     # ── [REMOVE:...] 攔截 ──
     removed_ok = False
@@ -718,6 +727,30 @@ async def execute_tags(
                             new_items[0].get("item_id"),
                         )
 
+                # ── 跨品項替換兜底：「換成無骨雞排蛋堡」LLM 只發 ADD 沒發 REMOVE ──
+                # 新舊不同款（modify-dedup 同 key 對不上）兩個都留在車上（b12-07）。
+                # 替換詞收斂到「換成/改成」（「不要辣」等客製詞不觸發誤刪）；
+                # 舊品項限上一輪剛 ADD 且與新品項同 itemtype、新舊各恰 1 個
+                if any(w in text for w in _SWAP_WORDS):
+                    swap_new = [i for i in cart if i.get("item_id") in modify_new_ids]
+                    if len(swap_new) == 1:
+                        new_it = swap_new[0]
+                        swap_old = [
+                            i
+                            for i in cart
+                            if i.get("item_id") not in this_turn_ids
+                            and i.get("item_id") in prev_turn_add_ids
+                            and i.get("itemtype") == new_it.get("itemtype")
+                            and _modify_dedup_key(i) != _modify_dedup_key(new_it)
+                        ]
+                        if len(swap_old) == 1:
+                            cart.remove(swap_old[0])
+                            logger.info(
+                                "[ADD swap-dedup] 跨品項替換移除舊品項 {} (保留本輪 {})",
+                                swap_old[0].get("item_id"),
+                                new_it.get("item_id"),
+                            )
+
             # ── 結帳複述去重：[CHECKOUT] 輪把已在車上的品項重 ADD → 移除新的 ──
             # 結帳句常複述整單（「蘿蔔糕一份跟奶茶 結帳」），複述品項沒有新資訊；
             # qty>1 是明確改量/加點意圖，不去重。獨立於修改去重判斷（不巢狀在
@@ -738,6 +771,48 @@ async def execute_tags(
                             "[ADD checkout-dedup] 結帳複述移除重複品項 {}",
                             new_item.get("item_id"),
                         )
+
+            # ── 混合飲品合併：「三杯紅茶+豆漿」LLM 拆成 紅茶x3 + 豆漿x1 ──
+            # 菜單有「紅茶+豆漿」「米漿+豆漿」混合品項，text 點名混合名
+            # （含口語無+版「紅茶豆漿」）且本輪同時 ADD 了兩個組成單品 → 合併
+            from src.dm.tool_registry import MENU_BASE_NAMES  # noqa: PLC0415
+
+            for mixed in (n for n in MENU_BASE_NAMES if "+" in n):
+                if mixed not in text and mixed.replace("+", "") not in text:
+                    continue
+                part_a_name, part_b_name = mixed.split("+", 1)
+                new_drinks = [
+                    i
+                    for i in cart
+                    if i.get("item_id") in this_turn_ids
+                    and i.get("itemtype") == "drink"
+                    and "+" not in i.get("drink", "")
+                ]
+                part_a = next((i for i in new_drinks if part_a_name in i.get("drink", "")), None)
+                part_b = next(
+                    (
+                        i
+                        for i in new_drinks
+                        if part_b_name in i.get("drink", "") and i is not part_a
+                    ),
+                    None,
+                )
+                if part_a and part_b:
+                    qty = max(
+                        int(part_a.get("quantity", 1) or 1), int(part_b.get("quantity", 1) or 1)
+                    )
+                    size = part_a.get("size") or part_b.get("size")
+                    temp = part_a.get("temp") or part_b.get("temp")
+                    cart.remove(part_a)
+                    cart.remove(part_b)
+                    _tool_registry.add_drink(flavor=mixed, size=size, temp=temp, quantity=qty)
+                    logger.info(
+                        "[ADD mixed-merge] {} + {} → {} x{}",
+                        part_a.get("drink"),
+                        part_b.get("drink"),
+                        mixed,
+                        qty,
+                    )
 
             # 供下一輪修改去重辨識「上一輪剛加的品項」
             session["last_turn_add_ids"] = list(this_turn_ids)
@@ -877,6 +952,11 @@ async def execute_tags(
                 patch_last_assistant(session["llm_history"], full_text)
     elif checkout_entered:
         dine = parse_dine_type(text)
+        dine_from_hint = False
+        if not dine and session.get("dine_type_hint"):
+            # 先前輪次說過的內用外帶（b12-02）→ 不重問，話術複述讓客人可糾正
+            dine = session.pop("dine_type_hint")
+            dine_from_hint = True
         cart = session.get("cart", [])
         if not cart:
             # 空車放行進結帳但 ADD 最終未入車（如品項不存在）→ 撤回結帳狀態
@@ -893,6 +973,9 @@ async def execute_tags(
                 session["checkout_dine_type"] = dine
                 session["checkout_status"] = CK_PAY
                 full_text = ask_payment_with_total(cart)
+                if dine_from_hint:
+                    dine_label = "內用" if dine == "dine-in" else "外帶"
+                    full_text = f"好，{dine_label}～{full_text}"
             logger.info(
                 "[CHECKOUT 同句推進] dine={} finalize={}", dine, finalize_result is not None
             )
