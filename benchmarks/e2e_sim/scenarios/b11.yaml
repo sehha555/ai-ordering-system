@@ -47,7 +47,6 @@
 
 - id: b11-04-combo-drink-swap
   desc: 套餐追問中換飲料（b8-08 架構族）
-  known_fail: true
   script:
     - 一份套餐三
     - 鮮奶茶換成紅茶可以嗎

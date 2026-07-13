@@ -39,7 +39,7 @@
     total: 180
     dine_type: dine-in
     items:
-      - {name: "兒童餐(花生, 冰)", qty: 1}
+      - {name: "兒童餐(花生, 冰", qty: 1}
       - {name: 鮪魚蛋饅頭, qty: 1}
       - {name: "十穀漿(中杯, 溫)", qty: 1}
 
@@ -105,11 +105,11 @@
       - {name: "黑糖純鮮奶茶(中杯, 冰)", qty: 1}
 
 - id: b12-08-combo5
-  desc: 套餐五多槽追問（b8-08 架構族）
-  known_fail: true
+  desc: 套餐五多槽追問（b8-08 架構族；饅頭口味是設計內必問）
   script:
     - 一份套餐五
     - 溫的
+    - 起司的
     - 結帳
     - 內用
     - 現金
