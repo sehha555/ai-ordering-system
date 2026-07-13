@@ -41,16 +41,26 @@ def send_turn(client: httpx.Client, base: str, session_id: str, text: str) -> No
 
 
 def fetch_order(session_id: str) -> dict | None:
-    """查該 session 最新一筆訂單 payload；無訂單回 None"""
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        row = conn.execute(
-            "SELECT order_payload_json FROM orders WHERE session_id = ? ORDER BY rowid DESC LIMIT 1",
-            (session_id,),
-        ).fetchone()
-    finally:
-        conn.close()
-    return json.loads(row[0]) if row else None
+    """查該 session 最新一筆訂單 payload；無訂單回 None。
+
+    backend 同時在寫 DB 可能短暫鎖住 → timeout 重試一次，
+    再失敗記成該 run 失敗而非中斷整支 runner
+    """
+    for attempt in range(2):
+        conn = sqlite3.connect(DB_PATH, timeout=10)
+        try:
+            row = conn.execute(
+                "SELECT order_payload_json FROM orders WHERE session_id = ? ORDER BY rowid DESC LIMIT 1",
+                (session_id,),
+            ).fetchone()
+            return json.loads(row[0]) if row else None
+        except sqlite3.OperationalError:
+            if attempt == 1:
+                raise RuntimeError("orders.db 讀取失敗（DB 鎖住）") from None
+            time.sleep(1)
+        finally:
+            conn.close()
+    return None
 
 
 def judge(expected: dict, order: dict | None) -> list[str]:
@@ -77,7 +87,10 @@ def judge(expected: dict, order: dict | None) -> list[str]:
     exp_items = expected.get("items")
     if exp_items is not None:
         # 每個實際品項須被恰一個 expected 條目認領（防幻覺多出品項）；
-        # 每個 expected 條目認領到的數量總和須等於 qty（分行入車視為等價）
+        # 每個 expected 條目認領到的數量總和須等於 qty（分行入車視為等價）。
+        # 撰寫規則：認領依 yaml 順序 first-match — 同單 expected 品名不可
+        # 互為子字串（「純鮮奶茶」會搶走「黑糖純鮮奶茶」的 row），
+        # 用完整規格名（含杯型/溫度）避開
         claimed = [False] * len(display)
         for exp in exp_items:
             sub = exp["name"]
@@ -101,9 +114,10 @@ def run_scenario(client: httpx.Client, base: str, scenario: dict, run_idx: int) 
     try:
         for turn in scenario["script"]:
             send_turn(client, base, session_id, turn)
+        order = fetch_order(session_id)
     except (httpx.HTTPError, RuntimeError) as e:
-        return {"passed": False, "problems": [f"連線/HTTP 錯誤: {e}"], "session_id": session_id}
-    problems = judge(scenario.get("expected", {}), fetch_order(session_id))
+        return {"passed": False, "problems": [f"連線/DB 錯誤: {e}"], "session_id": session_id}
+    problems = judge(scenario.get("expected", {}), order)
     return {"passed": not problems, "problems": problems, "session_id": session_id}
 
 
