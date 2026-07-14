@@ -1,0 +1,146 @@
+# b13 泛化驗證批（2026-07-14）— tag-first 根治後的未見過場景
+# 重點：套餐七（demo 只教套餐六）、亂序補槽、補槽中加點/改主意、雙套餐同單
+- id: b13-01-combo7-bare
+  desc: 裸套餐七（tag-first 泛化：demo 只教套餐六）
+  script:
+    - 一個套餐七
+    - 黑椒的 油麵 冰的
+    - 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 125
+    dine_type: dine-in
+    items:
+      - {name: 套餐七, qty: 1}
+
+- id: b13-02-combo7-partial
+  desc: 套餐七帶部分槽（flavor+temp），補 noodle
+  script:
+    - 一個套餐七 蘑菇 溫的
+    - 烏龍麵
+    - 結帳
+    - 外帶
+    - 現金
+  expected:
+    total: 125
+    dine_type: take-out
+    items:
+      - {name: 套餐七, qty: 1}
+
+- id: b13-03-combo5-bare
+  desc: 裸套餐五一次補兩槽（b12-08 變體：無先答 temp）
+  script:
+    - 一份套餐五
+    - 起司的 冰的
+    - 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 75
+    dine_type: dine-in
+    items:
+      - {name: 套餐五, qty: 1}
+
+- id: b13-04-double-combo
+  desc: 雙套餐同單（多槽+單槽），一句補齊
+  script:
+    - 一個套餐六 跟一個套餐三
+    - 套餐六要黑椒油麵 飲料都冰的
+    - 結帳
+    - 外帶
+    - 現金
+  expected:
+    total: 190
+    dine_type: take-out
+    items:
+      - {name: 套餐六, qty: 1}
+      - {name: 套餐三, qty: 1}
+
+- id: b13-05-slot-dribble
+  desc: 亂序分批補槽（一輪一槽，noodle 先答）
+  script:
+    - 一個套餐六
+    - 烏龍麵
+    - 蘑菇
+    - 冰的
+    - 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 110
+    dine_type: dine-in
+    items:
+      - {name: 套餐六, qty: 1}
+
+- id: b13-06-midway-add
+  desc: 補槽中途加點新品項再回頭補槽（any_ok 族觀察）
+  script:
+    - 一個套餐六
+    - 再加一杯大杯冰有糖豆漿
+    - 黑椒 油麵 冰的
+    - 結帳
+    - 外帶
+    - 現金
+  expected:
+    total: 135
+    dine_type: take-out
+    items:
+      - {name: 套餐六, qty: 1}
+      - {name: 有糖豆漿, qty: 1}
+
+- id: b13-07-change-mind
+  desc: 補槽中改主意換套餐（attempt 懸置不得卡結帳）
+  script:
+    - 一個套餐六
+    - 算了 換套餐三好了 溫的
+    - 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 80
+    dine_type: dine-in
+    items:
+      - {name: 套餐三, qty: 1}
+
+- id: b13-08-teppan-mix
+  desc: 單點鐵板麵+套餐五混單（同類槽不互染）
+  script:
+    - 一個蘑菇鐵板麵烏龍麵 加一份套餐五
+    - 起司的 溫的
+    - 結帳
+    - 外帶
+    - 現金
+  expected:
+    total: 135
+    dine_type: take-out
+    items:
+      - {name: 蘑菇鐵板麵, qty: 1}
+      - {name: 套餐五, qty: 1}
+
+- id: b13-09-combo-qty2
+  desc: 套餐帶數量一次齊全
+  script:
+    - 兩個套餐六 都要黑椒油麵 飲料都冰的
+    - 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 220
+    dine_type: dine-in
+    items:
+      - {name: 套餐六, qty: 2}
+
+- id: b13-10-combo7-curry
+  desc: 套餐七非 demo 口味（咖哩+烏龍）分輪補
+  script:
+    - 一個套餐七 溫的
+    - 咖哩 烏龍麵
+    - 結帳
+    - 外帶
+    - 現金
+  expected:
+    total: 125
+    dine_type: take-out
+    items:
+      - {name: 套餐七, qty: 1}

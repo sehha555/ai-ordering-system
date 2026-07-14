@@ -119,6 +119,45 @@ def _name_in_text(name: str, text: str) -> bool:
     return False
 
 
+def _combo_materialize_target(item_name: str, session: dict, text: str) -> Optional[str]:
+    """補槽輪 LLM 把追問中套餐「具體化」成組成品項名 → 回傳應換回的套餐名。
+
+    套餐五追問「饅頭要什麼口味」客人答「起司的」→ LLM 發 [ADD:起司蛋饅頭|...]
+    （或全名後綴「起司蛋饅頭+燕麥薏仁漿」），fuzzy 解成單品饅頭入車：品項錯、
+    價格錯、attempt 懸置引發空車謊言整單蒸發（b13-08）。判準：tag 品項名精確
+    等於 attempt 套餐的組成品項（或整段組成串）、且 text 沒完整點名該品項 —
+    text 檢查不能用 _name_in_text 的滑窗（補槽回答「起司的」的「起司」會誤中），
+    客人真想點單品必說完整品名
+    """
+    attempt = session.get("last_failed_attempt") or {}
+    combo_name = attempt.get("item_name")
+    name_base = item_name.split("(")[0].strip()
+    if not combo_name or item_name == combo_name or len(name_base) < 2:
+        return None
+    if item_name in text:
+        return None
+    from src.dm.tool_registry import _MENU_INDEX  # noqa: PLC0415
+
+    full = next(
+        (
+            n
+            for n, info in _MENU_INDEX.items()
+            if info["category"] == "套餐" and n.startswith(combo_name + " ")
+        ),
+        None,
+    )
+    if not full or " " not in full:
+        return None
+    # 組成品項精確比對（不用字數門檻 — 2 字組成名「紅茶」「肉片」也會被
+    # LLM 具體化）：全名「套餐六 鐵板麵+肉片+蛋+紅茶(大)」→ 去前綴去括號
+    # 拆 + 與 *N → {鐵板麵, 肉片, 蛋, 紅茶}；也接受整段組成串（run0 型）
+    suffix_base = full.split(" ", 1)[1].split("(")[0].strip()
+    components = {c.split("*")[0].strip() for c in suffix_base.split("+")}
+    if name_base == suffix_base or name_base in components:
+        return combo_name
+    return None
+
+
 # 補槽值佐證的否定詞：「不要黑椒」不算 flavor=黑椒 的佐證。
 # 多字詞查前 4 字窗（抓「不要加辣」這種否定詞與片段不緊鄰的形態）；
 # 單字否定（不/別/免/無）僅查緊鄰前一字 — ASR 轉錄常無標點，寬窗會被
@@ -525,6 +564,18 @@ async def execute_tags(
                         kwargs[key] = value
                     elif key in ("spicy", "extra_egg"):
                         kwargs[key] = value.lower() == "true"
+            # ── 補槽輪套餐組成具體化幻覺換名 ──
+            # 補槽輪 LLM 不重發套餐名，把追問口味與套餐組成組合成具體品項名
+            # → 換回 attempt 套餐名，參數保留接續下方補槽鏈（slot 檢查 / merge）
+            materialize_combo = _combo_materialize_target(item_name, session, text)
+            if materialize_combo:
+                logger.info(
+                    "[ADD combo-rename] 補槽輪具體化幻覺 {} → {}",
+                    item_name,
+                    materialize_combo,
+                )
+                item_name = materialize_combo
+                kwargs["name"] = item_name
             if _name_in_text(item_name, text) and not any(w in text for w in _MODIFY_WORDS):
                 # flavor 不在 markers 表（值域自由），經 _slot_evidenced 走值比對
                 # （b8-02「套餐七 冰的 油麵」腦補 flavor=咖哩 入車）
@@ -795,7 +846,12 @@ async def execute_tags(
                     if (
                         len(new_items) == 1
                         and len(old_items) == 1
-                        and (has_modify_words or not item_mentioned_in_text(new_items[0], text))
+                        and (
+                            has_modify_words
+                            or not item_mentioned_in_text(
+                                new_items[0], text, ignore_rice_pieces=True
+                            )
+                        )
                     ):
                         cart.remove(old_items[0])
                         logger.info(
