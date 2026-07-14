@@ -137,6 +137,20 @@
       - {name: 原味蛋餅, qty: 3}
       - {name: "精選紅茶(大杯, 冰)", qty: 2}
 
+- id: b14-11-query-probe-no-add
+  desc: 純追問複合句（查詢+存在性、無點餐動詞）不得誤發 ADD（規則 3 放行後的行為邊界）
+  script:
+    - 飲料有什麼 有豆漿嗎
+    - 好 一杯中杯溫有糖豆漿
+    - 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 20
+    dine_type: dine-in
+    items:
+      - {name: 有糖豆漿, qty: 1}
+
 - id: b14-10-hesitant-drips
   desc: 猶豫斷續點餐（填充輪+逐項）
   script:
