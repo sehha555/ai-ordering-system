@@ -120,7 +120,6 @@
 
 - id: b12-09-riceball-egg
   desc: 飯糰加荷包蛋（known：進客製待確認而非拆單）
-  known_fail: true
   script:
     - 一個懷古鹹蛋飯糰 白米 加一顆荷包蛋
     - 結帳

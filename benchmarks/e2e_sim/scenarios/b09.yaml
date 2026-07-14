@@ -34,7 +34,6 @@
 
 - id: b9-03-price-query-egg
   desc: 詢價客+加荷包蛋（known 荷包蛋進客製待確認）
-  known_fail: true
   script:
     - 請問起司蛋餅多少錢
     - 那火腿蛋餅呢

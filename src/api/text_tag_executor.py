@@ -71,6 +71,11 @@ def _zh_qty_to_int(s: str) -> int:
     return _ZH_NUM.get(s) or (int(s) if s.isdigit() else 1)
 
 
+# 客製荷包蛋拆單（b9-03/b12-09）：客製值中的獨立點心品項。
+# 只認精確品名 — 裸「加蛋」是飯糰 extra_egg / 蛋餅加蛋語意，不拆
+_SIDE_EGG_RE = re.compile(r"加(?:([一二兩三四五六七八九十0-9])?[顆個份粒])?\s*(荷包蛋|蔥蛋)")
+
+
 # 槽位屬性腦補檢查：新點單輪（text 點名品項且無修改詞）ADD 帶的屬性值
 # 必須在 user text 有字面佐證，否則是 LLM 腦補（「鮪魚飯糰一個」誤帶
 # rice=白米 → 錯單），strip 掉讓 add_item 的 missing 機制追問。
@@ -703,6 +708,40 @@ async def execute_tags(
                     "message": add_result.get("message"),
                 },
             )
+            if add_result.get("ok") and kwargs.get("customization"):
+                # ── 客製荷包蛋拆單（b9-03/b12-09）──
+                # 「懷古鹹蛋飯糰 加一顆荷包蛋」荷包蛋是獨立點心品項（$15），
+                # LLM 慣性塞 customization → 沒收錢、廚房看不到。入車成功後
+                # 從客製剝離、拆成獨立 ADD。只認精確點心品名（荷包蛋/蔥蛋）—
+                # 「加蛋」是飯糰 extra_egg / 蛋餅加蛋語意，不碰
+                m_egg = _SIDE_EGG_RE.search(kwargs["customization"])
+                if m_egg:
+                    egg_qty = _zh_qty_to_int(m_egg.group(1)) if m_egg.group(1) else 1
+                    egg_result = _tool_registry.add_item(name=m_egg.group(2), quantity=egg_qty)
+                    if egg_result.get("ok"):
+                        add_results.append(egg_result)
+                        retried_ids.add(egg_result.get("item_id"))
+                        cust = kwargs["customization"]
+                        rest = (cust[: m_egg.start()] + cust[m_egg.end() :]).strip("、，, ")
+                        added_item = next(
+                            (
+                                i
+                                for i in session.get("cart", [])
+                                if i.get("item_id") == add_result.get("item_id")
+                            ),
+                            None,
+                        )
+                        if added_item is not None:
+                            if rest:
+                                added_item["customization"] = rest
+                            else:
+                                added_item.pop("customization", None)
+                        logger.info(
+                            "[ADD egg-split] 客製拆單: {} x{}（剩餘客製: {!r}）",
+                            m_egg.group(2),
+                            egg_qty,
+                            rest,
+                        )
             if not add_result.get("ok"):
                 logger.warning(
                     "[ADD tag] 執行失敗: {} → {}", add_content, add_result.get("message")
