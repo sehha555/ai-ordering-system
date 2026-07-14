@@ -58,8 +58,7 @@
       - {name: "無糖清香綠茶(大杯, 冰)", qty: 1}
 
 - id: b12-05-mixed-drink
-  desc: 混合飲品大單（known：LLM 解析變異大）
-  known_fail: true
+  desc: 混合飲品大單（priming demo + resolve_flavor 標準名保留後轉正）
   script:
     - 兩個薯餅蛋漢堡 一份煎餃 三杯中杯冰紅茶+豆漿
     - 結帳

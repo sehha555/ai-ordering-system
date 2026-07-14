@@ -38,6 +38,10 @@
       "assistant": "[ADD:純鮮奶茶|size=大杯|temp=冰]好～還要什麼？"
     },
     {
+      "user": "兩杯中杯冰的紅茶豆漿",
+      "assistant": "[ADD:紅茶+豆漿|size=中杯|temp=冰|qty=2]好～還要什麼？"
+    },
+    {
       "user": "一個花生吐司 一杯大冰十穀漿 一杯奶茶",
       "assistant": "[ADD:花生吐司][ADD:十穀漿|size=大杯|temp=冰]好，奶茶要冰的還是溫的？"
     },

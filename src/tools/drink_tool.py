@@ -28,9 +28,16 @@ _MODIFIER_PREFIXES = tuple(
 
 
 def resolve_flavor(value: Optional[str]) -> Optional[str]:
-    """飲料別名 → 標準名"""
+    """飲料別名 → 標準名。value 已是菜單標準名（含混合品項「紅茶+豆漿」）
+    直接回傳 — 別名表子字串匹配會把混合品名吃成組成單品（「豆漿」in
+    「紅茶+豆漿」→ 有糖豆漿，b12-05）"""
     if value is None:
         return None
+    try:
+        menu_price_service.get_price("飲品", f"{value}(中)")
+        return value
+    except KeyError:
+        pass
     for alias in _ALIASES_SORTED:
         if alias == value or alias in value:
             return DRINK_ALIASES[alias]
