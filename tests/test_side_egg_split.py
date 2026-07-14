@@ -89,6 +89,24 @@ async def test_other_customization_preserved():
 
 
 @pytest.mark.asyncio
+async def test_negated_egg_not_split():
+    """「不加荷包蛋」否定語境不拆（誤拆會反向多收 $15）"""
+    reg = MagicMock()
+    reg.add_item.return_value = {"ok": True, "item_id": "rb_1", "message": "已加入"}
+    session = {"cart": [], "llm_history": []}
+    with patch("src.services.container.tool_registry", reg):
+        await execute_tags(
+            "[ADD:懷古鹹蛋飯糰|rice=白米|customization=不加荷包蛋]好～",
+            "一個懷古鹹蛋飯糰 白米 不加荷包蛋",
+            session,
+            "s1",
+        )
+    reg.add_item.assert_called_once_with(
+        name="懷古鹹蛋飯糰", rice="白米", customization="不加荷包蛋"
+    )
+
+
+@pytest.mark.asyncio
 async def test_plain_extra_egg_not_split():
     """「加蛋」不拆（飯糰 extra_egg 語意），customization 原樣保留"""
     reg = MagicMock()

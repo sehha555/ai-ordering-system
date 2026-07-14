@@ -715,6 +715,13 @@ async def execute_tags(
                 # 從客製剝離、拆成獨立 ADD。只認精確點心品名（荷包蛋/蔥蛋）—
                 # 「加蛋」是飯糰 extra_egg / 蛋餅加蛋語意，不碰
                 m_egg = _SIDE_EGG_RE.search(kwargs["customization"])
+                # 否定守衛：「不加荷包蛋」「不要加荷包蛋」的命中前 2 字窗含
+                # 否定字 → 不拆（誤拆會反向多收 $15）
+                if m_egg and any(
+                    c in _NEG_PREFIXES_SINGLE
+                    for c in kwargs["customization"][max(0, m_egg.start() - 2) : m_egg.start()]
+                ):
+                    m_egg = None
                 if m_egg:
                     egg_qty = _zh_qty_to_int(m_egg.group(1)) if m_egg.group(1) else 1
                     egg_result = _tool_registry.add_item(name=m_egg.group(2), quantity=egg_qty)
