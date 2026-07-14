@@ -43,6 +43,8 @@ _PRICE_QUERY_RE = re.compile(
     r"^(?:請問)?(?:你們)?(?:一[個份杯顆片]?)?(.{1,12}?)(?:一[個份杯顆片]|一份)?"
     r"(?:要|是)?(?:多少錢|幾塊錢?|幾元|怎麼賣)[?？]?$"
 )
+# 詢價品項詞若以數量詞開頭（「兩個蛋餅」）→ 非單品詢價，不搶答
+_QTY_PREFIX_RE = re.compile(r"^[一二兩三四五六七八九十0-9]+\s*[個份杯顆片]")
 # pending_offer 肯定句：「來一份」「好」「要一個」— 上一輪存在性查詢後的
 # 純肯定接單句（無品項名），改寫成完整點單交 LLM 走正常 ADD 流程
 _OFFER_AFFIRM_RE = re.compile(
@@ -254,6 +256,11 @@ class StreamingDMAdapter:
         #     記 pending_offer（「好 來一個」走橋接）。LLM 對此句型會腦補
         #     價格、謊稱沒賣、或下一輪指代迷失幻覺入車（b9-03/b15-08）
         m_price = _PRICE_QUERY_RE.match(text.strip())
+        # 多數量詢價（「兩個蛋餅多少錢」）不搶答：數量詞會被吞進品項名、
+        # 口味被 fuzzy 預設成原味 → 後續 offer 橋接把 N 份靜默降成一份。
+        # group(1) 以數量詞開頭一律 fallthrough 給 LLM
+        if m_price and _QTY_PREFIX_RE.match(m_price.group(1)):
+            m_price = None
         if m_price:
             info = _tool_registry._resolve_item_name(m_price.group(1))
             if info is not None:

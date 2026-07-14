@@ -33,6 +33,18 @@ class TestPriceQuery:
         _, llm_reached, _, _ = _ExistQ._run("這樣多少錢")
         assert llm_reached
 
+    def test_multi_qty_price_query_falls_through(self):
+        """「兩個蛋餅多少錢」數量詞開頭 → 不搶答（數量會被吞、口味被腦補原味）"""
+        _, llm_reached, session, _ = _ExistQ._run("兩個蛋餅多少錢")
+        assert llm_reached
+        assert "pending_offer" not in session
+
+    def test_single_qty_prefix_still_intercepted(self):
+        """「一個豬肉蛋漢堡多少錢」前綴「一個」被 regex 消化 → 照攔"""
+        reply, llm_reached, _, _ = _ExistQ._run("一份豬肉蛋漢堡多少錢")
+        assert "50元" in reply
+        assert not llm_reached
+
     def test_order_sentence_not_intercepted(self):
         _, llm_reached, _, _ = _ExistQ._run("我要一個豬肉蛋漢堡")
         assert llm_reached
