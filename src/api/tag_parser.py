@@ -44,6 +44,11 @@ def find_cart_item_id(cart: list, keyword: str) -> Optional[str]:
     return None
 
 
+# 飯糰顯示名的米種前綴（「紫米·半甜鹹」）是屬性不是品名 — 客人複述米種
+# （「一樣紫米」）不算點名品項，誤判會讓 modify-dedup 放行重複入車（b9-05）
+_RICE_ATTR_PIECES = ("紫米", "白米", "混米")
+
+
 def item_mentioned_in_text(item: dict, text: str) -> bool:
     """購物車品項是否在這句話被點名（顯示名 + 尾字類別名詞比對）。"""
     from src.dm import cart_manager
@@ -55,6 +60,8 @@ def item_mentioned_in_text(item: dict, text: str) -> bool:
     if core in text:
         return True
     for piece in re.split(r"[·\s]+", core):
+        if piece in _RICE_ATTR_PIECES:
+            continue
         if len(piece) >= 2 and piece in text:
             return True
     for n in (3, 2):
