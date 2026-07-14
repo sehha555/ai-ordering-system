@@ -89,21 +89,52 @@ async def test_other_customization_preserved():
 
 
 @pytest.mark.asyncio
-async def test_negated_egg_not_split():
-    """「不加荷包蛋」否定語境不拆（誤拆會反向多收 $15）"""
+@pytest.mark.parametrize(
+    "neg_cust",
+    [
+        "不加荷包蛋",
+        "不要加荷包蛋",
+        "不需要加荷包蛋",
+        "不用再加荷包蛋",
+        "不想要加荷包蛋",
+        "別加荷包蛋",
+        "加辣不加荷包蛋",
+    ],
+)
+async def test_negated_egg_not_split(neg_cust):
+    """否定語境（含 3 字以上否定詞）不拆單 — 誤拆會反向多收 $15"""
     reg = MagicMock()
     reg.add_item.return_value = {"ok": True, "item_id": "rb_1", "message": "已加入"}
     session = {"cart": [], "llm_history": []}
     with patch("src.services.container.tool_registry", reg):
         await execute_tags(
-            "[ADD:懷古鹹蛋飯糰|rice=白米|customization=不加荷包蛋]好～",
-            "一個懷古鹹蛋飯糰 白米 不加荷包蛋",
+            f"[ADD:懷古鹹蛋飯糰|rice=白米|customization={neg_cust}]好～",
+            f"一個懷古鹹蛋飯糰 白米 {neg_cust}",
             session,
             "s1",
         )
-    reg.add_item.assert_called_once_with(
-        name="懷古鹹蛋飯糰", rice="白米", customization="不加荷包蛋"
-    )
+    reg.add_item.assert_called_once_with(name="懷古鹹蛋飯糰", rice="白米", customization=neg_cust)
+
+
+@pytest.mark.asyncio
+async def test_mixed_clause_negation_only_blocks_own_clause():
+    """「不要辣、加一顆荷包蛋」否定在別的子句 → 荷包蛋照拆"""
+    tr, store = _run_registry()
+    sid = "egg-split-clause"
+    tr.set_session_id(sid)
+    session = store.get(sid)
+    session.setdefault("cart", [])
+    session["llm_history"] = []
+    with patch("src.services.container.tool_registry", tr):
+        await execute_tags(
+            "[ADD:玉米蛋餅|customization=不要辣、加一顆荷包蛋]好～",
+            "一個玉米蛋餅 不要辣 加一顆荷包蛋",
+            session,
+            sid,
+        )
+    assert any(i.get("snack") == "荷包蛋" for i in session["cart"])
+    ep = next(i for i in session["cart"] if i.get("itemtype") == "egg_pancake")
+    assert ep.get("customization") == "不要辣"
 
 
 @pytest.mark.asyncio
