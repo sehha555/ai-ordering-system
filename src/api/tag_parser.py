@@ -49,8 +49,13 @@ def find_cart_item_id(cart: list, keyword: str) -> Optional[str]:
 _RICE_ATTR_PIECES = ("紫米", "白米", "混米")
 
 
-def item_mentioned_in_text(item: dict, text: str) -> bool:
-    """購物車品項是否在這句話被點名（顯示名 + 尾字類別名詞比對）。"""
+def item_mentioned_in_text(item: dict, text: str, ignore_rice_pieces: bool = False) -> bool:
+    """購物車品項是否在這句話被點名（顯示名 + 尾字類別名詞比對）。
+
+    ignore_rice_pieces 僅 modify-dedup 用：那裡的語意是「複述屬性≠點新單」，
+    米種命中要排除；其他呼叫點（取消/改量兜底）客人會用米種指認品項
+    （「紫米的不要了」），維持原比對
+    """
     from src.dm import cart_manager
 
     display = cart_manager.format_item(item)
@@ -60,7 +65,7 @@ def item_mentioned_in_text(item: dict, text: str) -> bool:
     if core in text:
         return True
     for piece in re.split(r"[·\s]+", core):
-        if piece in _RICE_ATTR_PIECES:
+        if ignore_rice_pieces and piece in _RICE_ATTR_PIECES:
             continue
         if len(piece) >= 2 and piece in text:
             return True

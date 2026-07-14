@@ -124,13 +124,15 @@ def _combo_materialize_target(item_name: str, session: dict, text: str) -> Optio
 
     套餐五追問「饅頭要什麼口味」客人答「起司的」→ LLM 發 [ADD:起司蛋饅頭|...]
     （或全名後綴「起司蛋饅頭+燕麥薏仁漿」），fuzzy 解成單品饅頭入車：品項錯、
-    價格錯、attempt 懸置引發空車謊言整單蒸發（b13-08）。判準：attempt 套餐的
-    menu 全名含 tag 品項名、且 text 沒完整點名該品項 — 這裡不能用 _name_in_text
-    的滑窗（補槽回答「起司的」的「起司」會誤中），客人真想點單品必說完整品名
+    價格錯、attempt 懸置引發空車謊言整單蒸發（b13-08）。判準：tag 品項名精確
+    等於 attempt 套餐的組成品項（或整段組成串）、且 text 沒完整點名該品項 —
+    text 檢查不能用 _name_in_text 的滑窗（補槽回答「起司的」的「起司」會誤中），
+    客人真想點單品必說完整品名
     """
     attempt = session.get("last_failed_attempt") or {}
     combo_name = attempt.get("item_name")
-    if not combo_name or item_name == combo_name or len(item_name) < 3:
+    name_base = item_name.split("(")[0].strip()
+    if not combo_name or item_name == combo_name or len(name_base) < 2:
         return None
     if item_name in text:
         return None
@@ -144,7 +146,14 @@ def _combo_materialize_target(item_name: str, session: dict, text: str) -> Optio
         ),
         None,
     )
-    if full and item_name in full:
+    if not full or " " not in full:
+        return None
+    # 組成品項精確比對（不用字數門檻 — 2 字組成名「紅茶」「肉片」也會被
+    # LLM 具體化）：全名「套餐六 鐵板麵+肉片+蛋+紅茶(大)」→ 去前綴去括號
+    # 拆 + 與 *N → {鐵板麵, 肉片, 蛋, 紅茶}；也接受整段組成串（run0 型）
+    suffix_base = full.split(" ", 1)[1].split("(")[0].strip()
+    components = {c.split("*")[0].strip() for c in suffix_base.split("+")}
+    if name_base == suffix_base or name_base in components:
         return combo_name
     return None
 
@@ -837,7 +846,12 @@ async def execute_tags(
                     if (
                         len(new_items) == 1
                         and len(old_items) == 1
-                        and (has_modify_words or not item_mentioned_in_text(new_items[0], text))
+                        and (
+                            has_modify_words
+                            or not item_mentioned_in_text(
+                                new_items[0], text, ignore_rice_pieces=True
+                            )
+                        )
                     ):
                         cart.remove(old_items[0])
                         logger.info(

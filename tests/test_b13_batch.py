@@ -67,6 +67,51 @@ async def test_materialized_fullname_suffix_renamed():
 
 
 @pytest.mark.asyncio
+async def test_short_component_name_renamed():
+    """2 字組成名也會被具體化（套餐六的紅茶）→ 同樣換回套餐名，字數不設防呆"""
+    reg = MagicMock()
+    reg.add_item.return_value = {"ok": True, "item_id": "combo_1", "message": "已加入"}
+    session = {
+        "cart": [],
+        "llm_history": [
+            {"role": "user", "content": "一個套餐六 黑椒油麵"},
+            {"role": "assistant", "content": "飲料冰的還是溫的？"},
+        ],
+        "last_failed_attempt": {
+            "item_name": "套餐六",
+            "missing": ["temp"],
+            "provided": {"flavor": "黑椒", "noodle": "油麵"},
+            "message": "飲料冰的還是溫的",
+        },
+    }
+    with patch("src.services.container.tool_registry", reg):
+        await execute_tags(
+            "[ADD:紅茶|temp=冰]好～還要什麼？",
+            "冰的",
+            session,
+            "s1",
+        )
+    assert reg.add_item.call_args.kwargs["name"] == "套餐六"
+    assert reg.add_item.call_args.kwargs["temp"] == "冰"
+
+
+@pytest.mark.asyncio
+async def test_fullname_suffix_with_spec_renamed():
+    """帶規格括號的組成串「起司蛋饅頭+燕麥薏仁漿(大)」也換回套餐五（run0 實錄）"""
+    reg = MagicMock()
+    reg.add_item.return_value = {"ok": True, "item_id": "combo_1", "message": "已加入"}
+    session = _combo5_retry_session()
+    with patch("src.services.container.tool_registry", reg):
+        await execute_tags(
+            "[ADD:起司蛋饅頭+燕麥薏仁漿(大)|temp=溫|flavor=起司]好～還要什麼？",
+            "起司的 溫的",
+            session,
+            "s1",
+        )
+    reg.add_item.assert_called_once_with(name="套餐五", flavor="起司", temp="溫")
+
+
+@pytest.mark.asyncio
 async def test_explicit_component_order_not_renamed():
     """客人完整點名「一個起司蛋饅頭」→ 真的想點單品，不換名"""
     reg = MagicMock()
@@ -107,8 +152,10 @@ def test_rice_attr_piece_not_item_mention():
     from src.api.tag_parser import item_mentioned_in_text
 
     riceball = {"itemtype": "riceball", "flavor": "半甜鹹", "rice": "紫米", "quantity": 1}
-    assert not item_mentioned_in_text(riceball, "一樣紫米")
-    assert item_mentioned_in_text(riceball, "半甜鹹的不要好了")
+    assert not item_mentioned_in_text(riceball, "一樣紫米", ignore_rice_pieces=True)
+    assert item_mentioned_in_text(riceball, "半甜鹹的不要好了", ignore_rice_pieces=True)
+    # 預設（取消/改量兜底路徑）維持原語意：客人用米種指認品項（「紫米的不要了」）
+    assert item_mentioned_in_text(riceball, "紫米的不要了")
 
 
 @pytest.mark.asyncio
