@@ -360,3 +360,16 @@ class TestReviewFindings31:
             )
         reg.add_drink.assert_not_called()
         assert len(session["cart"]) == 2
+
+
+def test_resolve_flavor_keeps_mixed_drink_name():
+    """b12-05 根治：LLM 正確發 [ADD:紅茶+豆漿|qty=3]，drink_tool.resolve_flavor
+    別名子字串匹配把混合品名吃成組成單品（「豆漿」in「紅茶+豆漿」→ 有糖豆漿）
+    → 菜單標準名直接保留，別名解析只處理非標準名"""
+    from src.tools.drink_tool import resolve_flavor
+
+    assert resolve_flavor("紅茶+豆漿") == "紅茶+豆漿"
+    assert resolve_flavor("米漿+豆漿") == "米漿+豆漿"
+    # 單品別名照解，行為不變
+    assert resolve_flavor("豆漿") == "有糖豆漿"
+    assert resolve_flavor("奶茶") == "純鮮奶茶"
