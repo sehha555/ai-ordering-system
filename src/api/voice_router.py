@@ -172,8 +172,14 @@ class StreamingDMAdapter:
                 text = f"我要{qty}份{pending_offer}"
                 logger.info("[OFFER bridge] 肯定句改寫: '{}'", text)
 
-        # 3. 飲料查詢強制攔截
-        if any(pat in text for pat in _DRINK_INQUIRY_PATTERNS):
+        # 3. 飲料查詢強制攔截。複合句放行：查詢+點餐同句（「飲料有什麼
+        #    我先要一個起司蛋餅」）攔截會把點餐部分整句吞掉（b14-01），
+        #    句含具體品項詞 → 交 LLM 同時發 [QUERY]+[ADD]
+        from src.dm.tool_registry import MENU_BASE_NAMES
+
+        if any(pat in text for pat in _DRINK_INQUIRY_PATTERNS) and not (
+            any(w in text for w in CONCRETE_ITEM_WORDS) or any(n in text for n in MENU_BASE_NAMES)
+        ):
             menu_result = _tool_registry.query_menu(category="飲品")
             if menu_result.get("ok"):
                 items = menu_result.get("items", [])
@@ -194,7 +200,6 @@ class StreamingDMAdapter:
         # 4. 總價查詢兜底：「現在總共多少錢」LLM 會幻覺（空車謊言/載體謊言），
         #    後端直接報 cart total。有品項詞（詢單品價，靜態類別詞 + 全菜單品名
         #    雙閘門）或結帳詞（推進結帳）不攔
-        from src.dm.tool_registry import MENU_BASE_NAMES
         from src.tools.order_router import CHECKOUT_KEYWORDS
 
         if (
