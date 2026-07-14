@@ -37,6 +37,14 @@ _DRINK_INQUIRY_PATTERNS = [
 _EXISTENCE_QUERY_RE = re.compile(
     r"^(?:請問)?(?:你們|老闆)?(?:有賣|有沒有|有)([一-鿿A-Za-z0-9]{1,10}?)(?:嗎|沒有)?[?？]?$"
 )
+# 單品詢價：「豬肉蛋漢堡多少錢」— LLM 對單品詢價會腦補價格或謊稱沒賣
+# （b9-03/b15-08），resolver 命中直接報價 + 記 pending_offer 接「來一個」
+_PRICE_QUERY_RE = re.compile(
+    r"^(?:請問)?(?:你們)?(?:一[個份杯顆片]?)?(.{1,12}?)(?:一[個份杯顆片]|一份)?"
+    r"(?:要|是)?(?:多少錢|幾塊錢?|幾元|怎麼賣)[?？]?$"
+)
+# 詢價品項詞若以數量詞開頭（「兩個蛋餅」）→ 非單品詢價，不搶答
+_QTY_PREFIX_RE = re.compile(r"^[一二兩三四五六七八九十0-9]+\s*[個份杯顆片]")
 # pending_offer 肯定句：「來一份」「好」「要一個」— 上一輪存在性查詢後的
 # 純肯定接單句（無品項名），改寫成完整點單交 LLM 走正常 ADD 流程
 _OFFER_AFFIRM_RE = re.compile(
@@ -237,6 +245,42 @@ class StreamingDMAdapter:
                         reply = f"有喔～{offered}，要來一杯嗎？"
                     else:
                         reply = f"有喔～{offered}一份{info['price']}元，要來一份嗎？"
+                    session["pending_offer"] = offered
+                async for evt in shortcircuit_reply(
+                    text, reply, self._session_id, session, _session_store, cart
+                ):
+                    yield evt
+                return
+
+        # 5.5 單品詢價攔截：「豬肉蛋漢堡多少錢」resolver 命中直接報價 +
+        #     記 pending_offer（「好 來一個」走橋接）。LLM 對此句型會腦補
+        #     價格、謊稱沒賣、或下一輪指代迷失幻覺入車（b9-03/b15-08）
+        m_price = _PRICE_QUERY_RE.match(text.strip())
+        # 多數量詢價（「兩個蛋餅多少錢」）不搶答：數量詞會被吞進品項名、
+        # 口味被 fuzzy 預設成原味 → 後續 offer 橋接把 N 份靜默降成一份。
+        # group(1) 以數量詞開頭一律 fallthrough 給 LLM
+        if m_price and _QTY_PREFIX_RE.match(m_price.group(1)):
+            m_price = None
+        if m_price:
+            info = _tool_registry._resolve_item_name(m_price.group(1))
+            if info is not None:
+                from src.tools.menu import menu_state_service
+
+                offered = info["resolved_name"]
+                if offered in menu_state_service.get_effective_sold_out():
+                    reply = f"{offered}今天賣完了，要不要換別的？"
+                else:
+                    if info.get("category") == "飲品":
+                        from src.tools.menu import menu_price_service
+
+                        p_mid = info["price"]
+                        try:
+                            p_big = menu_price_service.get_price("飲品", f"{offered}(大)")
+                            reply = f"{offered}中杯{p_mid}元、大杯{p_big}元，要來一杯嗎？"
+                        except KeyError:
+                            reply = f"{offered}一杯{p_mid}元，要來一杯嗎？"
+                    else:
+                        reply = f"{offered}一份{info['price']}元，要來一份嗎？"
                     session["pending_offer"] = offered
                 async for evt in shortcircuit_reply(
                     text, reply, self._session_id, session, _session_store, cart

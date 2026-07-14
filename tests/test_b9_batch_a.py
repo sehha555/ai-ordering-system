@@ -120,6 +120,9 @@ class TestTotalQueryShortcircuit:
         llm = MagicMock()
         llm.run_turn_stream.side_effect = RuntimeError("llm-reached")
         registry = MagicMock()
+        # resolver 回 None：詢價規則 5.5 fallthrough，聚焦驗證總價規則行為
+        # （5.5 的真 resolver 行為由 test_b15_batch 覆蓋）
+        registry._resolve_item_name.return_value = None
 
         async def _collect():
             with (
@@ -148,7 +151,8 @@ class TestTotalQueryShortcircuit:
         assert not llm_reached
 
     def test_item_price_query_not_hijacked(self):
-        # 「起司蛋餅多少錢」是單品詢價，不可攔截（交給 LLM 走 QUERY）
+        # 「起司蛋餅多少錢」是單品詢價：不可被總價規則吃掉
+        # （resolver mock 回 None 讓 5.5 fallthrough；5.5 真行為見 test_b15_batch）
         cart = [{"itemtype": "snack", "snack": "荷包蛋", "quantity": 1}]
         reply, llm_reached = self._run("起司蛋餅多少錢", cart)
         assert "目前共" not in reply

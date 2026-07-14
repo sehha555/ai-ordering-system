@@ -75,6 +75,11 @@ def _zh_qty_to_int(s: str) -> int:
 # 只認精確品名 — 裸「加蛋」是飯糰 extra_egg / 蛋餅加蛋語意，不拆
 _SIDE_EGG_RE = re.compile(r"加(?:([一二兩三四五六七八九十0-9])?[顆個份粒])?\s*(荷包蛋|蔥蛋)")
 
+# text qty 兜底（b15-07）：「兩個紫米甜飯糰」LLM 隨機漏發 qty=2 → 少做一份。
+# tag 無 qty 且 text 有「N個(修飾)品項名」緊鄰 pattern（N>1）→ 補 N；
+# 品項名不在 text（俗稱/context 輪）不觸發，安全方向保守
+_QTY_BEFORE_ITEM_TPL = r"([一二兩三四五六七八九十0-9]+)\s*[個顆份杯片]\s*[一-鿿]{0,4}?%s"
+
 
 # 槽位屬性腦補檢查：新點單輪（text 點名品項且無修改詞）ADD 帶的屬性值
 # 必須在 user text 有字面佐證，否則是 LLM 腦補（「鮪魚飯糰一個」誤帶
@@ -569,6 +574,14 @@ async def execute_tags(
                         kwargs[key] = value
                     elif key in ("spicy", "extra_egg"):
                         kwargs[key] = value.lower() == "true"
+            # ── text qty 兜底：tag 漏 qty 但 text 明說數量（b15-07）──
+            if "quantity" not in kwargs:
+                m_qty = re.search(_QTY_BEFORE_ITEM_TPL % re.escape(item_name), text)
+                if m_qty:
+                    _q = _zh_qty_to_int(m_qty.group(1))
+                    if _q > 1:
+                        logger.info("[ADD qty-recover] text 明說 {} 份，tag 漏發補回", _q)
+                        kwargs["quantity"] = _q
             # ── 補槽輪套餐組成具體化幻覺換名 ──
             # 補槽輪 LLM 不重發套餐名，把追問口味與套餐組成組合成具體品項名
             # → 換回 attempt 套餐名，參數保留接續下方補槽鏈（slot 檢查 / merge）

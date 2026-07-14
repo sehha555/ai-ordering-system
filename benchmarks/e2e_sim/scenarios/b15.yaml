@@ -1,0 +1,146 @@
+# b15 容錯與糾錯批（2026-07-14）— ASR 錯字、自我糾正、糾錯鏈、模糊點餐、累加、清空重點
+- id: b15-01-asr-typo
+  desc: ASR 同音錯字容錯（企司/奶查）
+  script:
+    - 一個企司蛋餅 一杯大杯冰奶查
+    - 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 80
+    dine_type: dine-in
+    items:
+      - {name: 起司蛋餅, qty: 1}
+      - {name: "純鮮奶茶(大杯, 冰)", qty: 1}
+
+- id: b15-02-self-correction
+  desc: 同句自我糾正（大杯→啊不對中杯）
+  script:
+    - 一杯大杯冰紅茶 啊不對 中杯好了
+    - 結帳
+    - 外帶
+    - 現金
+  expected:
+    total: 20
+    dine_type: take-out
+    items:
+      - {name: "精選紅茶(中杯, 冰)", qty: 1}
+
+- id: b15-03-correction-chain
+  desc: 跨輪糾錯（吐司→其實是蛋餅）
+  script:
+    - 一個火腿蛋吐司
+    - 不對 我說的是火腿蛋餅
+    - 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 40
+    dine_type: dine-in
+    items:
+      - {name: 火腿蛋餅, qty: 1}
+
+- id: b15-04-vague-order
+  desc: 模糊點餐（隨便一個吐司 → 應追問不亂加）
+  script:
+    - 隨便給我一個吐司
+    - 那煎蛋吐司好了
+    - 結帳
+    - 外帶
+    - 現金
+  expected:
+    total: 25
+    dine_type: take-out
+    items:
+      - {name: 煎蛋吐司, qty: 1}
+
+- id: b15-05-accumulate
+  desc: 同品項多輪累加（qty 加總判分）
+  script:
+    - 一杯中杯冰豆漿
+    - 再一杯中杯冰豆漿
+    - 再來一杯
+    - 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 60
+    dine_type: dine-in
+    items:
+      - {name: 有糖豆漿, qty: 3}
+
+- id: b15-06-clear-restart
+  desc: 清空購物車重新點
+  script:
+    - 兩個鮪魚蛋吐司 一杯大杯溫十穀漿
+    - 算了 全部取消
+    - 重新來 一個培根蛋漢堡就好
+    - 結帳
+    - 外帶
+    - 現金
+  expected:
+    total: 50
+    dine_type: take-out
+    items:
+      - {name: 培根蛋漢堡, qty: 1}
+
+- id: b15-07-family-big
+  desc: 家族大單多輪（4 品項 11 件）
+  script:
+    - 三個火腿蛋饅頭 兩個紫米甜飯糰
+    - 再四杯中杯溫燕麥薏仁漿 兩個蔥蛋
+    - 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 355
+    dine_type: dine-in
+    items:
+      - {name: 火腿蛋饅頭, qty: 3}
+      - {name: 甜飯糰, qty: 2}
+      - {name: 燕麥薏仁漿, qty: 4}
+      - {name: 蔥蛋, qty: 2}
+
+- id: b15-08-price-then-order
+  desc: 先詢價再下單（詢價不得入車）
+  script:
+    - 一個豬肉蛋漢堡多少錢
+    - 好 來一個 加一杯中杯冰無糖清香綠茶
+    - 結帳
+    - 外帶
+    - 現金
+  expected:
+    total: 70
+    dine_type: take-out
+    items:
+      - {name: 豬肉蛋漢堡, qty: 1}
+      - {name: 無糖清香綠茶, qty: 1}
+
+- id: b15-09-double-modify
+  desc: 連環改（溫度改+品項取消）
+  script:
+    - 兩杯中杯溫紅茶 一個玉米蛋餅
+    - 紅茶改冰的
+    - 蛋餅不要了
+    - 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 40
+    dine_type: dine-in
+    items:
+      - {name: "精選紅茶(中杯, 冰)", qty: 2}
+
+- id: b15-10-checkout-interrupt-add
+  desc: 結帳中反悔加點再收單
+  script:
+    - 一個起司蛋漢堡
+    - 結帳
+    - 等等 再加一杯中杯冰黑糖鮮奶茶
+    - 好了 結帳 內用 現金
+  expected:
+    total: 90
+    dine_type: dine-in
+    items:
+      - {name: 起司蛋漢堡, qty: 1}
+      - {name: "黑糖純鮮奶茶(中杯, 冰)", qty: 1}
