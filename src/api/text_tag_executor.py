@@ -725,8 +725,17 @@ async def execute_tags(
                 if m_egg:
                     egg_qty = _zh_qty_to_int(m_egg.group(1)) if m_egg.group(1) else 1
                     egg_result = _tool_registry.add_item(name=m_egg.group(2), quantity=egg_qty)
+                    if not egg_result.get("ok"):
+                        # 售完/解析失敗 → 不拆不剝離（客製原樣保留，行為同修復前）
+                        logger.warning(
+                            "[ADD egg-split] 拆單失敗（不剝離）: {} → {}",
+                            m_egg.group(2),
+                            egg_result.get("message"),
+                        )
                     if egg_result.get("ok"):
                         add_results.append(egg_result)
+                        # retried_ids 也涵蓋拆單品項：同輪副產物非客人替換/複述，
+                        # 不參與 modify/swap/checkout 去重（語意同補槽 retry）
                         retried_ids.add(egg_result.get("item_id"))
                         cust = kwargs["customization"]
                         rest = (cust[: m_egg.start()] + cust[m_egg.end() :]).strip("、，, ")

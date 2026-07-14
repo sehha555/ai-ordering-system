@@ -132,6 +132,19 @@
       - {name: 懷古鹹蛋, qty: 1}
       - {name: 荷包蛋, qty: 1}
 
+- id: b12-11-no-egg-negation
+  desc: 否定客製「不要加荷包蛋」不拆單不收費（egg-split 否定守衛回歸）
+  script:
+    - 一個懷古鹹蛋飯糰 白米 不要加荷包蛋
+    - 結帳
+    - 外帶
+    - 現金
+  expected:
+    total: 65
+    dine_type: take-out
+    items:
+      - {name: 懷古鹹蛋, qty: 1}
+
 - id: b12-10-oneshot
   desc: 快速同句結帳
   script:
