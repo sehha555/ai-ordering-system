@@ -186,3 +186,86 @@ class TestCkPayDineChange:
             events = [e async for e in checkout_step("外帶 再加一個蛋餅", "s1", session)]
         assert events == []  # 未 yield = fallthrough 給 LLM
         assert "checkout_status" not in session  # 已退出結帳狀態
+
+
+class TestPendingAttemptAbandon:
+    """b11-09：pending 追問棄答 — 客人答結帳問題不理 attempt 追問 → 放掉接回結帳"""
+
+    def _session(self):
+        return {
+            "cart": [
+                {
+                    "item_id": "ep_1",
+                    "itemtype": "egg_pancake",
+                    "flavor": "起司",
+                    "quantity": 1,
+                }
+            ],
+            "llm_history": [
+                {"role": "user", "content": "結帳"},
+                {"role": "assistant", "content": "飯糰要白米紫米還是混米？"},
+            ],
+            "pending_checkout": True,
+            "last_failed_attempt": {
+                "item_name": "QQ滷蛋飯糰",
+                "missing": ["rice"],
+                "provided": {},
+                "message": "飯糰要白米紫米還是混米？",
+            },
+        }
+
+    @pytest.mark.asyncio
+    async def test_dine_answer_abandons_attempt_and_resumes_checkout(self):
+        """「外帶」→ attempt 清空、同句推進到 CK_PAY 問付款"""
+        reg = MagicMock()
+        session = self._session()
+        with patch("src.services.container.tool_registry", reg):
+            await execute_tags("好的～", "外帶", session, "s1")
+        assert session.get("last_failed_attempt") is None
+        assert session.get("checkout_status") == CK_PAY
+
+    @pytest.mark.asyncio
+    async def test_slot_answer_not_abandoned(self):
+        """補槽回答「紫米」→ attempt 不被放掉（照走補槽 retry）"""
+        reg = MagicMock()
+        reg.add_item.return_value = {"ok": True, "item_id": "rb_1", "message": "已加入"}
+        session = self._session()
+        with patch("src.services.container.tool_registry", reg):
+            await execute_tags(
+                "[ADD:QQ滷蛋飯糰|rice=紫米]好～",
+                "紫米",
+                session,
+                "s1",
+            )
+        # 補槽成功 → attempt 清空是「補齊」路徑而非棄答路徑，add_item 有被呼叫
+        reg.add_item.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_dine_with_new_order_not_resumed(self):
+        """「外帶 再一個蛋餅」有新 ADD → 改口加點路徑：不走棄答搶跑結帳
+        （attempt 由 any_ok 既有路徑清除，結帳意圖放掉回一般流程）"""
+        reg = MagicMock()
+        reg.add_item.return_value = {"ok": True, "item_id": "ep_2", "message": "已加入"}
+        session = self._session()
+        with patch("src.services.container.tool_registry", reg):
+            await execute_tags(
+                "[ADD:玉米蛋餅]好～",
+                "外帶 再一個玉米蛋餅",
+                session,
+                "s1",
+            )
+        assert session.get("checkout_status") != CK_PAY
+
+    @pytest.mark.asyncio
+    async def test_slot_with_dine_compound_not_abandoned(self):
+        """「紫米 外帶」補槽+dine 複合句（無 tag）→ 上游 text 直補兜底先清
+        attempt（品項入車），棄答區塊不誤放 — 釘住依賴鏈防上游調整無聲破壞"""
+        reg = MagicMock()
+        reg.add_item.return_value = {"ok": True, "item_id": "rb_1", "message": "已加入"}
+        session = self._session()
+        with patch("src.services.container.tool_registry", reg):
+            await execute_tags("好的～", "紫米 外帶", session, "s1")
+        # attempt 由補槽兜底成功清除（非棄答丟棄），品項有入車
+        reg.add_item.assert_called_once()
+        assert reg.add_item.call_args.kwargs.get("rice") == "紫米"
+        assert session.get("last_failed_attempt") is None

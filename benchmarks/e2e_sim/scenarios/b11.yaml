@@ -120,7 +120,7 @@
       - {name: "精選紅茶(中杯, 溫)", qty: 1}
 
 - id: b11-09-nonexistent-item
-  desc: 魯蛋腦補（known：LLM 對映 QQ滷蛋飯糰入車）
+  desc: 魯蛋腦補（known：context 輪豁免放行腦補 rice 入車錯品項，收窄需 plan；死鎖型已由棄答放行救回）
   known_fail: true
   script:
     - 一個起士蛋餅 一杯中杯冰奶茶

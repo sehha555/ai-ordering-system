@@ -1193,6 +1193,23 @@ async def execute_tags(
         full_text = QUERY_RE.sub("", full_text).strip()
         patch_last_assistant(session["llm_history"], full_text)
 
+    # ── pending 追問棄答：重放追問後客人仍在答結帳問題（外帶/現金）──
+    # 對 attempt 品項沒興趣（b11-09：不存在品項被 LLM 對映成缺槽 attempt，
+    # 懸置會讓 dine/payment 回答永遠踩不進結帳 → 整單蒸發）。放掉 attempt，
+    # 下方接續邏輯自然走同句推進。本輪有成功新 ADD = 改口加點，不放
+    if (
+        pending_checkout
+        and not checkout_entered
+        and session.get("last_failed_attempt")
+        and (parse_dine_type(text) or parse_payment(text))
+        and not any(r.get("ok") for r in add_results)
+    ):
+        logger.info(
+            "[CHECKOUT pending] 客人答結帳問題不理追問，放掉 attempt: {}",
+            session["last_failed_attempt"].get("item_name"),
+        )
+        session["last_failed_attempt"] = None
+
     # ── pending 結帳接續：上輪結帳被補槽追問擋下，本輪槽位補齊 → 接回結帳 ──
     # 對 attempt 品項的 ADD（含 LLM 重發全參數）是補槽；出現其他新品項
     # = 客人改口加點，放掉結帳意圖回一般流程。zip 截斷剛好排除補槽 retry
