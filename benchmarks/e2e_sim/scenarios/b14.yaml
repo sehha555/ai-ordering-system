@@ -1,0 +1,155 @@
+# b14 複合行為批（2026-07-14）— 查詢+點餐複合、多人合點、修改鏈、大單、斷續句型
+- id: b14-01-query-order-combo
+  desc: 查詢+點餐複合句（b6-05/H 族：點餐部分易蒸發）
+  script:
+    - 你們飲料有什麼 我先要一個起司蛋餅
+    - 一杯大杯冰紅茶
+    - 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 65
+    dine_type: dine-in
+    items:
+      - {name: 起司蛋餅, qty: 1}
+      - {name: "精選紅茶(大杯, 冰)", qty: 1}
+
+- id: b14-02-existence-then-order
+  desc: 存在性查詢後帶新品項的複合肯定句
+  script:
+    - 有賣蘿蔔糕嗎
+    - 好 來一份 再一杯中杯溫的米漿加豆漿
+    - 結帳
+    - 外帶
+    - 現金
+  expected:
+    total: 65
+    dine_type: take-out
+    items:
+      - {name: 港式蘿蔔糕, qty: 1}
+      - {name: 米漿+豆漿, qty: 1}
+
+- id: b14-03-multi-person
+  desc: 多人合點（我/朋友/小孩）
+  script:
+    - 我要一個火腿蛋吐司 我朋友要一個鮪魚飯糰 白米的
+    - 再幫小孩拿一杯中杯溫有糖豆漿
+    - 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 125
+    dine_type: dine-in
+    items:
+      - {name: 火腿蛋吐司, qty: 1}
+      - {name: 鮪魚, qty: 1}
+      - {name: 有糖豆漿, qty: 1}
+
+- id: b14-04-modify-chain
+  desc: 連續修改鏈（改量→換溫度）
+  script:
+    - 兩個玉米蛋餅 一杯大杯冰精選紅茶
+    - 蛋餅改一個就好
+    - 紅茶換溫的
+    - 結帳
+    - 外帶
+    - 現金
+  expected:
+    total: 65
+    dine_type: take-out
+    items:
+      - {name: 玉米蛋餅, qty: 1}
+      - {name: "精選紅茶(大杯, 溫)", qty: 1}
+
+- id: b14-05-price-mid-order
+  desc: 點餐中途問總價再續點
+  script:
+    - 一個培根蛋漢堡
+    - 現在多少錢
+    - 再一杯中杯冰無糖豆漿
+    - 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 70
+    dine_type: dine-in
+    items:
+      - {name: 培根蛋漢堡, qty: 1}
+      - {name: 無糖豆漿, qty: 1}
+
+- id: b14-06-casual-filler
+  desc: 口語填充詞開場
+  script:
+    - 嗯 我看一下喔 先這樣好了 兩個煎蛋吐司 一杯大杯溫花生糙米漿
+    - 結帳
+    - 外帶
+    - 現金
+  expected:
+    total: 80
+    dine_type: take-out
+    items:
+      - {name: 煎蛋吐司, qty: 2}
+      - {name: 花生糙米漿, qty: 1}
+
+- id: b14-07-big-order
+  desc: 大單（5 品項 12 件）
+  script:
+    - 三個火腿蛋餅 兩個豬肉蛋漢堡 一份煎餃 四杯中杯冰紅茶
+    - 再加兩份薯餅
+    - 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 380
+    dine_type: dine-in
+    items:
+      - {name: 火腿蛋餅, qty: 3}
+      - {name: 豬肉蛋漢堡, qty: 2}
+      - {name: 煎餃, qty: 1}
+      - {name: 精選紅茶, qty: 4}
+      - {name: 薯餅, qty: 2}
+
+- id: b14-08-multi-custom
+  desc: 一句兩品項各帶客製
+  script:
+    - 一個玉米蛋餅加辣 一個鮪魚飯糰紫米不要菜脯
+    - 結帳
+    - 外帶
+    - 現金
+  expected:
+    total: 105
+    dine_type: take-out
+    items:
+      - {name: 玉米蛋餅, qty: 1}
+      - {name: 鮪魚, qty: 1}
+
+- id: b14-09-qty-variant
+  desc: 數量詞後置變體（來個三份/兩杯都）
+  script:
+    - 蛋餅來個三份 原味的就好 紅茶兩杯 都大杯冰的
+    - 結帳
+    - 內用
+    - 現金
+  expected:
+    total: 140
+    dine_type: dine-in
+    items:
+      - {name: 原味蛋餅, qty: 3}
+      - {name: "精選紅茶(大杯, 冰)", qty: 2}
+
+- id: b14-10-hesitant-drips
+  desc: 猶豫斷續點餐（填充輪+逐項）
+  script:
+    - 那個 我想一下
+    - 好 一個黑椒鐵板麵
+    - 油麵好了
+    - 加一杯冰的黑糖鮮奶茶 中杯
+    - 結帳
+    - 外帶
+    - 現金
+  expected:
+    total: 100
+    dine_type: take-out
+    items:
+      - {name: 黑椒鐵板麵, qty: 1}
+      - {name: "黑糖純鮮奶茶(中杯, 冰)", qty: 1}
