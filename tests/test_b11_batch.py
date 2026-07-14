@@ -255,3 +255,17 @@ class TestPendingAttemptAbandon:
                 "s1",
             )
         assert session.get("checkout_status") != CK_PAY
+
+    @pytest.mark.asyncio
+    async def test_slot_with_dine_compound_not_abandoned(self):
+        """「紫米 外帶」補槽+dine 複合句（無 tag）→ 上游 text 直補兜底先清
+        attempt（品項入車），棄答區塊不誤放 — 釘住依賴鏈防上游調整無聲破壞"""
+        reg = MagicMock()
+        reg.add_item.return_value = {"ok": True, "item_id": "rb_1", "message": "已加入"}
+        session = self._session()
+        with patch("src.services.container.tool_registry", reg):
+            await execute_tags("好的～", "紫米 外帶", session, "s1")
+        # attempt 由補槽兜底成功清除（非棄答丟棄），品項有入車
+        reg.add_item.assert_called_once()
+        assert reg.add_item.call_args.kwargs.get("rice") == "紫米"
+        assert session.get("last_failed_attempt") is None
