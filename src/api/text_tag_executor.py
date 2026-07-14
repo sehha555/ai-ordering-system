@@ -71,6 +71,11 @@ def _zh_qty_to_int(s: str) -> int:
     return _ZH_NUM.get(s) or (int(s) if s.isdigit() else 1)
 
 
+# 客製荷包蛋拆單（b9-03/b12-09）：客製值中的獨立點心品項。
+# 只認精確品名 — 裸「加蛋」是飯糰 extra_egg / 蛋餅加蛋語意，不拆
+_SIDE_EGG_RE = re.compile(r"加(?:([一二兩三四五六七八九十0-9])?[顆個份粒])?\s*(荷包蛋|蔥蛋)")
+
+
 # 槽位屬性腦補檢查：新點單輪（text 點名品項且無修改詞）ADD 帶的屬性值
 # 必須在 user text 有字面佐證，否則是 LLM 腦補（「鮪魚飯糰一個」誤帶
 # rice=白米 → 錯單），strip 掉讓 add_item 的 missing 機制追問。
@@ -703,6 +708,62 @@ async def execute_tags(
                     "message": add_result.get("message"),
                 },
             )
+            if add_result.get("ok") and kwargs.get("customization"):
+                # ── 客製荷包蛋拆單（b9-03/b12-09）──
+                # 「懷古鹹蛋飯糰 加一顆荷包蛋」荷包蛋是獨立點心品項（$15），
+                # LLM 慣性塞 customization → 沒收錢、廚房看不到。入車成功後
+                # 從客製剝離、拆成獨立 ADD。只認精確點心品名（荷包蛋/蔥蛋）—
+                # 「加蛋」是飯糰 extra_egg / 蛋餅加蛋語意，不碰
+                cust_value = kwargs["customization"]
+                m_egg = _SIDE_EGG_RE.search(cust_value)
+                # 否定守衛：命中所在子句（掃回最近標點/空白）內含否定字 →
+                # 不拆。固定短窗擋不住「不需要加」「不用再加」等 3 字以上
+                # 否定詞；子句級寬窗誤擋方向保守（不拆＝客製原樣保留），
+                # 誤拆才會反向多收 $15
+                if m_egg:
+                    clause_start = m_egg.start()
+                    while clause_start > 0 and cust_value[clause_start - 1] not in _WINDOW_BREAKS:
+                        clause_start -= 1
+                    if any(
+                        c in _NEG_PREFIXES_SINGLE for c in cust_value[clause_start : m_egg.start()]
+                    ):
+                        m_egg = None
+                if m_egg:
+                    egg_qty = _zh_qty_to_int(m_egg.group(1)) if m_egg.group(1) else 1
+                    egg_result = _tool_registry.add_item(name=m_egg.group(2), quantity=egg_qty)
+                    if not egg_result.get("ok"):
+                        # 售完/解析失敗 → 不拆不剝離（客製原樣保留，行為同修復前）
+                        logger.warning(
+                            "[ADD egg-split] 拆單失敗（不剝離）: {} → {}",
+                            m_egg.group(2),
+                            egg_result.get("message"),
+                        )
+                    if egg_result.get("ok"):
+                        add_results.append(egg_result)
+                        # retried_ids 也涵蓋拆單品項：同輪副產物非客人替換/複述，
+                        # 不參與 modify/swap/checkout 去重（語意同補槽 retry）
+                        retried_ids.add(egg_result.get("item_id"))
+                        cust = kwargs["customization"]
+                        rest = (cust[: m_egg.start()] + cust[m_egg.end() :]).strip("、，, ")
+                        added_item = next(
+                            (
+                                i
+                                for i in session.get("cart", [])
+                                if i.get("item_id") == add_result.get("item_id")
+                            ),
+                            None,
+                        )
+                        if added_item is not None:
+                            if rest:
+                                added_item["customization"] = rest
+                            else:
+                                added_item.pop("customization", None)
+                        logger.info(
+                            "[ADD egg-split] 客製拆單: {} x{}（剩餘客製: {!r}）",
+                            m_egg.group(2),
+                            egg_qty,
+                            rest,
+                        )
             if not add_result.get("ok"):
                 logger.warning(
                     "[ADD tag] 執行失敗: {} → {}", add_content, add_result.get("message")
