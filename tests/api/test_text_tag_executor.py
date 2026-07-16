@@ -470,12 +470,54 @@ async def test_modify_turn_slot_exempt(registry):
 
 @pytest.mark.asyncio
 async def test_context_turn_slot_exempt(registry):
-    """context 輪（要辣，沒點名品項）→ 不 strip"""
+    """context 輪（要辣，沒點名品項）屬性來自歷史 user 發言 → 不 strip"""
     session = _make_session(cart=[])
+    session["llm_history"] = [
+        {"role": "user", "content": "一個鮪魚飯糰 紫米"},
+        {"role": "assistant", "content": "要辣嗎？"},
+        {"role": "user", "content": "要辣 謝謝"},
+    ]
 
     await execute_tags("[ADD:鮪魚飯糰|rice=紫米|spicy=true]好～", "要辣 謝謝", session, "s1")
 
-    assert registry.add_item.call_args.kwargs.get("rice") == "紫米", "context 輪不應 strip"
+    assert registry.add_item.call_args.kwargs.get("rice") == "紫米", "歷史有佐證不應 strip"
+
+
+@pytest.mark.asyncio
+async def test_context_turn_hallucinated_slot_stripped(registry):
+    """context 輪腦補（b11-09）：菜單沒有的「魯蛋」被對映成品項+腦補米種，
+    整段對話 user 從沒說過「白米」→ strip 讓 missing 機制追問"""
+    session = _make_session(cart=[])
+    session["llm_history"] = [
+        {"role": "user", "content": "一個起士蛋餅 一杯中杯冰奶茶"},
+        {"role": "assistant", "content": "好的～"},
+        {"role": "user", "content": "再一個魯蛋"},
+    ]
+    registry.add_item.return_value = {"ok": False, "missing": ["rice"], "message": "要紫米白米？"}
+
+    await execute_tags("[ADD:QQ滷蛋飯糰|rice=白米]好～", "再一個魯蛋", session, "s1")
+
+    registry.add_item.assert_called_once()
+    assert "rice" not in registry.add_item.call_args.kwargs, "歷史無佐證的腦補 rice 應被 strip"
+
+
+@pytest.mark.asyncio
+async def test_context_turn_slot_kept_cross_turn_evidence(registry):
+    """context 輪佐證跨輪：槽值出現在兩輪前的 user 發言 → 保留"""
+    session = _make_session(cart=[])
+    session["llm_history"] = [
+        {"role": "user", "content": "飲料都要冰的"},
+        {"role": "assistant", "content": "好的～"},
+        {"role": "user", "content": "一杯紅茶"},
+        {"role": "assistant", "content": "中杯還大杯？"},
+        {"role": "user", "content": "中杯就好"},
+    ]
+
+    await execute_tags("[ADD:紅茶|size=中杯|temp=冰]好～", "中杯就好", session, "s1")
+
+    kwargs = registry.add_item.call_args.kwargs
+    assert kwargs.get("temp") == "冰", "兩輪前 user 說過「冰」應保留"
+    assert kwargs.get("size") == "中杯", "本輪 text 佐證應保留"
 
 
 @pytest.mark.asyncio
@@ -1007,9 +1049,7 @@ async def test_modify_misfire_then_checkout_not_blocked(registry):
     registry.finalize_order.return_value = {"ok": True, "order_number": "07", "total": 95}
     session = _cart_with_egg_pancake()
 
-    await execute_tags(
-        "[ADD:蛋餅|customization=不要辣]好～", "蛋餅不要辣喔", session, "s1"
-    )
+    await execute_tags("[ADD:蛋餅|customization=不要辣]好～", "蛋餅不要辣喔", session, "s1")
     result = await execute_tags("[CHECKOUT]好～", "結帳 外帶 現金", session, "s1")
 
     assert result.finalize_result is not None, "結帳應正常出單，不被幻影 attempt 卡住"
@@ -1026,9 +1066,7 @@ async def test_genuine_new_item_still_records_attempt(registry):
     }
     session = _cart_with_egg_pancake()
 
-    result = await execute_tags(
-        "[ADD:蛋餅]好～", "再給我一個蛋餅", session, "s1"
-    )
+    result = await execute_tags("[ADD:蛋餅]好～", "再給我一個蛋餅", session, "s1")
 
     assert session.get("last_failed_attempt") is not None, "加點新品項缺槽須記 attempt"
     assert "口味" in result.followup_text
@@ -1047,9 +1085,7 @@ async def test_modify_misfire_needs_existing_item_mentioned(registry):
         [{"itemtype": "drink", "drink": "有糖豆漿", "size": "中杯", "temp": "溫", "quantity": 1}]
     )
 
-    result = await execute_tags(
-        "[ADD:蛋餅|customization=不要辣]好～", "蛋餅不要辣", session, "s1"
-    )
+    result = await execute_tags("[ADD:蛋餅|customization=不要辣]好～", "蛋餅不要辣", session, "s1")
 
     assert session.get("last_failed_attempt") is not None
     assert "口味" in result.followup_text

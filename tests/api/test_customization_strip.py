@@ -108,11 +108,18 @@ async def test_context_turn_strips_hallucinated_customization():
         "provided": {"temp": "冰"},
         "message": "要中杯還是大杯？",
     }
+    session = _session(attempt=attempt)
+    # rice=白米 是客人前輪說過的合法記憶（context-strip 佐證擴到歷史 user 發言）
+    session["llm_history"] = [
+        {"role": "user", "content": "一個香燻培根飯糰白米 一杯有糖豆漿冰的"},
+        {"role": "assistant", "content": "豆漿要中杯還是大杯？"},
+        {"role": "user", "content": "中杯"},
+    ]
     with patch("src.services.container.tool_registry", reg):
         await execute_tags(
             "[ADD:香燻培根飯糰|rice=白米|customization=加辣菜脯]好～",
             "中杯",
-            _session(attempt=attempt),
+            session,
             "s1",
         )
     reg.add_item.assert_called_once_with(name="香燻培根飯糰", rice="白米")

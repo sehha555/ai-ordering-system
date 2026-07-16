@@ -129,6 +129,13 @@ def _name_in_text(name: str, text: str) -> bool:
     return False
 
 
+def _user_history_text(session: dict) -> str:
+    """本筆訂單所有 user 發言串接（llm_history 含本輪，finalize 清空）"""
+    return "\n".join(
+        m.get("content", "") for m in session.get("llm_history", []) if m.get("role") == "user"
+    )
+
+
 def _combo_materialize_target(item_name: str, session: dict, text: str) -> Optional[str]:
     """補槽輪 LLM 把追問中套餐「具體化」成組成品項名 → 回傳應換回的套餐名。
 
@@ -646,6 +653,35 @@ async def execute_tags(
                 # 套餐五：「溫的」→「起司的」每輪只留當輪槽，永遠缺一個）
                 for k, v in provided.items():
                     kwargs.setdefault(k, v)
+            # ── context 輪腦補防護（b11-09）──
+            # text 沒點名品項且無同品項 pending 追問 → 不是補槽輪，是 LLM 自主
+            # ADD（「再一個魯蛋」對映 QQ滷蛋飯糰+腦補白米入車錯品項）。合法
+            # context 記憶的值一定在本筆訂單某輪 user 發言出現過 — 佐證範圍
+            # 擴大到歷史 user turn（assistant 追問含選項字會假佐證，不取），
+            # 找不到即腦補，strip 讓 missing 機制追問（追問曝光對映、客人可糾正）
+            is_retry_turn = bool(
+                prev_slot_attempt and prev_slot_attempt.get("item_name") == item_name
+            )
+            if (
+                not _name_in_text(item_name, text)
+                and not is_retry_turn
+                and not any(w in text for w in _MODIFY_WORDS)
+            ):
+                # 本輪 text 與歷史分開檢查：pre-LLM 改寫路徑（pending_offer
+                # 橋接）的 text 可能不在 llm_history，兩者任一有佐證即合法
+                user_corpus = _user_history_text(session)
+                for slot in _EVIDENCED_SLOTS:
+                    if (
+                        slot in kwargs
+                        and not _slot_evidenced(slot, str(kwargs[slot]), text)
+                        and not _slot_evidenced(slot, str(kwargs[slot]), user_corpus)
+                    ):
+                        logger.info(
+                            "[ADD context-strip] 歷史無佐證，strip 腦補屬性 {}={}",
+                            slot,
+                            kwargs[slot],
+                        )
+                        kwargs.pop(slot)
             # ── customization 腦補防護（不限輪次）──
             # 槽位有「合法跨輪記憶」豁免（context 輪的 temp 來自前輪問答），
             # 客製沒有 — 一定當輪說出口。無 text 佐證即腦補（priming demo 的
