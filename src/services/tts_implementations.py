@@ -224,6 +224,7 @@ class VoxCPMTTSModel(TTSModel):
             async with self._client.stream("POST", "/synthesize_stream", json={"text": text}) as r:
                 if r.status_code != 200:
                     raise RuntimeError(f"status {r.status_code}")
+                self._last_voice_key = self.cache_voice_key
                 buf = b""
                 async for data in r.aiter_bytes():
                     buf += data
@@ -232,7 +233,6 @@ class VoxCPMTTSModel(TTSModel):
                         seg_len = int.from_bytes(buf[:4], "big")
                         if len(buf) < 4 + seg_len:
                             break
-                        self._last_voice_key = self.cache_voice_key
                         yielded = True
                         yield buf[4 : 4 + seg_len]
                         buf = buf[4 + seg_len :]

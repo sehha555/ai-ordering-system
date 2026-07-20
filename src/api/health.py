@@ -77,12 +77,12 @@ async def readiness():
 
     # 5. TTS 服務可達（檢查實際使用的 streaming TTS backend）
     try:
-        from src.config.models import OMNIVOICE_BASE_URL, TTS_BACKEND, VOXCPM_BASE_URL
+        from src.config.models import TTS_BACKEND, TTS_SERVICE_HEALTH_URLS
 
-        if TTS_BACKEND in ("omnivoice", "voxcpm"):
-            base_url = OMNIVOICE_BASE_URL if TTS_BACKEND == "omnivoice" else VOXCPM_BASE_URL
+        health_url = TTS_SERVICE_HEALTH_URLS.get(TTS_BACKEND)
+        if health_url:
             async with httpx.AsyncClient() as client:
-                resp = await client.get(f"{base_url}/health", timeout=3)
+                resp = await client.get(health_url, timeout=3)
             checks["tts"] = "ok" if resp.status_code == 200 else f"status_{resp.status_code}"
             if resp.status_code != 200:
                 all_ok = False

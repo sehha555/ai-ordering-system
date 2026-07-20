@@ -168,10 +168,8 @@ class TTSCache:
         return len(self._warmup_cache) + len(self._runtime_cache)
 
 
-async def wait_for_omnivoice_health(
-    health_url: str, max_wait: int = 180, interval: float = 2.0
-) -> bool:
-    """輪詢 OmniVoice /health，直到回傳 200 或超時。
+async def wait_for_tts_health(health_url: str, max_wait: int = 180, interval: float = 2.0) -> bool:
+    """輪詢 TTS 微服務 /health（OmniVoice / VoxCPM），直到回傳 200 或超時。
     回傳 True = 就緒；False = 超時。
     供 app.py warmup gate 使用，可在測試中獨立驗證。
     """

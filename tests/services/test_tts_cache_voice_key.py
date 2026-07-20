@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.services.tts_cache import TTSCache, wait_for_omnivoice_health
+from src.services.tts_cache import TTSCache, wait_for_tts_health
 from src.services.tts_interface import TTSModel
 
 
@@ -174,8 +174,8 @@ def test_orchestrator_caches_normal_run(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_wait_for_omnivoice_health_returns_true_on_200():
-    """health 回傳 200 → wait_for_omnivoice_health 回傳 True"""
+async def test_wait_for_tts_health_returns_true_on_200():
+    """health 回傳 200 → wait_for_tts_health 回傳 True"""
     mock_resp = MagicMock()
     mock_resp.status_code = 200
 
@@ -185,7 +185,7 @@ async def test_wait_for_omnivoice_health_returns_true_on_200():
     mock_client.__aexit__ = AsyncMock(return_value=False)
 
     with patch("src.services.tts_cache.httpx.AsyncClient", return_value=mock_client):
-        result = await wait_for_omnivoice_health(
+        result = await wait_for_tts_health(
             "http://127.0.0.1:8100/health", max_wait=4, interval=2.0
         )
 
@@ -193,7 +193,7 @@ async def test_wait_for_omnivoice_health_returns_true_on_200():
 
 
 @pytest.mark.asyncio
-async def test_wait_for_omnivoice_health_returns_false_on_timeout():
+async def test_wait_for_tts_health_returns_false_on_timeout():
     """health 持續失敗（連線錯誤）→ 超時後回傳 False，不預熱"""
     mock_client = AsyncMock()
     mock_client.get.side_effect = Exception("connection refused")
@@ -202,7 +202,7 @@ async def test_wait_for_omnivoice_health_returns_false_on_timeout():
 
     with patch("src.services.tts_cache.httpx.AsyncClient", return_value=mock_client):
         with patch("src.services.tts_cache.asyncio.sleep", new_callable=AsyncMock):
-            result = await wait_for_omnivoice_health(
+            result = await wait_for_tts_health(
                 "http://127.0.0.1:8100/health", max_wait=4, interval=2.0
             )
 
@@ -210,7 +210,7 @@ async def test_wait_for_omnivoice_health_returns_false_on_timeout():
 
 
 @pytest.mark.asyncio
-async def test_wait_for_omnivoice_health_returns_false_on_non_200():
+async def test_wait_for_tts_health_returns_false_on_non_200():
     """health 回傳 503（模型尚未載入）→ 超時後回傳 False"""
     mock_resp = MagicMock()
     mock_resp.status_code = 503
@@ -222,7 +222,7 @@ async def test_wait_for_omnivoice_health_returns_false_on_non_200():
 
     with patch("src.services.tts_cache.httpx.AsyncClient", return_value=mock_client):
         with patch("src.services.tts_cache.asyncio.sleep", new_callable=AsyncMock):
-            result = await wait_for_omnivoice_health(
+            result = await wait_for_tts_health(
                 "http://127.0.0.1:8100/health", max_wait=4, interval=2.0
             )
 
