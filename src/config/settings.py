@@ -19,13 +19,14 @@ class Settings(BaseSettings):
 
     # --- 模型配置 ---
     ASR_BACKEND: str = "sensevoice"  # "sensevoice" | "qwen3asr"
-    TTS_BACKEND: str = "edgetts"  # "edgetts" | "qwen3tts" | "omnivoice"
+    TTS_BACKEND: str = "edgetts"  # "edgetts" | "qwen3tts" | "omnivoice" | "voxcpm"
     QWEN3ASR_MODEL_SIZE: str = "0.6b"  # "0.6b" | "1.7b"
     SENSEVOICE_MODEL: str = "iic/SenseVoiceSmall"
     SENSEVOICE_HUB: str = "ms"  # "ms" = ModelScope
     QWEN3TTS_MODEL: str = "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice"
     QWEN3TTS_SPEAKER: str = "Vivian"
     OMNIVOICE_BASE_URL: str = "http://127.0.0.1:8100"
+    VOXCPM_BASE_URL: str = "http://127.0.0.1:8200"
 
     # --- LLM 服務 ---
     LLM_BASE_URL: str = "http://127.0.0.1:1234/v1/chat/completions"

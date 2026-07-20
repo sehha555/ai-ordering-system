@@ -1,14 +1,17 @@
 # Start AI Ordering System
-# 啟動順序：Backend(ASR) → LLM → OmniVoice → Frontend
+# 啟動順序：Backend(ASR) → LLM → VoxCPM → Frontend
 # ASR 必須先載入 GPU，否則 VRAM 被 LLM 佔滿會載入失敗
-# Usage: .\start.ps1 [-RefAudio ref_voice.wav]
-#   -RefAudio: OmniVoice voice clone 參考音檔（預設台灣女聲 ref_taiwan.wav，換聲音只要換檔案）
-param([string]$RefAudio = "ref_taiwan.wav")
+# Usage: .\start.ps1 [-RefAudio my_ref.wav]
+#   -RefAudio: VoxCPM voice clone 參考音檔（預設台灣女聲 ref_taiwan_voxcpm.wav，
+#              換聲音要同時備妥同名 .txt 文字稿）
+param([string]$RefAudio = "ref_taiwan_voxcpm.wav")
 
 $Root = $PSScriptRoot
 $ModelPath = "$env:USERPROFILE\.lmstudio\models\unsloth\Qwen3.5-9B-GGUF\Qwen3.5-9B-UD-Q4_K_XL.gguf"
 # llama-server 透過環境變數讀 JSON，繞過 PowerShell 原生 exe argument 雙引號脫落 bug
 $env:LLAMA_CHAT_TEMPLATE_KWARGS = '{"enable_thinking":false}'
+# TTS 走 VoxCPM（環境變數優先於 .env.dev，start.ps1 為準）
+$env:TTS_BACKEND = "voxcpm"
 
 # 1. Backend 先啟（ASR 載入 GPU ~3.5GB，需 30-40 秒）
 # 暫用 8001（8000 殭屍 socket 卡住，重開機後改回 8000）
@@ -40,9 +43,9 @@ $llm = Start-Process -NoNewWindow -PassThru -FilePath "$Root\tools\llama-server\
     "--jinja" `
     -WorkingDirectory "$Root\tools\llama-server"
 
-# 3. OmniVoice TTS（~1.9GB VRAM）
-Write-Host "Starting OmniVoice TTS (:8100)..."
-$omnivoice = Start-Process -NoNewWindow -PassThru -FilePath "python" -ArgumentList "src/services/omnivoice_server.py","--ref-audio",$RefAudio -WorkingDirectory $Root
+# 3. VoxCPM TTS（~2.1GB VRAM，q3tts venv：python 3.12 + torch cu130）
+Write-Host "Starting VoxCPM TTS (:8200)..."
+$tts = Start-Process -NoNewWindow -PassThru -FilePath "$env:USERPROFILE\.venvs\q3tts\Scripts\python.exe" -ArgumentList "src/services/voxcpm_server.py","--ref-audio",$RefAudio -WorkingDirectory $Root
 
 # 4. Frontend
 Write-Host "Starting frontend (Next.js :3000)..."
@@ -51,7 +54,7 @@ $frontend = Start-Process -NoNewWindow -PassThru -FilePath "cmd.exe" -ArgumentLi
 Write-Host ""
 Write-Host "Backend:   http://localhost:8001 (PID: $($backend.Id))"
 Write-Host "LLM:       http://localhost:1234 (PID: $($llm.Id))"
-Write-Host "OmniVoice: http://localhost:8100 (PID: $($omnivoice.Id))"
+Write-Host "VoxCPM:    http://localhost:8200 (PID: $($tts.Id))"
 Write-Host "Frontend:  http://localhost:3000 (PID: $($frontend.Id))"
 Write-Host ""
 
@@ -71,10 +74,10 @@ for ($i = 0; $i -lt 30; $i++) {
 Write-Host "Press Ctrl+C to stop all services"
 
 try {
-    Wait-Process -Id $backend.Id, $llm.Id, $frontend.Id, $omnivoice.Id
+    Wait-Process -Id $backend.Id, $llm.Id, $frontend.Id, $tts.Id
 } finally {
     Stop-Process -Id $llm.Id -ErrorAction SilentlyContinue
-    Stop-Process -Id $omnivoice.Id -ErrorAction SilentlyContinue
+    Stop-Process -Id $tts.Id -ErrorAction SilentlyContinue
     Stop-Process -Id $backend.Id -ErrorAction SilentlyContinue
     Stop-Process -Id $frontend.Id -ErrorAction SilentlyContinue
 }

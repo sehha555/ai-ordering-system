@@ -95,6 +95,17 @@ class StreamingOrchestrator:
         self.tts = tts_service
         self.session_id = session_id
 
+    @staticmethod
+    def _audio_event(audio: bytes, request_start: float, first_audio: bool, label: str) -> tuple:
+        """組 audio_chunk 事件；首個音訊記 TTFA。回傳 (sse_event, updated_first_audio, ttfa)"""
+        b64 = base64.b64encode(audio).decode("utf-8")
+        ttfa = None
+        if first_audio:
+            ttfa = time.perf_counter() - request_start
+            logger.info("[PERF] TTFA {:.3f}s ({})", ttfa, label)
+            first_audio = False
+        return {"event": "audio_chunk", "data": b64}, first_audio, ttfa
+
     async def _send_tts(
         self, text: str, request_start: float, first_audio: bool, label: str = ""
     ) -> AsyncIterator[tuple]:
@@ -104,34 +115,39 @@ class StreamingOrchestrator:
         text = text.replace("*", "").replace("#", "").strip()
         if not text:
             return
+        label = label or "tts"
         # voice_key 用於快取維度，區分 OmniVoice clone / instruct / Edge TTS 等不同聲音
         cached = tts_cache.get(text, voice_key=self.tts.cache_voice_key)
         if cached:
-            b64 = base64.b64encode(cached).decode("utf-8")
-            ttfa = None
-            if first_audio:
-                ttfa = time.perf_counter() - request_start
-                logger.info("[PERF] TTFA {:.3f}s ({} 快取命中)", ttfa, label or "tts")
-                first_audio = False
-            yield {"event": "audio_chunk", "data": b64}, first_audio, ttfa
+            evt, first_audio, ttfa = self._audio_event(
+                cached, request_start, first_audio, f"{label} 快取命中"
+            )
+            yield evt, first_audio, ttfa
         else:
+            # streamable：每個 chunk 都是獨立可播放音檔（如 VoxCPM MP3 段）→ 邊收邊下發，
+            # TTFA 只等首段；否則（Edge frame 片段）收齊 join 後一次下發
+            streamable = self.tts.stream_playable_chunks
+            chunks = []
             try:
-                chunks = []
                 async for chunk in self.tts.run_stream(text):
                     chunks.append(chunk)
-                if chunks:
-                    audio = b"".join(chunks)
-                    # 以實際產出聲音的 key 存入（fallback 產物存 fallback 聲音 key，不污染本尊）
-                    tts_cache.put(text, audio, voice_key=self.tts.last_voice_key)
-                    b64 = base64.b64encode(audio).decode("utf-8")
-                    ttfa = None
-                    if first_audio:
-                        ttfa = time.perf_counter() - request_start
-                        logger.info("[PERF] TTFA {:.3f}s ({})", ttfa, label or "tts")
-                        first_audio = False
-                    yield {"event": "audio_chunk", "data": b64}, first_audio, ttfa
+                    if streamable:
+                        evt, first_audio, ttfa = self._audio_event(
+                            chunk, request_start, first_audio, label
+                        )
+                        yield evt, first_audio, ttfa
             except Exception as e:
-                logger.warning("[TTS] {} run_stream 失敗: {}", label or "tts", e)
+                # 串流中斷可能只產出半句 → 不入快取
+                logger.warning("[TTS] {} run_stream 失敗: {}", label, e)
+                return
+            if not chunks:
+                return
+            audio = b"".join(chunks)
+            # 以實際產出聲音的 key 存入（fallback 產物存 fallback 聲音 key，不污染本尊）
+            tts_cache.put(text, audio, voice_key=self.tts.last_voice_key)
+            if not streamable:
+                evt, first_audio, ttfa = self._audio_event(audio, request_start, first_audio, label)
+                yield evt, first_audio, ttfa
 
     async def _run_dm_pipeline(
         self, text: str, request_start: float, asr_elapsed: float, log_prefix: str
