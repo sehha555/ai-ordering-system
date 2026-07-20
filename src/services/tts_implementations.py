@@ -182,6 +182,79 @@ class OmniVoiceTTSModel(TTSModel):
             yield chunk
 
 
+class VoxCPMTTSModel(TTSModel):
+    """VoxCPM TTS — 透過 HTTP 呼叫獨立微服務（q3tts venv），句內串流。
+
+    微服務啟動：C:/Users/User/.venvs/q3tts/Scripts/python.exe src/services/voxcpm_server.py --ref-audio ref_taiwan_voxcpm.wav
+    協議：/synthesize_stream 回傳連續的 [4-byte big-endian 長度][獨立可播放 MP3 段]，
+    逐段 yield 給 orchestrator 邊收邊下發（TTFA ≈ 首段合成時間）。
+    """
+
+    stream_playable_chunks = True
+
+    # Circuit breaker: 連線失敗後跳過 VoxCPM 一段時間，避免每句都 timeout
+    _circuit_open_until: float = 0.0  # class-level，所有 instance 共享
+    _CIRCUIT_COOLDOWN = 60.0
+
+    def __init__(self, base_url: str = "http://127.0.0.1:8200"):
+        self._client = httpx.AsyncClient(base_url=base_url, timeout=30.0)
+        self._fallback = EdgeTTSModel()
+        logger.info("[TTS] VoxCPM client 初始化 ({})", base_url)
+
+    @property
+    def cache_voice_key(self) -> str:
+        return "voxcpm:clone"
+
+    async def _fallback_single_chunk(self, text: str) -> AsyncIterator[bytes]:
+        """Edge fallback：其 MP3 frame 片段不可獨立播放，join 成單一 chunk 再 yield"""
+        self._last_voice_key = self._fallback.cache_voice_key
+        chunks = [chunk async for chunk in self._fallback.run_stream(text)]
+        if chunks:
+            yield b"".join(chunks)
+
+    async def run_stream(self, text: str) -> AsyncIterator[bytes]:
+        now = time.monotonic()
+        if now < VoxCPMTTSModel._circuit_open_until:
+            async for chunk in self._fallback_single_chunk(text):
+                yield chunk
+            return
+
+        yielded = False
+        try:
+            async with self._client.stream("POST", "/synthesize_stream", json={"text": text}) as r:
+                if r.status_code != 200:
+                    raise RuntimeError(f"status {r.status_code}")
+                buf = b""
+                async for data in r.aiter_bytes():
+                    buf += data
+                    # 解析 length-prefix 段：可能一次含多段
+                    while len(buf) >= 4:
+                        seg_len = int.from_bytes(buf[:4], "big")
+                        if len(buf) < 4 + seg_len:
+                            break
+                        self._last_voice_key = self.cache_voice_key
+                        yielded = True
+                        yield buf[4 : 4 + seg_len]
+                        buf = buf[4 + seg_len :]
+                if buf:
+                    raise RuntimeError(f"串流殘留 {len(buf)} bytes（段不完整，疑 server 中斷）")
+            if yielded:
+                return
+            raise RuntimeError("空回應")
+        except Exception as e:
+            if yielded:
+                # 已下發部分音訊，fallback 會重播整句 → 只斷尾，交由上層跳過 cache
+                logger.warning("[TTS] VoxCPM 串流中斷（已播部分音訊，不 fallback）: {}", e)
+                raise
+            logger.warning(
+                "[TTS] VoxCPM 請求失敗: {}，circuit breaker 啟動 {}s", e, self._CIRCUIT_COOLDOWN
+            )
+            VoxCPMTTSModel._circuit_open_until = time.monotonic() + self._CIRCUIT_COOLDOWN
+
+        async for chunk in self._fallback_single_chunk(text):
+            yield chunk
+
+
 def create_tts_model(backend: str = "edgetts") -> TTSModel:
     """工廠函式：依 backend 建立 TTS 模型"""
     if backend == "qwen3tts":
@@ -192,5 +265,9 @@ def create_tts_model(backend: str = "edgetts") -> TTSModel:
         from src.config.models import OMNIVOICE_BASE_URL
 
         return OmniVoiceTTSModel(base_url=OMNIVOICE_BASE_URL)
+    elif backend == "voxcpm":
+        from src.config.models import VOXCPM_BASE_URL
+
+        return VoxCPMTTSModel(base_url=VOXCPM_BASE_URL)
     else:
         return EdgeTTSModel()

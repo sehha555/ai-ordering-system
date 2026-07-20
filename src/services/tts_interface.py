@@ -7,6 +7,10 @@ class TTSModel(ABC):
     # 子類在 run_stream 中記錄「實際產出音訊的聲音 key」（fallback 時為 fallback 聲音）
     _last_voice_key: Optional[str] = None
 
+    # True = run_stream 的每個 chunk 都是獨立可播放音檔（可逐段下發前端）；
+    # False = chunk 是不可獨立解碼的片段（如 Edge MP3 frame），必須收齊 join 才能播
+    stream_playable_chunks: bool = False
+
     @abstractmethod
     async def run_stream(self, text: str) -> AsyncIterator[bytes]:
         """Yields audio chunks (PCM or MP3 frames)"""
