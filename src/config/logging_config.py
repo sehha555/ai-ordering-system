@@ -17,6 +17,7 @@ from src.config.request_context import get_request_id
 # 攔截標準 logging（uvicorn / FastAPI / 第三方庫）導入 loguru
 # ============================================================================
 
+
 class _InterceptHandler(logging.Handler):
     """把標準 logging 的訊息轉發到 loguru"""
 
@@ -43,6 +44,21 @@ class _InterceptHandler(logging.Handler):
 _SLOW_THRESHOLD = settings.PERF_SLOW_THRESHOLD
 
 
+def record_perf(operation: str, elapsed: float) -> None:
+    """記錄已知耗時 — 供無法用 context manager 涵蓋的區間
+
+    串流生成器中途 yield 時，控制權交還呼叫端（下游 TTS 合成），
+    context manager 會把那段時間一併計入。需要純生成耗時的場景
+    自行累計後呼叫本函數。
+    """
+    if elapsed >= _SLOW_THRESHOLD:
+        logger.warning(
+            "[PERF] {} 耗時 {:.3f}s（超過 {}s 閾值）", operation, elapsed, _SLOW_THRESHOLD
+        )
+    else:
+        logger.info("[PERF] {} 耗時 {:.3f}s", operation, elapsed)
+
+
 @contextmanager
 def PerfTimer(operation: str):
     """Context manager — 記錄程式碼區塊耗時
@@ -55,11 +71,7 @@ def PerfTimer(operation: str):
     try:
         yield
     finally:
-        elapsed = time.perf_counter() - start
-        if elapsed >= _SLOW_THRESHOLD:
-            logger.warning("[PERF] {} 耗時 {:.3f}s（超過 {}s 閾值）", operation, elapsed, _SLOW_THRESHOLD)
-        else:
-            logger.info("[PERF] {} 耗時 {:.3f}s", operation, elapsed)
+        record_perf(operation, time.perf_counter() - start)
 
 
 def log_perf(operation: str):
@@ -69,8 +81,10 @@ def log_perf(operation: str):
         @log_perf("asr_transcribe")
         def transcribe(audio_path): ...
     """
+
     def decorator(func):
         if asyncio_iscoroutinefunction(func):
+
             @functools.wraps(func)
             async def async_wrapper(*args, **kwargs):
                 start = time.perf_counter()
@@ -79,11 +93,18 @@ def log_perf(operation: str):
                 finally:
                     elapsed = time.perf_counter() - start
                     if elapsed >= _SLOW_THRESHOLD:
-                        logger.warning("[PERF] {} 耗時 {:.3f}s（超過 {}s 閾值）", operation, elapsed, _SLOW_THRESHOLD)
+                        logger.warning(
+                            "[PERF] {} 耗時 {:.3f}s（超過 {}s 閾值）",
+                            operation,
+                            elapsed,
+                            _SLOW_THRESHOLD,
+                        )
                     else:
                         logger.info("[PERF] {} 耗時 {:.3f}s", operation, elapsed)
+
             return async_wrapper
         else:
+
             @functools.wraps(func)
             def sync_wrapper(*args, **kwargs):
                 start = time.perf_counter()
@@ -92,22 +113,31 @@ def log_perf(operation: str):
                 finally:
                     elapsed = time.perf_counter() - start
                     if elapsed >= _SLOW_THRESHOLD:
-                        logger.warning("[PERF] {} 耗時 {:.3f}s（超過 {}s 閾值）", operation, elapsed, _SLOW_THRESHOLD)
+                        logger.warning(
+                            "[PERF] {} 耗時 {:.3f}s（超過 {}s 閾值）",
+                            operation,
+                            elapsed,
+                            _SLOW_THRESHOLD,
+                        )
                     else:
                         logger.info("[PERF] {} 耗時 {:.3f}s", operation, elapsed)
+
             return sync_wrapper
+
     return decorator
 
 
 def asyncio_iscoroutinefunction(func):
     """判斷函數是否為 async"""
     import asyncio
+
     return asyncio.iscoroutinefunction(func)
 
 
 # ============================================================================
 # 初始化
 # ============================================================================
+
 
 def _add_request_id(record: dict) -> None:
     """loguru patcher — 將當前 request_id 注入每筆 log record"""
@@ -178,4 +208,9 @@ def setup_logging():
     # 攔截標準 logging
     logging.basicConfig(handlers=[_InterceptHandler()], level=0, force=True)
 
-    logger.info("日誌系統已初始化 (level={}, format={}, retention={}天)", log_level, log_format, retention_days)
+    logger.info(
+        "日誌系統已初始化 (level={}, format={}, retention={}天)",
+        log_level,
+        log_format,
+        retention_days,
+    )
