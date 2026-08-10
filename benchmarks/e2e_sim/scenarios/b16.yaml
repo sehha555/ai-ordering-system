@@ -1,0 +1,68 @@
+# b16 批（2026-08-10）— 跨輪補槽 slot-strip 誤殺 + 好了區辨 + pending 結帳邊界
+- id: b16-01-slot-retry-name
+  desc: 跨輪補槽答句重複品項名（slot-strip 誤殺回歸，base-slot-001 乾淨版）
+  script:
+    - 一杯大杯的豆漿
+    - 豆漿要熱的
+    - 結帳
+    - 外帶
+    - 現金
+  expected:
+    total: 25
+    dine_type: take-out
+    items:
+      - {name: "有糖豆漿(大杯", qty: 1}
+
+- id: b16-02-slot-retry-haole
+  desc: 補槽答句帶品項名+語尾好了（base-slot-001 複合版：好了是語尾助詞不是結帳）
+  script:
+    - 我要一個紫米傳統 然後一杯大杯的豆漿
+    - 豆漿要熱的 好了
+    - 結帳
+    - 外帶
+    - 現金
+  expected:
+    total: 70
+    dine_type: take-out
+    items:
+      - {name: 源味傳統, qty: 1}
+      - {name: "有糖豆漿(大杯", qty: 1}
+
+- id: b16-03-haole-checkout
+  desc: 好了單獨說=結帳意圖（與語尾助詞的區辨，LLM 需自行發 [CHECKOUT]）
+  script:
+    - 一個火腿蛋吐司
+    - 好了
+    - 外帶
+    - 現金
+  expected:
+    total: 40
+    dine_type: take-out
+    items:
+      - {name: 火腿蛋吐司, qty: 1}
+
+- id: b16-04-pending-abandon
+  desc: 結帳被補槽擋下後棄答（直接答外帶 → 放掉 attempt 接回結帳，PR #38 邊界）
+  script:
+    - 一個火腿蛋吐司 跟一杯大杯的豆漿 結帳
+    - 外帶
+    - 現金
+  expected:
+    total: 40
+    dine_type: take-out
+    items:
+      - {name: 火腿蛋吐司, qty: 1}
+
+- id: b16-05-pending-resume
+  desc: 結帳被補槽擋下後補答（答句帶品項名 → 補槽成功接回結帳）
+  script:
+    - 一個火腿蛋吐司 跟一杯大杯的豆漿 結帳
+    - 豆漿要溫的
+    - 外帶
+    - 現金
+  expected:
+    total: 65
+    dine_type: take-out
+    items:
+      - {name: 火腿蛋吐司, qty: 1}
+      - {name: "有糖豆漿(大杯", qty: 1}

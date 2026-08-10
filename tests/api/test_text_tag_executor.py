@@ -692,6 +692,54 @@ async def test_pending_checkout_resumes_after_slot_filled(registry):
 
 
 @pytest.mark.asyncio
+async def test_pending_replay_records_dine_hint(registry):
+    """checkout_entered 輪遇補槽撤回 → 同輪順帶的「外帶」記 hint 不已讀不回
+    （b16-04：hint 蒸發 → 接回結帳重問內用外帶死路）"""
+    session = _session_with_item()
+    session["last_failed_attempt"] = _pending_attempt()
+
+    await execute_tags("[CHECKOUT]好～", "外帶", session, "s1")
+
+    assert session["dine_type_hint"] == "take-out"
+    assert session["pending_checkout"] is True
+    assert "checkout_status" not in session
+
+
+@pytest.mark.asyncio
+async def test_pending_resume_uses_recorded_dine_hint(registry):
+    """補槽完成接回結帳 → 取用先前記的 dine hint，直接進付款問句不重問"""
+    session = _make_session(cart=[])
+    session["last_failed_attempt"] = _pending_attempt()
+    session["pending_checkout"] = True
+    session["dine_type_hint"] = "take-out"
+
+    registry.add_item.side_effect = _cart_appending_add(session, "c1")
+
+    result = await execute_tags("[ADD:套餐C|temp=冰]好～", "冰的", session, "s1")
+
+    assert session["checkout_status"] == CK_PAY
+    assert session["checkout_dine_type"] == "take-out"
+    assert "外帶" in result.full_text and "現金" in result.full_text
+
+
+@pytest.mark.asyncio
+async def test_pending_resume_uses_recorded_pay_hint(registry):
+    """dine+pay hint 都在 → 補槽完成接回結帳直接 finalize，不再多問"""
+    session = _make_session(cart=[])
+    session["last_failed_attempt"] = _pending_attempt()
+    session["pending_checkout"] = True
+    session["dine_type_hint"] = "take-out"
+    session["checkout_pending_pay"] = "cash"
+
+    registry.add_item.side_effect = _cart_appending_add(session, "c1")
+
+    result = await execute_tags("[ADD:套餐C|temp=冰]好～", "冰的", session, "s1")
+
+    registry.finalize_order.assert_called_once_with(dine_type="take-out", payment_method="cash")
+    assert result.finalize_result is not None
+
+
+@pytest.mark.asyncio
 async def test_pending_checkout_dropped_on_add_more(registry):
     """pending flag 輪客人改口加點 → 放掉結帳意圖，回一般點餐流程"""
     session = _make_session(cart=[])
@@ -1006,6 +1054,171 @@ async def test_combo_alias_context_turn_slot_kept(registry):
     await execute_tags("[ADD:套餐一|temp=冰]好～", "冰的就好", session, "s1")
 
     registry.add_item.assert_called_once_with(name="套餐一", temp="冰")
+
+
+# ── base-slot-001：補槽 retry 答句重複品項名 → provided 不被 slot-strip 誤殺 ──
+
+
+def _soy_attempt():
+    return {
+        "item_name": "有糖豆漿",
+        "missing": ["temp"],
+        "provided": {"size": "大杯"},
+        "message": "冰的還是溫的？",
+    }
+
+
+@pytest.mark.asyncio
+async def test_retry_with_name_in_text_keeps_provided_slot(registry):
+    """補槽答句順口帶品項名（「豆漿要熱的」）→ attempt.provided 的 size
+    是合法跨輪記憶，不可被 slot-strip 當腦補清掉（base-slot-001 錯單）"""
+    session = _make_session(cart=[])
+    session["last_failed_attempt"] = _soy_attempt()
+
+    await execute_tags("[ADD:有糖豆漿|size=大杯|temp=溫]好～", "豆漿要熱的", session, "s1")
+
+    kwargs = registry.add_item.call_args.kwargs
+    assert kwargs.get("size") == "大杯", "跨輪已知 size 不應被 slot-strip 誤殺"
+    assert kwargs.get("temp") == "熱", "text 明說「熱的」→ 以 text 為準修正"
+
+
+@pytest.mark.asyncio
+async def test_retry_with_name_in_text_merges_omitted_provided(registry):
+    """補槽答句帶品項名且 LLM tag 沒重發已知槽 → provided merge 補回"""
+    session = _make_session(cart=[])
+    session["last_failed_attempt"] = _soy_attempt()
+
+    await execute_tags("[ADD:有糖豆漿|temp=溫]好～", "豆漿要熱的", session, "s1")
+
+    assert registry.add_item.call_args.kwargs.get("size") == "大杯", "provided 應 merge 回 kwargs"
+
+
+@pytest.mark.asyncio
+async def test_retry_wrong_value_corrected_by_text(registry):
+    """補槽 retry LLM 發錯值（temp=冰，客人明說熱的）→ marker 槽級佐證擋不住，
+    封閉值域 text 修正以客人原話為準（實測 fix-slot-001 冰熱顛倒）"""
+    session = _make_session(cart=[])
+    session["last_failed_attempt"] = _soy_attempt()
+
+    await execute_tags("[ADD:有糖豆漿|size=大杯|temp=冰]好～", "豆漿要熱的", session, "s1")
+
+    kwargs = registry.add_item.call_args.kwargs
+    assert kwargs.get("temp") == "熱", "腦補 temp=冰 應被 text 修正為 熱"
+    assert kwargs.get("size") == "大杯"
+
+
+@pytest.mark.asyncio
+async def test_retry_with_name_in_text_still_strips_hallucinated_slot(registry):
+    """補槽 retry 答句帶品項名，LLM 腦補 provided 沒有、text 也無佐證的槽
+    → 照 strip（b11-09 腦補防護方向不因 retry 豁免而鬆動）"""
+    registry.add_item.return_value = {
+        "ok": False,
+        "missing": ["size"],
+        "message": "要中杯還是大杯？",
+    }
+    session = _make_session(cart=[])
+    session["last_failed_attempt"] = {
+        "item_name": "有糖豆漿",
+        "missing": ["temp", "size"],
+        "provided": {},
+        "message": "冰的還是溫的？要中杯還是大杯？",
+    }
+
+    await execute_tags("[ADD:有糖豆漿|size=大杯|temp=溫]好～", "豆漿要熱的", session, "s1")
+
+    kwargs = registry.add_item.call_args.kwargs
+    assert "size" not in kwargs, "無佐證且非 provided 的 size 應被 strip"
+    assert kwargs.get("temp") == "熱", "text 明說「熱的」→ 以 text 為準"
+
+
+@pytest.mark.asyncio
+async def test_retry_slot_kept_by_unique_history_value(registry):
+    """retry 輪值只在歷史 user 發言出現（大杯在第一輪講過）→ 歷史唯一佐證保留，
+    不強迫客人重講已給過的欄位（重問死循環 → 整單蒸發）"""
+    session = _make_session(cart=[])
+    session["llm_history"] = [
+        {"role": "user", "content": "一杯大杯的豆漿"},
+        {"role": "assistant", "content": "好，豆漿要冰的還是溫的？"},
+        {"role": "user", "content": "外帶"},
+    ]
+    session["last_failed_attempt"] = {
+        "item_name": "有糖豆漿",
+        "missing": ["size"],
+        "provided": {"temp": "溫"},
+        "message": "要中杯還是大杯？",
+    }
+
+    await execute_tags("[ADD:有糖豆漿|size=大杯|temp=溫]好～", "外帶", session, "s1")
+
+    assert registry.add_item.call_args.kwargs.get("size") == "大杯", "歷史唯一佐證應保留"
+
+
+@pytest.mark.asyncio
+async def test_retry_slot_stripped_when_history_ambiguous(registry):
+    """歷史出現多個杯型字（中杯紅茶+大杯豆漿）→ 非唯一佐證，腦補值照 strip"""
+    registry.add_item.return_value = {
+        "ok": False,
+        "missing": ["size"],
+        "message": "要中杯還是大杯？",
+    }
+    session = _make_session(cart=[])
+    session["llm_history"] = [
+        {"role": "user", "content": "一杯中杯紅茶 一杯大杯綠茶 再一杯豆漿"},
+        {"role": "assistant", "content": "好，豆漿要冰的還是溫的？"},
+        {"role": "user", "content": "溫的吧"},
+    ]
+    session["last_failed_attempt"] = {
+        "item_name": "有糖豆漿",
+        "missing": ["size", "temp"],
+        "provided": {},
+        "message": "規格？",
+    }
+
+    await execute_tags("[ADD:有糖豆漿|size=中杯|temp=溫]好～", "溫的吧", session, "s1")
+
+    kwargs = registry.add_item.call_args.kwargs
+    assert "size" not in kwargs, "歷史多值（中+大）語意模糊，不可放行腦補 size"
+    assert kwargs.get("temp") == "溫"
+
+
+# ── 「好了」區辨：整句結束語 vs 補槽答句語尾助詞 ──
+
+
+@pytest.mark.asyncio
+async def test_bare_done_fallback_enters_checkout(registry):
+    """整句只有「好了」且 LLM 漏發 [CHECKOUT] → 後端兜底進結帳
+    （「好了」不在 CHECKOUT_KEYWORDS，先前零安全網）"""
+    session = _session_with_item()
+
+    result = await execute_tags("還要什麼嗎？", "好了", session, "s1")
+
+    assert session["checkout_status"] == CK_DINE
+    assert "跟您確認" in result.followup_text
+
+
+@pytest.mark.asyncio
+async def test_bare_done_with_pending_attempt_not_checkout(registry):
+    """pending 追問中單說「好了」語意模糊 → 不兜底，交 LLM 判斷"""
+    session = _session_with_item()
+    session["last_failed_attempt"] = _soy_attempt()
+
+    await execute_tags("好的～", "好了", session, "s1")
+
+    assert "checkout_status" not in session
+    assert "pending_checkout" not in session
+
+
+@pytest.mark.asyncio
+async def test_trailing_haole_in_slot_answer_not_checkout(registry):
+    """補槽答句尾的「好了」是語尾助詞 → 不觸發結帳兜底，品項照常入車"""
+    session = _make_session(cart=[])
+    session["last_failed_attempt"] = _soy_attempt()
+
+    await execute_tags("[ADD:有糖豆漿|size=大杯|temp=溫]好～", "豆漿要熱的，好了", session, "s1")
+
+    assert "checkout_status" not in session
+    registry.add_item.assert_called_once()
+    assert registry.add_item.call_args.kwargs.get("size") == "大杯"
 
 
 # ── b8-07：modify 語意輪誤發裸品項新 ADD → 幻影 attempt 卡死結帳 ──

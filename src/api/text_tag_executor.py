@@ -369,6 +369,19 @@ def _has_checkout_intent(text: str) -> bool:
     )
 
 
+# 「好了」語意雙面：補槽答句尾是語尾助詞（「豆漿要熱的，好了」），單獨說是
+# 結帳意圖。字面含入 CHECKOUT_KEYWORDS 會把補槽答句誤判成結帳 → 不入詞表，
+# 只在「整句就是結束語」且無 pending 追問時後端兜底（LLM 漏發 tag 的安全網）
+_BARE_DONE_PHRASES = ("好了", "這樣好了", "這樣就好了", "就這樣好了", "好了謝謝")
+_BARE_DONE_STRIP_RE = re.compile(r"[，。！？!?、\s～~]")
+
+
+def _is_bare_done(text: str, session: dict) -> bool:
+    """整句僅為結束語「好了」→ 結帳意圖（pending 追問中不觸發，語意交 LLM 判斷）"""
+    stripped = _BARE_DONE_STRIP_RE.sub("", text)
+    return stripped in _BARE_DONE_PHRASES and not session.get("last_failed_attempt")
+
+
 def _prose_asks_slot(prose: str, slot: str) -> bool:
     """prose 是否已在追問該槽（呼叫方需先確認 prose 帶問號）。
     判準：該 slot 兩個選項詞在同一子句以「還是/或」相連（「冰的還是溫的」），
@@ -454,9 +467,9 @@ async def execute_tags(
             checkout_entered = True
             full_text = full_text.replace(CHECKOUT_TAG, "")
         patch_last_assistant(session["llm_history"], full_text)
-    elif (
-        cart or "[ADD:" in full_text or session.get("last_failed_attempt")
-    ) and _has_checkout_intent(text):
+    elif (cart or "[ADD:" in full_text or session.get("last_failed_attempt")) and (
+        _has_checkout_intent(text) or _is_bare_done(text, session)
+    ):
         # 兜底：客人明說結帳但 LLM 漏發 [CHECKOUT]（機率性 fail，模擬 batch1/2 觀察 4 次）
         session["checkout_status"] = CK_DINE
         checkout_entered = True
@@ -601,7 +614,19 @@ async def execute_tags(
                 )
                 item_name = materialize_combo
                 kwargs["name"] = item_name
-            if _name_in_text(item_name, text) and not any(w in text for w in _MODIFY_WORDS):
+            # 補槽 retry 判定：直接用 attempt 品項名比對，不用「text 是否點名
+            # 品項」當判準 — 補答缺槽時順口帶回品項名（「豆漿要熱的」）是中文
+            # 口語常態，點名判準會把 attempt.provided 的合法跨輪記憶（size=大杯）
+            # 誤判成腦補 strip 掉 → 補槽死循環（base-slot-001 錯單）
+            prev_slot_attempt = session.get("last_failed_attempt")
+            is_retry_turn = bool(
+                prev_slot_attempt and prev_slot_attempt.get("item_name") == item_name
+            )
+            if (
+                _name_in_text(item_name, text)
+                and not is_retry_turn
+                and not any(w in text for w in _MODIFY_WORDS)
+            ):
                 # flavor 不在 markers 表（值域自由），經 _slot_evidenced 走值比對
                 # （b8-02「套餐七 冰的 油麵」腦補 flavor=咖哩 入車）
                 for slot in _EVIDENCED_SLOTS:
@@ -613,33 +638,45 @@ async def execute_tags(
                         )
                         kwargs.pop(slot)
             # ── 補槽輪腦補防護 ──
-            # context 輪（text 沒點名品項）原本豁免 strip：補槽回答不會複述品名。
-            # 但 LLM 會順手腦補沒被問到的槽（「烏龍麵 冰的」→ flavor=黑椒 出錯餐）。
-            # 這輪若正是同品項的補槽 retry → 逐槽檢查：本輪 text 有佐證、
-            # 或前幾輪客人已提供（prev.provided）才保留，其餘 strip 掉重新追問
-            prev_slot_attempt = session.get("last_failed_attempt")
-            if (
-                prev_slot_attempt
-                and prev_slot_attempt.get("item_name") == item_name
-                and not _name_in_text(item_name, text)
-            ):
+            # 同品項補槽 retry（不論 text 是否複述品名）：LLM 會順手腦補沒被
+            # 問到的槽（「烏龍麵 冰的」→ flavor=黑椒 出錯餐）。逐槽檢查：
+            # 前幾輪客人已提供（prev.provided，記錄當輪已過 strip 檢驗）、
+            # 或本輪 text 有佐證才保留，其餘 strip 掉重新追問
+            if is_retry_turn:
                 provided = prev_slot_attempt.get("provided", {})
                 for slot in _EVIDENCED_SLOTS:
                     if slot not in kwargs or provided.get(slot):
                         continue
-                    if not _slot_evidenced(slot, str(kwargs[slot]), text):
-                        # 錯值先試 text 修正（封閉值域）：「黑椒 油麵」LLM 腦補
-                        # noodle=烏龍麵 → 若只 strip，text 明說的油麵跟著蒸發、
-                        # provided 記不到 → 補槽死循環（b9-04 套餐六）
-                        corrected = _slot_value_from_text(slot, text, item_name=item_name)
-                        if corrected:
+                    # text 恰好肯定佐證單一封閉值域值 → 以 text 為準。
+                    # marker 佐證是槽級（「熱」在場也放行腦補的 temp=冰），
+                    # 值不符時 text 修正才擋得住錯值入車（base-slot-001 冰熱顛倒）；
+                    # 「黑椒 油麵」LLM 腦補 noodle=烏龍麵 同理 — 若只 strip，
+                    # text 明說的油麵跟著蒸發、provided 記不到 → 補槽死循環（b9-04）
+                    corrected = _slot_value_from_text(slot, text, item_name=item_name)
+                    if corrected:
+                        if str(kwargs[slot]) != corrected:
                             logger.info(
-                                "[ADD retry-fix] 補槽輪 {}={} 無佐證，text 修正為 {}",
+                                "[ADD retry-fix] 補槽輪 {}={} 與 text 不符，修正為 {}",
                                 slot,
                                 kwargs[slot],
                                 corrected,
                             )
                             kwargs[slot] = corrected
+                    elif not _slot_evidenced(slot, str(kwargs[slot]), text):
+                        # 歷史唯一值後備：值只在前幾輪 user 發言出現（「一杯大杯的
+                        # 豆漿」隔輪才補溫度，size 不在本輪 text）→ strip 會重問
+                        # 客人講過的欄位（不肯重講就死循環）。判準用值精確比對
+                        # （歷史唯一候選且與 tag 同值），不用槽級 marker — 槽級
+                        # 會讓歷史任一杯型字放行任意腦補值
+                        hist_val = _slot_value_from_text(
+                            slot, _user_history_text(session), item_name=item_name
+                        )
+                        if hist_val and str(kwargs[slot]) == hist_val:
+                            logger.info(
+                                "[ADD retry-keep] 補槽輪 {}={} 歷史唯一佐證，保留",
+                                slot,
+                                kwargs[slot],
+                            )
                         else:
                             logger.info(
                                 "[ADD retry-strip] 補槽輪腦補 {}={} 無佐證，strip",
@@ -659,9 +696,6 @@ async def execute_tags(
             # context 記憶的值一定在本筆訂單某輪 user 發言出現過 — 佐證範圍
             # 擴大到歷史 user turn（assistant 追問含選項字會假佐證，不取），
             # 找不到即腦補，strip 讓 missing 機制追問（追問曝光對映、客人可糾正）
-            is_retry_turn = bool(
-                prev_slot_attempt and prev_slot_attempt.get("item_name") == item_name
-            )
             if (
                 not _name_in_text(item_name, text)
                 and not is_retry_turn
@@ -1287,6 +1321,15 @@ async def execute_tags(
         # 結帳意圖遇補槽未齊（三入口共用收斂點：tag / 兜底 / flag 延續）：
         # 記/延續 pending flag，補齊那輪接回結帳
         session["pending_checkout"] = True
+        # 同輪順帶的內用外帶/付款答案先記 hint：checkout_entered 輪不會走
+        # 上方 dine_type_hint 記錄，撤回結帳後答案不能已讀不回（b16-04
+        # 「外帶」蒸發 → 接回結帳時重問死路），接回那輪由 hint 取用
+        dine_hint = parse_dine_type(text)
+        if dine_hint:
+            session["dine_type_hint"] = dine_hint
+        pay_hint = parse_payment(text)
+        if pay_hint:
+            session["checkout_pending_pay"] = pay_hint
         if checkout_entered:
             # 撤回結帳狀態讓缺欄位追問先走，否則下輪補槽回答（如「紫米」）
             # 會被結帳狀態機吃掉造成死路
@@ -1313,7 +1356,12 @@ async def execute_tags(
             from src.dm import cart_manager  # noqa: PLC0415
 
             # 有客製待確認 → 不能先付走 pending；否則同句有付款就直接 finalize
-            pay = "pending" if cart_manager.cart_has_pending(cart) else parse_payment(text)
+            # （pending 期間先講的付款 hint 一併取用，同 checkout_step CK_DINE）
+            pay = (
+                "pending"
+                if cart_manager.cart_has_pending(cart)
+                else parse_payment(text) or session.pop("checkout_pending_pay", None)
+            )
             if pay:
                 full_text, finalize_result = finalize_and_reply(dine, pay, session, _tool_registry)
             else:
