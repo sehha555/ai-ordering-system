@@ -35,22 +35,11 @@ _CATEGORY_INQUIRY_RES = (
         r"^(?:請問)?(?:你們|老闆)?(.{1,5}?)(?:有什麼|有哪些|有那些)(?:口味|種類)?[嗎呢]?[?？]?$"
     ),
 )
-# 客人口語 → 菜單分類名
+# 客人口語 → 菜單分類名。菜單分類名本身不必列，直接對菜單驗證
 _CATEGORY_ALIASES = {
     "飲料": "飲品",
     "喝的": "飲品",
-    "飲品": "飲品",
-    "飯糰": "飯糰",
-    "饅頭": "饅頭",
     "包子": "饅頭",
-    "蛋餅": "蛋餅",
-    "吐司": "吐司",
-    "果醬吐司": "果醬吐司",
-    "套餐": "套餐",
-    "點心": "點心",
-    "漢堡": "漢堡",
-    "鐵板麵": "鐵板麵",
-    "蔥抓餅": "蔥抓餅",
 }
 # 飲品品名帶杯型後綴（有糖豆漿(中)/(大)）— 報代表品項時同品項只算一種
 _CUP_SIZE_SUFFIX_RE = re.compile(r"\((?:中|大|小)\)$")
@@ -77,13 +66,22 @@ _OFFER_AFFIRM_RE = re.compile(
 )
 
 
+def _menu_categories() -> set[str]:
+    """菜單分類集合（get_raw_menu 有 module cache，每輪查不多花 I/O）"""
+    from src.tools.menu import menu_price_service
+
+    return {i["category"] for i in menu_price_service.get_raw_menu() if i.get("category")}
+
+
 def _match_category_inquiry(text: str) -> str | None:
     """全句是純分類詢問 → 回菜單分類名，否則 None（交 LLM）"""
     stripped = text.strip()
     for pattern in _CATEGORY_INQUIRY_RES:
         m = pattern.match(stripped)
         if m:
-            return _CATEGORY_ALIASES.get(m.group(1).strip())
+            word = m.group(1).strip()
+            category = _CATEGORY_ALIASES.get(word, word)
+            return category if category in _menu_categories() else None
     return None
 
 
