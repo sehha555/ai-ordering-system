@@ -98,7 +98,37 @@ def test_sold_out_items_excluded():
     reply = _build_category_reply("饅頭", items)
 
     assert "鮮肉包" not in reply
-    assert reply == "饅頭有5種，像是蔬菜包、豆沙包、白饅頭，要聽別的嗎？"
+    assert reply == "饅頭有5種，像是白饅頭、黑糖饅頭、芋頭饅頭，要聽別的嗎？"
+
+
+def test_samples_prefer_names_containing_category():
+    """代表品項優先取名稱含分類名的 — 問饅頭不該先聽到三種包子"""
+    items = _items(
+        ("鮮肉包", True),
+        ("蔬菜包", True),
+        ("豆沙包", True),
+        ("白饅頭", True),
+        ("黑糖饅頭", True),
+        ("芋頭饅頭", True),
+        ("饅頭夾蛋", True),
+    )
+    reply = _build_category_reply("饅頭", items)
+
+    assert reply == "饅頭有7種，像是白饅頭、黑糖饅頭、芋頭饅頭，要聽別的嗎？"
+
+
+def test_samples_keep_menu_order_when_category_absent_from_names():
+    """分類名不出現在品名時（飲品）維持菜單順序，不做無謂重排"""
+    items = _items(
+        ("有糖豆漿", True),
+        ("無糖豆漿", True),
+        ("精選紅茶", True),
+        ("十穀漿", True),
+        ("黑糖鮮奶", True),
+    )
+    reply = _build_category_reply("飲品", items)
+
+    assert reply == "飲品有5種，像是有糖豆漿、無糖豆漿、精選紅茶，要聽別的嗎？"
 
 
 def test_all_sold_out():

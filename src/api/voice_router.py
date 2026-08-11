@@ -99,7 +99,12 @@ def _build_category_reply(category: str, items: list) -> str:
         return f"抱歉，{category}今天都賣完了，要不要看看別的？"
     if len(names) <= _CATEGORY_LIST_ALL_MAX:
         return f"我們的{category}有：{'、'.join(names)}，要點哪個？"
-    return f"{category}有{len(names)}種，像是{'、'.join(names[:3])}，要聽別的嗎？"
+
+    # 代表品項優先取名稱含分類名的：饅頭分類的頭三項是包子（鮮肉包/蔬菜包/
+    # 豆沙包），客人問「有什麼饅頭」聽到三種包子會困惑。stable sort 保留菜單
+    # 順序；分類名不出現在品名時（飲品/點心）等同不排序
+    samples = sorted(names, key=lambda n: category not in n)[:3]
+    return f"{category}有{len(names)}種，像是{'、'.join(samples)}，要聽別的嗎？"
 
 
 router = APIRouter()
