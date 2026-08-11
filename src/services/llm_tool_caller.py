@@ -1,12 +1,13 @@
 import asyncio
 import json
 import re
+import time
 from typing import Any, AsyncIterator, Dict, List, Callable, Optional
 
 import httpx
 
 from loguru import logger
-from src.config.logging_config import PerfTimer
+from src.config.logging_config import PerfTimer, record_perf
 from src.dm.tool_priming import get_priming_messages
 
 _PRIMING_MESSAGES = get_priming_messages()
@@ -626,44 +627,52 @@ class LLMToolCaller:
             early_tts_sent = bool(last_tool_trace and last_tool_trace[-1].get("exec", {}).get("ok"))
 
             try:
-                with PerfTimer("llm_api_call"):
-                    async with asyncio.timeout(_PER_STEP_TIMEOUT):
-                        async for evt in self.call_llm_stream_with_tools(
-                            messages=messages,
-                            tools_schema=tools_schema,
-                        ):
-                            if evt["type"] == "content_delta":
-                                content_buf += evt["content"]
-                                sentence_buf += evt["content"]
-                                if not early_tts_sent:
-                                    # 遇到句點 → 立即 yield text_delta（orchestrator 送 TTS）
-                                    # 未閉合 [tag] 內的標點不可切：tag 值含頓號
-                                    # （customization=不要蔥、加辣）被腰斬成兩個殘片，
-                                    # strip_all_tags 對不完整 tag 失效 → 洩漏給 TTS 唸出
-                                    while sentence_buf:
-                                        idx = next(
-                                            (
-                                                i
-                                                for i, ch in enumerate(sentence_buf)
-                                                if ch in _SENTENCE_PUNCTS
-                                                and _punct_outside_tag(sentence_buf, i)
-                                            ),
-                                            -1,
-                                        )
-                                        if idx == -1:
-                                            break
-                                        sentence = sentence_buf[: idx + 1]
-                                        sentence_buf = sentence_buf[idx + 1 :]
-                                        if sentence.strip():
-                                            yield {"type": "text_delta", "content": sentence}
+                # 純生成耗時：yield 給下游（orchestrator 送 TTS）的期間不計入。
+                # 串流下 generator 暫停時計時器照跑，TTS 慢會讓整段暴增 —
+                # 過去被誤讀成「llama-server 推理變慢」（實測 21.9s 中 TTS 佔 21.6s）
+                llm_elapsed = 0.0
+                _mark = time.perf_counter()
+                async with asyncio.timeout(_PER_STEP_TIMEOUT):
+                    async for evt in self.call_llm_stream_with_tools(
+                        messages=messages,
+                        tools_schema=tools_schema,
+                    ):
+                        if evt["type"] == "content_delta":
+                            content_buf += evt["content"]
+                            sentence_buf += evt["content"]
+                            if not early_tts_sent:
+                                # 遇到句點 → 立即 yield text_delta（orchestrator 送 TTS）
+                                # 未閉合 [tag] 內的標點不可切：tag 值含頓號
+                                # （customization=不要蔥、加辣）被腰斬成兩個殘片，
+                                # strip_all_tags 對不完整 tag 失效 → 洩漏給 TTS 唸出
+                                while sentence_buf:
+                                    idx = next(
+                                        (
+                                            i
+                                            for i, ch in enumerate(sentence_buf)
+                                            if ch in _SENTENCE_PUNCTS
+                                            and _punct_outside_tag(sentence_buf, i)
+                                        ),
+                                        -1,
+                                    )
+                                    if idx == -1:
+                                        break
+                                    sentence = sentence_buf[: idx + 1]
+                                    sentence_buf = sentence_buf[idx + 1 :]
+                                    if sentence.strip():
+                                        llm_elapsed += time.perf_counter() - _mark
+                                        yield {"type": "text_delta", "content": sentence}
+                                        _mark = time.perf_counter()
 
-                            elif evt["type"] == "tool_call_complete":
-                                tool_calls = evt["tool_calls"]
+                        elif evt["type"] == "tool_call_complete":
+                            tool_calls = evt["tool_calls"]
+                            raw_message = evt["raw_message"]
+
+                        elif evt["type"] == "stream_done":
+                            if raw_message is None:
                                 raw_message = evt["raw_message"]
 
-                            elif evt["type"] == "stream_done":
-                                if raw_message is None:
-                                    raw_message = evt["raw_message"]
+                record_perf("llm_generate", llm_elapsed + (time.perf_counter() - _mark))
 
             except Exception as exc:
                 if isinstance(exc, asyncio.TimeoutError):
