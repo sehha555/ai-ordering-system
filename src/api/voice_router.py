@@ -23,14 +23,28 @@ _AUDIO_LOG_DIR = Path(__file__).resolve().parents[2] / "logs" / "audio"
 # 規則層攔截常數
 _EMPTY_CART_MOD_KEYWORDS = ["刪掉", "移除", "撤銷", "取消上一", "刪掉剛剛"]
 _TOTAL_QUERY_WORDS = ["多少", "幾塊", "幾元"]
-_DRINK_INQUIRY_PATTERNS = [
-    "有什麼飲料",
-    "飲料有什麼",
-    "有哪些飲料",
-    "喝的有什麼",
-    "飲品有什麼",
-    "有什麼喝的",
-]
+# 分類查詢：「有什麼饅頭」「飲料有什麼」— 分類品項多（饅頭 19、飲品 26），
+# LLM 憑記憶背誦會整串列出讓 TTS 唸 10-21s。後端直接查菜單報數量 + 代表品項。
+# 全句錨定：複合句（「飲料有什麼 我先要一個起司蛋餅」）不匹配，照舊放行給
+# LLM 同時發 [QUERY]+[ADD]（b14-01）
+_CATEGORY_INQUIRY_RES = (
+    re.compile(
+        r"^(?:請問)?(?:你們|老闆)?(?:有什麼|有哪些|有那些)(.{1,5}?)(?:口味|種類)?[嗎呢]?[?？]?$"
+    ),
+    re.compile(
+        r"^(?:請問)?(?:你們|老闆)?(.{1,5}?)(?:有什麼|有哪些|有那些)(?:口味|種類)?[嗎呢]?[?？]?$"
+    ),
+)
+# 客人口語 → 菜單分類名。菜單分類名本身不必列，直接對菜單驗證
+_CATEGORY_ALIASES = {
+    "飲料": "飲品",
+    "喝的": "飲品",
+    "包子": "饅頭",
+}
+# 飲品品名帶杯型後綴（有糖豆漿(中)/(大)）— 報代表品項時同品項只算一種
+_CUP_SIZE_SUFFIX_RE = re.compile(r"\((?:中|大|小)\)$")
+# 品項數 <= 此值直接列全部（只有蔥抓餅），超過改報數量 + 三個代表
+_CATEGORY_LIST_ALL_MAX = 4
 # 存在性查詢：「你們有賣咖啡嗎」「有沒有蘿蔔糕」— LLM 對品項存在性會謊報
 # （菜單有純鮮奶咖啡卻答「沒有賣咖啡」，b10-02）。抽出品項詞交 resolver 驗證，
 # 命中才攔截直答；解不了（廁所/聊天詞）fallthrough 給 LLM
@@ -50,6 +64,48 @@ _QTY_PREFIX_RE = re.compile(r"^[一二兩三四五六七八九十0-9]+\s*[個份
 _OFFER_AFFIRM_RE = re.compile(
     r"^(?:好啊?|要|對|嗯)?[,，\s]*(?:來|給我|幫我來?)?([一兩二三四五六七八九十0-9]+)?(?:份|個|杯|顆|片)?(?:吧|好了|謝謝)?$"
 )
+
+
+def _menu_categories() -> set[str]:
+    """菜單分類集合（get_raw_menu 有 module cache，每輪查不多花 I/O）"""
+    from src.tools.menu import menu_price_service
+
+    return {i["category"] for i in menu_price_service.get_raw_menu() if i.get("category")}
+
+
+def _match_category_inquiry(text: str) -> str | None:
+    """全句是純分類詢問 → 回菜單分類名，否則 None（交 LLM）"""
+    stripped = text.strip()
+    for pattern in _CATEGORY_INQUIRY_RES:
+        m = pattern.match(stripped)
+        if m:
+            word = m.group(1).strip()
+            category = _CATEGORY_ALIASES.get(word, word)
+            return category if category in _menu_categories() else None
+    return None
+
+
+def _build_category_reply(category: str, items: list) -> str:
+    """分類查詢回覆：品項少列全部，多則報數量 + 三個代表（TTS 唸得完）"""
+    names: list[str] = []
+    for item in items:
+        if not item.get("available"):
+            continue
+        name = _CUP_SIZE_SUFFIX_RE.sub("", item["name"])
+        if name not in names:
+            names.append(name)
+
+    if not names:
+        return f"抱歉，{category}今天都賣完了，要不要看看別的？"
+    if len(names) <= _CATEGORY_LIST_ALL_MAX:
+        return f"我們的{category}有：{'、'.join(names)}，要點哪個？"
+
+    # 代表品項優先取名稱含分類名的：饅頭分類的頭三項是包子（鮮肉包/蔬菜包/
+    # 豆沙包），客人問「有什麼饅頭」聽到三種包子會困惑。stable sort 保留菜單
+    # 順序；分類名不出現在品名時（飲品/點心）等同不排序
+    samples = sorted(names, key=lambda n: category not in n)[:3]
+    return f"{category}有{len(names)}種，像是{'、'.join(samples)}，要聽別的嗎？"
+
 
 router = APIRouter()
 
@@ -180,25 +236,17 @@ class StreamingDMAdapter:
                 text = f"我要{qty}份{pending_offer}"
                 logger.info("[OFFER bridge] 肯定句改寫: '{}'", text)
 
-        # 3. 飲料查詢強制攔截。複合句放行：查詢+點餐同句（「飲料有什麼
-        #    我先要一個起司蛋餅」）攔截會把點餐部分整句吞掉（b14-01），
-        #    句含具體品項詞 → 交 LLM 同時發 [QUERY]+[ADD]
-        from src.dm.tool_registry import MENU_BASE_NAMES
-
-        if any(pat in text for pat in _DRINK_INQUIRY_PATTERNS) and not (
-            any(w in text for w in CONCRETE_ITEM_WORDS) or any(n in text for n in MENU_BASE_NAMES)
-        ):
-            menu_result = _tool_registry.query_menu(category="飲品")
+        # 3. 分類查詢強制攔截：後端查菜單直接回，LLM 憑記憶背誦會整串列出
+        #    （饅頭 19 項 TTS 唸 10-21s）且會漏品項。複合句放行：查詢+點餐
+        #    同句（「飲料有什麼 我先要一個起司蛋餅」）攔截會把點餐部分整句
+        #    吞掉（b14-01）→ 全句錨定不匹配，交 LLM 同時發 [QUERY]+[ADD]
+        inquiry_category = _match_category_inquiry(text)
+        if inquiry_category:
+            menu_result = _tool_registry.query_menu(category=inquiry_category)
             if menu_result.get("ok"):
-                items = menu_result.get("items", [])
-                available = [i["name"] for i in items if i.get("available")]
-                sold_out = [i["name"] for i in items if not i.get("available")]
-                reply = f"我們的飲品有：{'、'.join(available)}"
-                if sold_out:
-                    reply += f"（目前售完：{'、'.join(sold_out)}）"
-                reply += "，請問要點什麼呢？"
+                reply = _build_category_reply(inquiry_category, menu_result.get("items", []))
             else:
-                reply = "抱歉，無法查詢飲品菜單，請再試一次。"
+                reply = f"抱歉，無法查詢{inquiry_category}菜單，請再試一次。"
             async for evt in shortcircuit_reply(
                 text, reply, self._session_id, session, _session_store, cart
             ):
@@ -208,6 +256,7 @@ class StreamingDMAdapter:
         # 4. 總價查詢兜底：「現在總共多少錢」LLM 會幻覺（空車謊言/載體謊言），
         #    後端直接報 cart total。有品項詞（詢單品價，靜態類別詞 + 全菜單品名
         #    雙閘門）或結帳詞（推進結帳）不攔
+        from src.dm.tool_registry import MENU_BASE_NAMES
         from src.tools.order_router import CHECKOUT_KEYWORDS
 
         if (
