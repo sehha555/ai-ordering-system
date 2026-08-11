@@ -232,9 +232,21 @@ async def checkout_step(text: str, session_id: str, session: dict):
     yield {"type": "text_delta", "content": reply}
 
     # yield done（cart_update 的 total 由 orchestrator 從 cart 自行加總）
+    # 語音已答的內用外帶隨 done 回送，前端結帳面板才能預填、不必再選一次
+    # （finalize 後 checkout_dine_type 已被清除 → 該輪走 order_complete，不送 preview）
+    dine_answered = session.get("checkout_dine_type")
     yield {
         "type": "done",
         "cart": session.get("cart", []),
         "finalize_result": finalize_result,
-        "preview_result": None,
+        "preview_result": (
+            {
+                "ok": True,
+                "preview": True,
+                "dine_type": dine_answered,
+                "payment_method": session.get("checkout_pending_pay"),
+            }
+            if dine_answered
+            else None
+        ),
     }

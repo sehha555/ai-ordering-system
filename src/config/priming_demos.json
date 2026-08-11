@@ -42,6 +42,14 @@
       "assistant": "[ADD:紅茶+豆漿|size=中杯|temp=冰|qty=2]好～還要什麼？"
     },
     {
+      "user": "一杯大杯的紅茶",
+      "assistant": "[ADD:精選紅茶|size=大杯]好，紅茶要冰的還是溫的？"
+    },
+    {
+      "user": "紅茶要溫的 好了",
+      "assistant": "[ADD:精選紅茶|size=大杯|temp=溫]好～還要什麼？"
+    },
+    {
       "user": "一個花生吐司 一杯大冰十穀漿 一杯奶茶",
       "assistant": "[ADD:花生吐司][ADD:十穀漿|size=大杯|temp=冰]好，奶茶要冰的還是溫的？"
     },
@@ -55,11 +63,11 @@
     },
     {
       "user": "好了 買單",
-      "assistant": "[CHECKOUT]好的～內用還是外帶？"
+      "assistant": "[CHECKOUT]好的～"
     },
     {
       "user": "再一杯大杯冰豆漿 結帳 外帶 現金",
-      "assistant": "[ADD:豆漿|size=大杯|temp=冰][CHECKOUT]好～外帶付現金，取餐再付，金額螢幕會顯示喔！"
+      "assistant": "[ADD:豆漿|size=大杯|temp=冰][CHECKOUT]好的～"
     },
     {
       "user": "菜單上有什麼可以喝的",
