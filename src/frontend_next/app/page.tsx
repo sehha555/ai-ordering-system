@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../store/useStore';
 import { AppStatus } from '../types';
 import VoiceController from '../components/VoiceController';
-import AudioVisualizer from '../components/AudioVisualizer';
+import OrbVisualizer from '../components/orb/OrbVisualizer';
+import OrbStyleSelector from '../components/orb/OrbStyleSelector';
 import ChatPanel from '../components/ChatPanel';
 import OrderPanel from '../components/OrderPanel';
 import Toast from '../components/Toast';
@@ -66,6 +67,7 @@ export default function Home() {
           </h1>
         </div>
         <div className="flex items-center gap-2">
+          <OrbStyleSelector />
           <MicSelector />
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{storeConfig.store.subtitle}</p>
         </div>
@@ -146,7 +148,7 @@ export default function Home() {
 /* ─── 球體視覺化（volume 高頻更新，隔離避免 Home re-render）─── */
 function BallVisualizer({ status }: { status: AppStatus }) {
   const volume = useStore(state => state.volume);
-  return <AudioVisualizer status={status} volume={volume} size="medium" />;
+  return <OrbVisualizer status={status} volume={volume} />;
 }
 
 /* ─── 球體下方狀態提示 ─── */

@@ -15,7 +15,7 @@ interface AudioVisualizerProps {
   size?: 'large' | 'medium' | 'small';
 }
 
-const STATUS_COLORS: Record<AppStatus, string> = {
+export const STATUS_COLORS: Record<AppStatus, string> = {
   idle: '#729DAD',
   listening: '#4a9d68',
   processing: '#c49a30',
