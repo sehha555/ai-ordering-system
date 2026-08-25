@@ -31,12 +31,14 @@ from src.api.checkout_handler import (
 )
 from src.api.tag_parser import (
     ADD_RE,
+    MALFORMED_TAG_RE,
     PROVIDED_KEYS,
     QUERY_RE,
     REMOVE_RE,
     SET_QTY_RE,
     item_mentioned_in_text,
     find_cart_item_id,
+    normalize_tag_text,
     parse_set_qty_tag,
     resolve_cancel_intent,
 )
@@ -443,6 +445,12 @@ async def execute_tags(
     _tool_registry = container.tool_registry
     _tool_registry.set_session_id(session_id)
 
+    # 全形符號變體先正規化，否則下面所有 "[XXX:" in 判斷與正則都會漏接
+    full_text = normalize_tag_text(full_text)
+    malformed = MALFORMED_TAG_RE.search(full_text)
+    if malformed:
+        logger.error("[TAG] 未閉合/畸形 tag（截斷或模型漂移），該品項會被忽略: {!r}", malformed.group(0))
+
     followup_text = ""
     add_results: List[dict] = []
     add_kwargs_list: List[Dict[str, Any]] = []
@@ -488,11 +496,12 @@ async def execute_tags(
     removed_item_snapshot: Optional[Dict[str, Any]] = None  # 同輪換品項的數量/屬性繼承用
     removed_target_name: Optional[str] = None  # 「N杯就好」減量兜底比對用
     if "[REMOVE:" in full_text:
-        remove_match = REMOVE_RE.search(full_text)
-        if remove_match:
+        # 全部 REMOVE tag 都要執行（「紅茶跟豆漿都不要了」會發兩個 tag）；
+        # 舊版只 search 第一個、其餘被 sub 掉但從未執行 → 品項留在車上
+        remove_result: dict = {"ok": False, "message": "移除失敗"}
+        for remove_match in REMOVE_RE.finditer(full_text):
             remove_target = remove_match.group(1).strip()
             removed_target_name = remove_target
-            remove_result: dict = {"ok": False, "message": "移除失敗"}
 
             if remove_target == "all":
                 remove_result = _tool_registry.remove_from_cart(all=True)
@@ -511,14 +520,14 @@ async def execute_tags(
                         "message": f"購物車裡沒有{remove_target}",
                     }
 
-            removed_ok = remove_result.get("ok", False)
-            if removed_ok:
+            if remove_result.get("ok"):
+                removed_ok = True
                 cart = session.get("cart", [])
-            full_text = REMOVE_RE.sub("", full_text).strip()
-            if not full_text:
-                msg_text = remove_result.get("message", "已移除")
-                full_text = f"{msg_text}～還需要什麼？"
-            patch_last_assistant(session["llm_history"], full_text)
+        full_text = REMOVE_RE.sub("", full_text).strip()
+        if not full_text:
+            msg_text = remove_result.get("message", "已移除")
+            full_text = f"{msg_text}～還需要什麼？"
+        patch_last_assistant(session["llm_history"], full_text)
 
     # ── [SET_QTY:品項|qty=N|size=…|temp=…] 攔截 ──
     # LLM 表達「換大杯/改溫的」慣性發 SET_QTY 帶 size/temp（不照 demo 的
@@ -928,23 +937,26 @@ async def execute_tags(
         if any_ok:
             this_turn_ids = {r["item_id"] for r in add_results if r.get("ok") and r.get("item_id")}
             cart = session.get("cart", [])
-            combo_by_name: dict[str, list] = {}
-            for item in cart:
-                if item.get("itemtype") == "combo":
-                    combo_by_name.setdefault(item["combo_name"], []).append(item)
-            for cn, items in combo_by_name.items():
-                if len(items) < 2:
-                    continue
-                new_items = [i for i in items if i["item_id"] in this_turn_ids]
-                old_items = [i for i in items if i["item_id"] not in this_turn_ids]
-                if new_items and old_items:
-                    for old in old_items:
-                        cart.remove(old)
-                    logger.info(
-                        "[ADD dedup] 移除舊套餐 {} (保留本輪 {})",
-                        [o["item_id"] for o in old_items],
-                        [n["item_id"] for n in new_items],
-                    )
+            # 加點意圖輪（「再來一份套餐一」「我朋友也要」）是合法第二份，
+            # 不去重 — 沒有這道閘門會把客人真的要的第二份套餐刪掉
+            if not _has_add_more_intent(text):
+                combo_by_name: dict[str, list] = {}
+                for item in cart:
+                    if item.get("itemtype") == "combo":
+                        combo_by_name.setdefault(item["combo_name"], []).append(item)
+                for cn, items in combo_by_name.items():
+                    if len(items) < 2:
+                        continue
+                    new_items = [i for i in items if i["item_id"] in this_turn_ids]
+                    old_items = [i for i in items if i["item_id"] not in this_turn_ids]
+                    if new_items and old_items:
+                        for old in old_items:
+                            cart.remove(old)
+                        logger.info(
+                            "[ADD dedup] 移除舊套餐 {} (保留本輪 {})",
+                            [o["item_id"] for o in old_items],
+                            [n["item_id"] for n in new_items],
+                        )
 
             # ── 「再X一份」增量修正：text 明說 +1 份，LLM 卻把目標總量當增量 ──
             # 發 ADD qty>1（「蛋餅再加一份」車上已 1 份 → 誤發 qty=2 變 3 份）。
@@ -1037,8 +1049,12 @@ async def execute_tags(
                     key = _modify_dedup_key(new_item)
                     if key is None or int(new_item.get("quantity", 1) or 1) > 1:
                         continue
+                    # 複述必然同規格；size/temp 不同（結帳句同時點了大杯冰的
+                    # 第二杯）是不同品項，不可當複述刪掉
                     has_older = any(
                         _modify_dedup_key(i) == key
+                        and (i.get("size"), i.get("temp"))
+                        == (new_item.get("size"), new_item.get("temp"))
                         for i in cart
                         if i.get("item_id") not in this_turn_ids
                     )
@@ -1082,14 +1098,25 @@ async def execute_tags(
                     temp = part_a.get("temp") or part_b.get("temp")
                     cart.remove(part_a)
                     cart.remove(part_b)
-                    _tool_registry.add_drink(flavor=mixed, size=size, temp=temp, quantity=qty)
-                    logger.info(
-                        "[ADD mixed-merge] {} + {} → {} x{}",
-                        part_a.get("drink"),
-                        part_b.get("drink"),
-                        mixed,
-                        qty,
+                    merge_result = _tool_registry.add_drink(
+                        flavor=mixed, size=size, temp=temp, quantity=qty
                     )
+                    if not merge_result.get("ok"):
+                        # 合併失敗不能讓兩個原品項一起蒸發 → 還原
+                        cart.append(part_a)
+                        cart.append(part_b)
+                        logger.warning(
+                            "[ADD mixed-merge] 合併失敗，還原原品項: {}",
+                            merge_result.get("message"),
+                        )
+                    else:
+                        logger.info(
+                            "[ADD mixed-merge] {} + {} → {} x{}",
+                            part_a.get("drink"),
+                            part_b.get("drink"),
+                            mixed,
+                            qty,
+                        )
 
             # 供下一輪修改去重辨識「上一輪剛加的品項」
             session["last_turn_add_ids"] = list(this_turn_ids)
@@ -1287,11 +1314,16 @@ async def execute_tags(
         and (parse_dine_type(text) or parse_payment(text))
         and not any(r.get("ok") for r in add_results)
     ):
+        dropped_name = session["last_failed_attempt"].get("item_name")
         logger.info(
             "[CHECKOUT pending] 客人答結帳問題不理追問，放掉 attempt: {}",
-            session["last_failed_attempt"].get("item_name"),
+            dropped_name,
         )
         session["last_failed_attempt"] = None
+        if dropped_name:
+            # 丟品項不能無聲 — 客人以為有點到；訊息經 add_fail_note 併進結帳話術
+            drop_note = f"{dropped_name}的選項沒選好，這次先幫您拿掉囉"
+            followup_text = f"{followup_text}，{drop_note}" if followup_text else drop_note
 
     # ── pending 結帳接續：上輪結帳被補槽追問擋下，本輪槽位補齊 → 接回結帳 ──
     # 對 attempt 品項的 ADD（含 LLM 重發全參數）是補槽；出現其他新品項
@@ -1342,6 +1374,9 @@ async def execute_tags(
                 followup_text = full_text
                 patch_last_assistant(session["llm_history"], full_text)
     elif checkout_entered:
+        # 同句 ADD 失敗訊息（failed followup 已組好）不能被結帳話術覆寫 —
+        # 「蛋餅+不存在品項 外帶結帳」只報單號會讓漏單完全無聲
+        add_fail_note = followup_text
         dine = parse_dine_type(text)
         dine_from_hint = False
         if not dine and session.get("dine_type_hint"):
@@ -1372,6 +1407,8 @@ async def execute_tags(
                 if dine_from_hint:
                     dine_label = "內用" if dine == "dine-in" else "外帶"
                     full_text = f"好，{dine_label}～{full_text}"
+            if add_fail_note:
+                full_text = f"{add_fail_note}。{full_text}"
             logger.info(
                 "[CHECKOUT 同句推進] dine={} finalize={}", dine, finalize_result is not None
             )
@@ -1382,6 +1419,8 @@ async def execute_tags(
         else:
             # 第一問：後端組品項+總金額確認句，取代 LLM 話術（金額不靠 LLM 保證正確）
             full_text = build_checkout_confirm(cart)
+            if add_fail_note:
+                full_text = f"{add_fail_note}。{full_text}"
             patch_last_assistant(session["llm_history"], full_text)
             if checkout_fallback:
                 followup_text = full_text

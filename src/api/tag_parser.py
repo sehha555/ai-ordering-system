@@ -13,11 +13,34 @@ QUERY_RE = re.compile(r"\[QUERY(?::([^\]]*))?\]")
 # 所有 tag 的 registry — 新增 tag 時在此登記，strip_all_tags 的 consumer 自動涵蓋
 _ALL_TAG_RES = (ADD_RE, QUERY_RE, REMOVE_RE, SET_QTY_RE)
 
+# 中文語境下模型會機率性吐全形符號變體（[ADD：紅茶]、【ADD:紅茶】、｜ 分隔），
+# 四條正則只認半形 → 解析與 strip 雙雙失效，殘 tag 還會被 TTS 唸出。
+# 只重寫 tag 形狀的區段，不碰一般文字的標點。
+_FW_TAG_RE = re.compile(r"[\[【]\s*(ADD|SET_QTY|REMOVE|QUERY|CHECKOUT)\s*(?:[:：]([^\]】]*))?[\]】]")
+
+
+def normalize_tag_text(text: str) -> str:
+    """把 tag 的全形括號/冒號/豎線正規化成半形；對已是半形的 tag 是恆等變換"""
+
+    def _rebuild(m: re.Match) -> str:
+        name, content = m.group(1), m.group(2)
+        if content is None:
+            return f"[{name}]"
+        return f"[{name}:{content.replace('｜', '|').strip()}]"
+
+    return _FW_TAG_RE.sub(_rebuild, text)
+
+
+# 截斷/畸形 tag 偵測：tag 開頭之後一路沒有 ']'（撞到下一個 '[' 或字串結尾）。
+# 這類 tag 四條正則都吃不到 → 過去是完全靜默的漏單，至少要留下可計數的 log
+MALFORMED_TAG_RE = re.compile(r"\[(?:ADD|SET_QTY|REMOVE|QUERY|CHECKOUT)\b[^\]\[]*(?=\[|$)")
+
 
 def strip_all_tags(text: str) -> str:
     """剝除文字中所有 text tag（含 [CHECKOUT]），供 TTS / 前端顯示前清理"""
     from src.dm.tool_priming import CHECKOUT_TAG
 
+    text = normalize_tag_text(text)
     for tag_re in _ALL_TAG_RES:
         text = tag_re.sub("", text)
     return text.replace(CHECKOUT_TAG, "")

@@ -168,6 +168,14 @@ async def checkout_step(text: str, session_id: str, session: dict):
 
     if status == CK_DINE:
         dine = parse_dine_type(text)
+        # 同句夾帶具體品項（「外帶，再加一個蛋餅」）→ 加點優先於推進結帳：
+        # 退出結帳讓 LLM 處理加點，已答的內用外帶記進 hint 回結帳時不重問。
+        # 只認具體品項詞，不能用 has_order_intent —「我要外帶」的「我要」會誤中
+        if any(kw in text for kw in CONCRETE_ITEM_WORDS):
+            if dine:
+                session["dine_type_hint"] = dine
+            exit_checkout(session_id, session, _session_store)
+            return
         if dine:
             session["checkout_dine_type"] = dine
             cart = session.get("cart", [])
@@ -203,6 +211,14 @@ async def checkout_step(text: str, session_id: str, session: dict):
         # 否則客人的變更被吃掉、單照舊 dine_type 出（b11-02 錯單）
         dine_change = parse_dine_type(text)
         pay = parse_payment(text)
+        # 同上：「現金，順便一杯紅茶」必須退給 LLM 加點，不能直接出單把紅茶吞掉
+        if any(kw in text for kw in CONCRETE_ITEM_WORDS):
+            if dine_change:
+                session["dine_type_hint"] = dine_change
+            elif session.get("checkout_dine_type"):
+                session["dine_type_hint"] = session["checkout_dine_type"]
+            exit_checkout(session_id, session, _session_store)
+            return
         if pay:
             if dine_change:
                 session["checkout_dine_type"] = dine_change

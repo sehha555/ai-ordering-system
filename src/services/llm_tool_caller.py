@@ -632,7 +632,7 @@ class LLMToolCaller:
                 # 過去被誤讀成「llama-server 推理變慢」（實測 21.9s 中 TTS 佔 21.6s）
                 llm_elapsed = 0.0
                 _mark = time.perf_counter()
-                async with asyncio.timeout(_PER_STEP_TIMEOUT):
+                async with asyncio.timeout(_PER_STEP_TIMEOUT) as _step_tm:
                     async for evt in self.call_llm_stream_with_tools(
                         messages=messages,
                         tools_schema=tools_schema,
@@ -663,6 +663,13 @@ class LLMToolCaller:
                                         llm_elapsed += time.perf_counter() - _mark
                                         yield {"type": "text_delta", "content": sentence}
                                         _mark = time.perf_counter()
+                                        # yield 期間（orchestrator 做 TTS）generator 暫停，
+                                        # 牆鐘照跑 — 時限只該算純 LLM 生成，deadline 順延。
+                                        # 否則 TTS 慢就整輪 timeout、tag 全被丟棄
+                                        _step_tm.reschedule(
+                                            asyncio.get_running_loop().time()
+                                            + (_PER_STEP_TIMEOUT - llm_elapsed)
+                                        )
 
                         elif evt["type"] == "tool_call_complete":
                             tool_calls = evt["tool_calls"]
@@ -671,6 +678,14 @@ class LLMToolCaller:
                         elif evt["type"] == "stream_done":
                             if raw_message is None:
                                 raw_message = evt["raw_message"]
+                            if evt.get("finish_reason") == "length":
+                                # 撞 token 上限 → 尾端 tag 可能沒閉合而被靜默丟棄，
+                                # 必須留下可計數的痕跡（過去這類漏單完全無聲）
+                                logger.error(
+                                    "[LLM] 輸出因 token 上限截斷 (finish_reason=length)，"
+                                    "尾端: ...{}",
+                                    content_buf[-80:],
+                                )
 
                 record_perf("llm_generate", llm_elapsed + (time.perf_counter() - _mark))
 
