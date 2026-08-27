@@ -105,6 +105,9 @@ export default function AudioVisualizer({ status, volume = 0, size = 'large' }: 
       try {
         currentAnalyser.getByteFrequencyData(freqDataRef.current);
         hasSpectrum = true;
+        // speaking（TTS）用更慢的起落，聲紋有波動感而不是逐音節高速抖動
+        const rise = currentStatus === 'speaking' ? 0.3 : 0.5;
+        const fall = currentStatus === 'speaking' ? 0.08 : 0.12;
         for (let b = 0; b < BAND_COUNT; b++) {
           const startBin = Math.floor(b * VALID_BINS / BAND_COUNT);
           const endBin = Math.floor((b + 1) * VALID_BINS / BAND_COUNT);
@@ -114,8 +117,7 @@ export default function AudioVisualizer({ status, volume = 0, size = 'large' }: 
           // 去噪底 + 提高對比
           const shaped = Math.pow(Math.max(0, raw - 0.06) / 0.94, 1.3);
           const prev = bands[b];
-          // 上升較快（0.5）、衰減慢（0.12）：跟得上音節又不會逐幀抖動
-          bands[b] = shaped > prev ? prev + (shaped - prev) * 0.5 : prev + (shaped - prev) * 0.12;
+          bands[b] = shaped > prev ? prev + (shaped - prev) * rise : prev + (shaped - prev) * fall;
         }
       } catch {
         // analyser 已分離（AudioContext 關閉等），安靜降級回音量模式

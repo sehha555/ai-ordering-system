@@ -76,8 +76,8 @@ export function useAudioPlayback(
         const ctx = new AudioContext();
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 256;
-        // 0.6：保留頻譜動態給聲紋視覺化（0.8 會把起伏抹平）
-        analyser.smoothingTimeConstant = 0.6;
+        // 0.8：TTS 聲紋要慢而有波動感，太低會逐音節高速抖動（2026-08-27 使用者反饋）
+        analyser.smoothingTimeConstant = 0.8;
         const source = ctx.createMediaElementSource(audio);
         source.connect(analyser);
         analyser.connect(ctx.destination); // 必須接 destination，否則無聲
